@@ -35,10 +35,10 @@ No game is included. You need your own copy of the cartridge dumped to a
 - **Black Hole in the Design Room.** Build maps with a Black Hole army and
   Black Hole's inventions: minicannons, laser, Black Cannons, Black
   Factory, Volcano and Deathray, and switch back to Yellow Comet any
-  time. See [Design Room](#design-room-black-hole-and-its-inventions-offline).
+  time. See [Design Room](#design-room-black-hole-and-its-inventions).
 - **Play as Black Hole with its inventions.** The Black Factory deploys
   units for you and the Deathray fires on your enemies, like in the
-  campaign. See [inventions in battle](#black-holes-inventions-in-battle).
+  campaign, offline and online. See [inventions in battle](#black-holes-inventions-in-battle).
 - **Play offline** without a connection, or online with a friend through a
   link code or a direct connection.
 
@@ -93,9 +93,11 @@ Versus against the computer and the Design Room all work.
 In Versus, change any army's colour on the Teams screen with **SELECT**
 (or **R**, and **L** to go back). Each army starts in the map's own colour.
 
-## Design Room: Black Hole and its inventions (offline)
+## Design Room: Black Hole and its inventions
 
-**Design Room → Map** gets Black Hole's army and its inventions. Keyboard
+**Design Room → Map** gets Black Hole's army and its inventions. You make
+maps under **Play offline**; they play offline and
+[online](#online). Keyboard
 keys are in brackets (change them in Settings).
 
 | Button | Key |
@@ -230,11 +232,18 @@ invention; it leaves them at 1 HP at worst.
 
 ### Online
 
-Inventions work the same in an online match, since both players run the
-same game. Player 1 has to be the one with the design map in their save
-(see [Saving and playing the map](#saving-and-playing-the-map)). Tested
-over a simulated laggy connection: the factory's units, a Black Hole
-player moving them, and the other player's screen stay in step.
+Design maps work in online matches, inventions included: both players run
+the same game, so the factory, the Deathray and the rest act identically
+on both screens. Player 1 has to be the one with the design map in their
+save (see [Saving and playing the map](#saving-and-playing-the-map)).
+
+Tested over a simulated laggy connection (7 to 10 frames of jittery
+delay), Orange Star against a human Black Hole for seven days on a design
+map with every kind of invention. The factory deployed its units, the
+Black Hole player moved them, and on day 7 the Deathray took an Orange
+Star infantry to 1 HP while a Black Hole Recon in the same beam kept all
+10. Both players' games stayed identical down to the last byte through
+1,789 rollbacks.
 
 <table>
 <tr>
@@ -244,6 +253,22 @@ player moving them, and the other player's screen stay in step.
 <tr>
 <td align="center">Black Hole's player moves a factory Recon</td>
 <td align="center">Orange Star's player sees it arrive</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/online-deathray-black-hole-player.png" width="360" alt="Online, day 7: the Deathray fires on the Black Hole player's screen"></td>
+<td><img src="docs/screenshots/online-deathray-orange-star-player.png" width="360" alt="Online, day 7: the same frame on the Orange Star player's screen"></td>
+</tr>
+<tr>
+<td align="center">Day 7, Black Hole's screen: the Deathray fires</td>
+<td align="center">The same moment on Orange Star's screen</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/online-deathray-after.png" width="360" alt="After: the Orange Star infantry is at 1 HP, the Black Hole Recon is untouched"></td>
+<td></td>
+</tr>
+<tr>
+<td align="center">After: the enemy at 1 HP, the Recon untouched</td>
+<td></td>
 </tr>
 </table>
 
