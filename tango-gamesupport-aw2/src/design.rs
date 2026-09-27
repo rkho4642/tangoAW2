@@ -391,6 +391,19 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
                     core.raw_write_8(MARKER, -1, 0);
                     keys &= !KEY_DOWN;
                 }
+            } else if coloured {
+                // Arriving at slot 4 from either side shows the army next
+                // in line: going forward (UP/SELECT) Yellow Comet comes
+                // before Black Hole, going back (DOWN) Black Hole comes
+                // first. So one button walks all six: ... Green Earth,
+                // Yellow Comet, Black Hole, Neutral ...
+                let below = BLACK_HOLE_SLOT - 1;
+                let above = if terrain_bar { 0 } else { 1 };
+                if pressed & KEY_UP != 0 && slot == below {
+                    core.raw_write_8(MARKER, -1, 0);
+                } else if pressed & KEY_DOWN != 0 && slot == above {
+                    core.raw_write_8(MARKER, -1, BLACK_HOLE_SLOT);
+                }
             }
         }
     } else if pressed & KEY_A != 0 && terrain_bar && class == SILO_CLASS {

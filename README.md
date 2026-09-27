@@ -116,8 +116,8 @@ keys are in brackets (change them in Settings).
 </tr>
 <tr>
 <td align="center">Yellow Comet</td>
-<td align="center">UP: Black Hole</td>
-<td align="center">DOWN: Yellow Comet again</td>
+<td align="center">SELECT or UP: Black Hole</td>
+<td align="center">Back to Yellow Comet (DOWN, or SELECT round again)</td>
 </tr>
 </table>
 
@@ -126,8 +126,8 @@ keys are in brackets (change them in Settings).
 1. Press **R** (S) to open the terrain bar, or **L** (A) for the unit bar.
 2. Highlight a building (HQ, City, Base, Airport, Port) or a unit.
 3. Press **SELECT** (Space) or **UP** to change army: Orange Star, Blue
-   Moon, Green Earth, Yellow Comet, **Black Hole**, then Neutral. You get
-   Black Hole's real HQ, buildings and units.
+   Moon, Green Earth, Yellow Comet, **Black Hole**, Neutral, and round
+   again. You get Black Hole's real HQ, buildings and units.
 4. Press **A** (Z) to pick it, then **A** on the map to place it.
 
 To switch between the terrain and unit bars, press **L** or **R**.
@@ -143,12 +143,13 @@ To switch between the terrain and unit bars, press **L** or **R**.
 </tr>
 </table>
 
-**Getting Yellow Comet back.** Black Hole and Yellow Comet share one army
-slot, so a design map has one or the other, like the campaign. While
-Black Hole is showing, press **DOWN** once to go back to Yellow Comet;
-DOWN again gives Green Earth. The choice is for the whole map: switching
-back turns every Black Hole piece you've placed into Yellow Comet's
-designs and colour, and switching to Black Hole does the reverse.
+**Getting Yellow Comet back.** Keep pressing **SELECT**: it cycles
+through every army and comes back round to Yellow Comet, then Black Hole.
+**DOWN** goes the other way (Black Hole, then Yellow Comet).
+
+Black Hole and Yellow Comet share one army slot, so a map has one or the
+other, like the campaign. Switching changes every piece of that army
+already on the map.
 
 <table>
 <tr>
@@ -157,7 +158,7 @@ designs and colour, and switching to Black Hole does the reverse.
 </tr>
 <tr>
 <td align="center">Black Hole units</td>
-<td align="center">DOWN: Yellow Comet's units</td>
+<td align="center">Back to Yellow Comet: its units</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/design-placed-black-hole.png" width="360" alt="A Black Hole infantry and base placed on the map"></td>
@@ -165,7 +166,7 @@ designs and colour, and switching to Black Hole does the reverse.
 </tr>
 <tr>
 <td align="center">Placed Black Hole pieces</td>
-<td align="center">DOWN: the same pieces become Yellow Comet's</td>
+<td align="center">Switch to Yellow Comet: the same pieces follow</td>
 </tr>
 </table>
 
