@@ -91,8 +91,44 @@ from the ROM table `0x080C1BC4`.
   stay held (`0x0203FFF6`), so a held press never reaches the editor as a
   new one.
 
+- Yellow Comet and Black Hole share army slot 4; the map-wide marker
+  `0x03003FF3[0]` (4 = Black Hole) picks which. Going back to Yellow Comet
+  restores slot 4's colour byte and palettes, since the game only reloads
+  them when the slot changes.
+
+## Inventions in battle (`tango-gamesupport-aw2/src/factory.rs`)
+
+- Inventions list: `0x02028360`, 8 bytes each (x, y, tile, HP, ...,
+  counter). The Deathray's counter (byte 6) counts 7..1 and it fires on
+  Black Hole's turn when it wraps; its area (`0x0801FCE0`) is columns
+  x..x+2 from row y+3 to the map's bottom edge, enemies only. The laser
+  hits every unit in its row and column.
+- Units: 12-byte records, army n (1-based) at `0x02022390 + 0x300*n`
+  (type, state, x, y, HP|flags, ammo, fuel, ...). Create-unit is
+  `0x08025C5C` (x, y, type), wrapped by `0x08025CC8`. Player blocks are
+  `0x02023284 + 0x3C*army` (colour +0x1A, 1 human / 2 AI at +0x1B, unit
+  count +0x3A).
+- The factory spawner `0x080607E8` finds the factory (`0x0803E354(7)`)
+  and, for each of the three tiles on the row y+4 that is empty, creates
+  the unit type at `table[(day & 0x1F)*3 + i]` (0 = none), the table
+  pointer being `[0x030046B4]`. Only the AI turn setup calls it
+  (`0x08061900`, colour 5), after storing the map header's table pointer
+  (`0x08615194 + (map-0x8A)*0x30 + 0x24`, hard `+0x28`). Design maps have
+  no header entry: the computer got garbage types, a human got nothing.
+- tangoAW2 traps `0x080618AE` (right after that store) to give design maps
+  Factory Blues' table (`0x08576F23`), and `0x08026810` in start-of-turn
+  (after the per-player turn-start call, scratch registers dead) to detour
+  a human Black Hole army's turn through the spawner once; `0x0203FFFC`
+  marks the detour so the return passes. A trap handler runs before its
+  instruction.
+- `aw2_script` can trace this kind of thing: `AW2_TRACE=<file>` traps
+  listed addresses and logs registers, `stepuntil8 ADDR` single-steps
+  until a byte changes and prints the last instructions, `steplog N`
+  prints every function entry for N instructions.
+
 ## Known limits
 
 - Black Hole's unique buildings (Black Cannons and so on) are map
-  features; ordinary Versus maps do not have them.
+  features; ordinary Versus maps do not have them. Build them in the
+  Design Room.
 - Campaign and War Room are single-player. Netplay is Versus only.

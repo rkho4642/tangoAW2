@@ -16,7 +16,15 @@
 //!   watch8 ADDR          print the byte every time it changes
 //!   sticky8 ADDR VAL     write a byte before every later frame; `unstick` stops
 //!   peek ADDR LEN        print LEN bytes at ADDR (hex)
+//!   stepuntil8 ADDR [N]  single-step until the byte changes (at most N
+//!                        instructions), then print the last 400 PCs
+//!   steplog N            single-step N instructions, printing every
+//!                        function entry (Thumb `push {.., lr}`)
 //! KEYS is `+`-joined from A B SELECT START RIGHT LEFT UP DOWN R L.
+//!
+//! `AW2_TRACE=<file>` (hex ROM addresses, one per line) traps each address
+//! and prints `trap ADDR @FRAME lr r0 r1 r2 r3` whenever the CPU reaches
+//! it, for finding the game code behind a behaviour.
 
 use std::io::Write;
 
@@ -37,6 +45,53 @@ fn key_bits(s: &str) -> u32 {
             other => panic!("unknown key {other}"),
         })
         .fold(0, |a, b| a | b)
+}
+
+static FRAME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// tangoAW2's Advance Wars 2 support plus tracing traps.
+struct Traced(Vec<u32>);
+
+impl tango_backend_mgba::SharedGame for Traced {
+    fn sim_version(&self) -> u16 {
+        tango_gamesupport_aw2::pvp::AW2E.sim_version()
+    }
+    fn merge(&self, core: &mgba::core::Core, inputs: [u32; 2]) -> u32 {
+        tango_gamesupport_aw2::pvp::AW2E.merge(core, inputs)
+    }
+    fn before_tick(&self, core: &mut mgba::core::Core, mode: Option<(u8, u8)>, keys: u32) -> u32 {
+        tango_gamesupport_aw2::pvp::AW2E.before_tick(core, mode, keys)
+    }
+    fn conceal(&self, core: &mgba::core::Core, seat: usize) -> bool {
+        tango_gamesupport_aw2::pvp::AW2E.conceal(core, seat)
+    }
+    fn overlay(&self, core: &mgba::core::Core, mode: Option<(u8, u8)>, seat: usize, rgba: &mut [u8]) {
+        tango_gamesupport_aw2::pvp::AW2E.overlay(core, mode, seat, rgba)
+    }
+    fn traps(&self) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)> {
+        let mut traps = tango_gamesupport_aw2::pvp::AW2E.traps();
+        for &addr in &self.0 {
+            traps.push((
+                addr,
+                Box::new(move |core: &mut mgba::core::Core| {
+                    let cpu = core.gba().cpu();
+                    println!(
+                        "trap {addr:08x} @{} lr={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x}",
+                        FRAME.load(std::sync::atomic::Ordering::Relaxed),
+                        cpu.gpr(14),
+                        cpu.gpr(0),
+                        cpu.gpr(1),
+                        cpu.gpr(2),
+                        cpu.gpr(3)
+                    );
+                }),
+            ));
+        }
+        traps
+    }
+    fn boot_ticks(&self) -> u32 {
+        tango_gamesupport_aw2::pvp::AW2E.boot_ticks()
+    }
 }
 
 fn hex(s: &str) -> u32 {
@@ -106,7 +161,17 @@ fn main() {
             &rom,
             save.as_deref(),
             Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)),
-            &tango_gamesupport_aw2::pvp::AW2E,
+            match std::env::var("AW2_TRACE") {
+                Ok(path) => Box::leak(Box::new(Traced(
+                    std::fs::read_to_string(path)
+                        .expect("trace list")
+                        .lines()
+                        .filter(|l| !l.trim().is_empty())
+                        .map(|l| hex(l.trim()))
+                        .collect(),
+                ))) as &'static (dyn tango_backend_mgba::SharedGame + Send + Sync),
+                Err(_) => &tango_gamesupport_aw2::pvp::AW2E,
+            },
             None,
             None,
         )
@@ -132,6 +197,7 @@ fn main() {
             }
             link.tick(&[keys]);
             *frame += 1;
+            FRAME.store(*frame, std::sync::atomic::Ordering::Relaxed);
         }
     }
     for line in script.lines() {
@@ -185,6 +251,55 @@ fn main() {
                 link.core(0).raw_read_range(hex(parts[1]), -1, &mut buf);
                 let s: Vec<String> = buf.iter().map(|b| format!("{b:02x}")).collect();
                 println!("{} @{frame}: {}", parts[1], s.join(" "));
+            }
+            "stepuntil8" => {
+                // Single-step the CPU until the byte changes, then print
+                // the last instructions run (for finding the code that
+                // writes it). Leaves the console mid-frame.
+                let addr = hex(parts[1]);
+                let max: u64 = parts.get(2).map(|n| n.parse().unwrap()).unwrap_or(20_000_000);
+                let core = link.core_mut(0);
+                let before = core.raw_read_8(addr, -1);
+                let mut ring = std::collections::VecDeque::new();
+                let mut n = 0u64;
+                while core.raw_read_8(addr, -1) == before && n < max {
+                    let cpu = core.gba().cpu();
+                    let thumb = matches!(cpu.execution_mode(), mgba::arm_core::ExecutionMode::Thumb);
+                    let pc = if thumb { cpu.thumb_pc() } else { cpu.arm_pc() };
+                    ring.push_back((pc, cpu.gpr(14) as u32));
+                    if ring.len() > 400 {
+                        ring.pop_front();
+                    }
+                    core.step();
+                    n += 1;
+                }
+                println!(
+                    "stepuntil8 {addr:08x}: {before:02x} -> {:02x} after {n} steps",
+                    core.raw_read_8(addr, -1)
+                );
+                for (pc, lr) in ring {
+                    println!("  pc={pc:08x} lr={lr:08x}");
+                }
+            }
+            "steplog" => {
+                // Single-step N instructions, printing every function entry
+                // (a Thumb `push {.., lr}`) with its caller.
+                let n: u64 = parts[1].parse().unwrap();
+                let core = link.core_mut(0);
+                for _ in 0..n {
+                    let cpu = core.gba().cpu();
+                    if matches!(cpu.execution_mode(), mgba::arm_core::ExecutionMode::Thumb) {
+                        let pc = cpu.thumb_pc();
+                        if core.raw_read_16(pc, -1) & 0xff00 == 0xb500 {
+                            println!(
+                                "  fn {pc:08x} lr={:08x} r0={:08x}",
+                                core.gba().cpu().gpr(14),
+                                core.gba().cpu().gpr(0)
+                            );
+                        }
+                    }
+                    core.step();
+                }
             }
             other => panic!("unknown command {other}"),
         }

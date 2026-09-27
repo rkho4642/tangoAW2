@@ -11,6 +11,7 @@ pub mod ui {
 }
 
 pub mod design;
+pub mod factory;
 pub mod pvp;
 
 use std::sync::LazyLock;

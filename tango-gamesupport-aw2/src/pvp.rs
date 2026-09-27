@@ -373,7 +373,11 @@ fn set_bits(core: &mut Core, (start, len): (u32, u32)) {
 
 impl tango_backend_mgba::SharedGame for Aw2 {
     fn sim_version(&self) -> u16 {
-        8
+        10
+    }
+
+    fn traps(&self) -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
+        crate::factory::traps()
     }
 
     /// On a Versus battlefield only the army whose turn it is moves, so
