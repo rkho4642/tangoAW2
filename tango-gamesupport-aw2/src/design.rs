@@ -387,6 +387,13 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
         // Only 0 and 4 are ours; anything else is not a marker.
         core.raw_write_8(MARKER, -1, 0);
     } else {
+        // Back to Yellow Comet: put its colour and palettes back (the game
+        // only reloads them when the slot changes).
+        let colour = EDITOR_PLAYERS + 0x3C * BLACK_HOLE_SLOT as u32 + 0x1A;
+        if core.raw_read_8(colour, -1) == 5 {
+            core.raw_write_8(colour, -1, BLACK_HOLE_SLOT);
+        }
+        crate::pvp::swap_slot_palettes(core, BLACK_HOLE_SLOT as u32 - 1, 5, 4);
         crate::pvp::draw_emblem_as(core, 4, 4);
     }
     keys
