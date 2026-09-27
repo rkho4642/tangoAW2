@@ -33,12 +33,17 @@ cargo run --release -p tango-gamesupport-aw2 --example aw2_teams_check -- rom.gb
 cargo run --release -p tango-gamesupport-aw2 --example aw2_colour_matrix -- rom.gba out/
 cargo run --release -p tango-gamesupport-aw2 --example aw2_script -- rom.gba script.txt
 cargo run --release -p tango-session --example aw2_direct_netplay -- rom.gba out/
+cargo run --release -p tango-gamesupport-aw2 --example aw2_netplay_script -- rom.gba save.sav script.txt out/
 ```
 
 `aw2_rollback_sim` runs two rollback peers over a delayed, jittery fake
 network; `aw2_direct_netplay` runs two peers through the real lobby, direct
 link and sessions on localhost; `aw2_offline_check` covers single-player
-Versus (Black Hole picked with SELECT) and Campaign. `aw2_teams_check` exercises SELECT/L on the Teams
+Versus (Black Hole picked with SELECT) and Campaign. `aw2_netplay_script` runs two rollback peers over a laggy fake network from
+a given save, driven per seat by a script (`seat`, `goto X Y`, `noise`,
+plus `aw2_script`'s commands), and checks both peers' screens and RAM
+against a no-rollback replay; it is how the Black Factory was tested
+online on a design map. `aw2_teams_check` exercises SELECT/L on the Teams
 screen; `aw2_colour_matrix` picks every colour, Black Hole included, on
 2-, 3- and 4-army maps and a 2 vs 2 team game, offline and in netplay,
 and reads the battle's armies back from both peers. `aw2_script` runs a

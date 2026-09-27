@@ -228,6 +228,25 @@ invention; it leaves them at 1 HP at worst.
 </tr>
 </table>
 
+### Online
+
+Inventions work the same in an online match, since both players run the
+same game. Player 1 has to be the one with the design map in their save
+(see [Saving and playing the map](#saving-and-playing-the-map)). Tested
+over a simulated laggy connection: the factory's units, a Black Hole
+player moving them, and the other player's screen stay in step.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/online-factory-black-hole-player.png" width="360" alt="Online: the Black Hole player moves a factory-built Recon"></td>
+<td><img src="docs/screenshots/online-factory-orange-star-player.png" width="360" alt="Online: the Orange Star player's screen shows the Recon's new position"></td>
+</tr>
+<tr>
+<td align="center">Black Hole's player moves a factory Recon</td>
+<td align="center">Orange Star's player sees it arrive</td>
+</tr>
+</table>
+
 ## Playing with a friend
 
 Your friend installs tangoAW2 the same way, with their own copy of the
