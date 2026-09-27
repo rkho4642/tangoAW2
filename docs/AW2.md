@@ -4,7 +4,7 @@
 
 Tango's Battle Network games link two emulated GBAs with a cable. Advance
 Wars 2's multiplayer is hot-seat: players take turns on one console. So
-tangoGBA runs one console, and both peers simulate it identically.
+tangoAW2 runs one console, and both peers simulate it identically.
 
 `tango-backend-mgba/src/shared.rs` implements Tango's `Link` seam over one
 mGBA core. Each tick it takes both players' inputs from the rollback

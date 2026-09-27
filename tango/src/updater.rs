@@ -23,7 +23,7 @@ use tokio::io::AsyncWriteExt;
 // only ever act on the newest release we can run (the page would have
 // to be all-prereleases-newer-than-latest-stable to hide anything
 // from a stable-channel user, and then only until the next stable).
-const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/rkho4642/tangoGBA/releases?per_page=10";
+const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/rkho4642/tangoAW2/releases?per_page=10";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Release {

@@ -62,9 +62,9 @@ makensis installer.nsi
 popd
 
 mkdir -p dist
-mv tango_win_workdir/installer.exe "dist/tangogba-x86_64-windows.exe"
+mv tango_win_workdir/installer.exe "dist/tangoaw2-x86_64-windows.exe"
 # Publish the standalone PDB as a release asset so crash-log
 # `module+offset` frames resolve offline (release-dist builds with
 # debug = 1).
-cp target/x86_64-pc-windows-msvc/release-dist/tango.pdb "dist/tangogba-x86_64-windows.pdb"
+cp target/x86_64-pc-windows-msvc/release-dist/tango.pdb "dist/tangoaw2-x86_64-windows.pdb"
 rm -rf tango_win_workdir

@@ -120,7 +120,7 @@ clap.workspace = true
 tango-patch = { workspace = true, features = ["package", "index", "bundle"] }
 
 [features]
-# tangoGBA ships Advance Wars 2 only; `--features gamesupport-all` restores the rest.
+# tangoAW2 ships Advance Wars 2 only; `--features gamesupport-all` restores the rest.
 default = ["gamesupport-aw2"]
 gamesupport-aw2 = ["tango-library/gamesupport-aw2"]
 gamesupport-bcc = ["tango-library/gamesupport-bcc"]

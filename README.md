@@ -1,9 +1,9 @@
-# tangoGBA
+# tangoAW2
 
 Rollback netplay for **Advance Wars 2: Black Hole Rising** (GBA, USA), with
 everything unlocked and Black Hole as a fifth playable army.
 
-tangoGBA is a fork of [Tango](https://github.com/tangobattle/tango), the
+tangoAW2 is a fork of [Tango](https://github.com/tangobattle/tango), the
 rollback netplay client for Mega Man Battle Network, by the Tango
 developers. It keeps Tango's emulator (mGBA), rollback engine, lobby and
 networking, and adds Advance Wars 2 on top.
@@ -33,20 +33,20 @@ No game is included. You need your own copy of the cartridge dumped to a
 ## Get it
 
 Download the latest build for your system from
-[Releases](https://github.com/rkho4642/tangoGBA/releases):
+[Releases](https://github.com/rkho4642/tangoAW2/releases):
 
 | System | File |
 | --- | --- |
-| Windows 10/11 | `tangogba-x86_64-windows.exe` (installer) |
-| macOS (Apple Silicon and Intel) | `tangogba-macos.dmg` |
-| Linux | `tangogba-x86_64-linux.AppImage` |
+| Windows 10/11 | `tangoaw2-x86_64-windows.exe` (installer) |
+| macOS (Apple Silicon and Intel) | `tangoaw2-macos.dmg` |
+| Linux | `tangoaw2-x86_64-linux.AppImage` |
 
 On macOS the app is not signed. The first time, right-click it and choose
 Open.
 
 ## First run
 
-1. Open tangoGBA and pick a nickname.
+1. Open tangoAW2 and pick a nickname.
 2. Put your Advance Wars 2 file in the `roms` folder the welcome screen
    shows. It must be the USA cartridge (No-Intro
    `Advance Wars 2 - Black Hole Rising (USA)`, CRC32 `5AD0E571`).
@@ -55,8 +55,8 @@ Open.
 
 ## Playing with a friend
 
-Your friend installs tangoGBA the same way, with their own copy of the
-same cartridge. Both of you need the same tangoGBA version.
+Your friend installs tangoAW2 the same way, with their own copy of the
+same cartridge. Both of you need the same tangoAW2 version.
 
 **Link code (easiest).** Both of you type the same made-up code, such as
 `sturm-4812`, into the link-code box on the Play tab. The matchmaking
@@ -89,8 +89,8 @@ For testing, start two copies with separate profiles, then `/host` in
 one and `/connect 127.0.0.1` in the other:
 
 ```sh
-TANGOGBA_PROFILE=~/tangogba-p1 ./tango
-TANGOGBA_PROFILE=~/tangogba-p2 ./tango
+TANGOAW2_PROFILE=~/tangoaw2-p1 ./tango
+TANGOAW2_PROFILE=~/tangoaw2-p2 ./tango
 ```
 
 Each profile keeps its own config, saves and `roms` folder.
@@ -123,4 +123,4 @@ on, is in [docs/AW2.md](docs/AW2.md). Tango's own documentation is in
 
 GPL-3.0-or-later, like Tango. See [LICENSE](LICENSE) and
 [CREDITS.md](CREDITS.md). Advance Wars is a trademark of Nintendo.
-tangoGBA is not affiliated with Nintendo or Intelligent Systems.
+tangoAW2 is not affiliated with Nintendo or Intelligent Systems.

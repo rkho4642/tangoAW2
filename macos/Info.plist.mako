@@ -17,13 +17,13 @@ version = semver.Version.parse(cargo_toml["package"]["version"])
 		<key>CFBundleExecutable</key>
 		<string>tango</string>
 		<key>CFBundleIdentifier</key>
-		<string>net.n1gp.TangoGBA</string>
+		<string>net.n1gp.TangoAW2</string>
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
-		<string>TangoGBA</string>
+		<string>TangoAW2</string>
 		<key>CFBundleIconFile</key>
-		<string>TangoGBA.icns</string>
+		<string>TangoAW2.icns</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>

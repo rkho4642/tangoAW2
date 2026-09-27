@@ -2,17 +2,17 @@
 # Endonym for this locale; shown in the language picker.
 LANGUAGE = English
 
-window-title = tangoGBA
+window-title = tangoAW2
 # Tooltip on the top bar's close button (fullscreen only).
-window-quit = Exit tangoGBA
+window-quit = Exit tangoAW2
 
 # Crash handler dialogs (parent process)
-crash = Oops, tangoGBA has encountered an error and has crashed!
+crash = Oops, tangoAW2 has encountered an error and has crashed!
 
     When reporting this crash, please include the following log file:
 
     { $path }
-crash-no-log = Oops, tangoGBA has encountered an error and has crashed!
+crash-no-log = Oops, tangoAW2 has encountered an error and has crashed!
 
     { $error }
 
@@ -83,15 +83,15 @@ play-status-waiting-opponent = Waiting for opponent…
 play-status-negotiating = Negotiating…
 play-status-failed = Connection failed: { $error }
 play-status-peer-disconnected = The other player left.
-play-status-signaling-version-too-old = This version of tangoGBA is too old to play online. Please update tangoGBA.
-play-status-signaling-version-too-new = The matchmaking server is out of date for this version of tangoGBA.
+play-status-signaling-version-too-old = This version of tangoAW2 is too old to play online. Please update tangoAW2.
+play-status-signaling-version-too-new = The matchmaking server is out of date for this version of tangoAW2.
 play-status-signaling-rejected = The matchmaking server refused the connection: { $reason }
 play-status-signaling-unreachable = Couldn't reach the matchmaking server: { $error }
 play-status-signaling-failed = Matchmaking failed: { $error }
 play-status-peer-connection-failed = Couldn't connect to the other player: { $error }
 play-status-negotiate-expected-hello = The other player didn't send the expected handshake.
-play-status-negotiate-version-too-old = The other player is running an older version of tangoGBA.
-play-status-negotiate-version-too-new = The other player is running a newer version of tangoGBA.
+play-status-negotiate-version-too-old = The other player is running an older version of tangoAW2.
+play-status-negotiate-version-too-new = The other player is running a newer version of tangoAW2.
 play-status-negotiate-failed = An error occurred during negotiation: { $error }
 lobby-waiting = Waiting…
 lobby-no-game = (no game selected)
@@ -114,8 +114,8 @@ lobby-compat-fetching-patch = Downloading the patch for this match…
 lobby-compat-fetching-patch-progress = Downloading the patch for this match… { $percent }%
 lobby-compat-patch-failed = Couldn't download the patch for this match
 lobby-compat-version-mismatch = Game versions don't match (different patch / ROM).
-lobby-compat-sim-too-old = This game's netplay changed since your opponent's version of tangoGBA — they need to update.
-lobby-compat-sim-too-new = This game's netplay changed since your version of tangoGBA — you need to update.
+lobby-compat-sim-too-old = This game's netplay changed since your opponent's version of tangoAW2 — they need to update.
+lobby-compat-sim-too-new = This game's netplay changed since your version of tangoAW2 — you need to update.
 lobby-compat-match-mismatch = Match type doesn't match.
 lobby-ready = Ready
 lobby-unready = Unready
@@ -419,7 +419,7 @@ updater-ready-to-update = Update downloaded and ready to install.
 updater-update-now = Update now
 
 # Welcome screen
-welcome-title = Welcome to tangoGBA!
+welcome-title = Welcome to tangoAW2!
 welcome-subtitle = There's just a few steps you'll need to complete before you can start playing.
 welcome-continue = Continue
 welcome-step-roms = Add your Advance Wars 2 ROM

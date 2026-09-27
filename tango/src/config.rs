@@ -14,13 +14,13 @@ use serde::{Deserialize, Serialize};
 
 /// The folder a fresh install keeps its data in, under the user's
 /// documents directory.
-const DATA_DIR_NAME: &str = "TangoGBA";
+const DATA_DIR_NAME: &str = "TangoAW2";
 /// File name of the config within the platform config directory.
 const FILE_NAME: &str = "config.json";
 
 const QUALIFIER: &str = "net";
 const ORGANIZATION: &str = "n1gp";
-const APPLICATION: &str = "tangogba";
+const APPLICATION: &str = "tangoaw2";
 
 fn default_true() -> bool {
     true
@@ -104,22 +104,30 @@ pub enum ThemeMode {
 }
 
 /// Which color the UI chrome runs in — the palette `primary` that
-/// paints CTA buttons, panel frames, glows, and the cyberworld
-/// backdrop. The structure never changes; only the accent swaps.
-/// Colors live in `theme::accent_color` (per dark/light shade),
-/// this enum is just the persisted choice.
+/// paints CTA buttons, panel frames and glows. The structure never
+/// changes; only the accent swaps. Colors live in
+/// `theme::accent_color` (per dark/light shade), this enum is just
+/// the persisted choice.
+///
+/// The variants were named after Battle Network characters upstream
+/// (`MegaManBlue`, ...); those names stay readable as aliases so
+/// existing configs keep their pick, and the plain names are written
+/// from now on.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum AccentColor {
     #[default]
-    TangoGreen,
-    MegaManBlue,
-    ProtoManRed,
-    RollPink,
-    GutsManYellow,
-    /// Was `BassGold` before Bass went to his canon violet (the gold
-    /// moved to GutsMan); the alias keeps existing configs loading.
-    #[serde(alias = "BassGold")]
-    BassPurple,
+    #[serde(alias = "TangoGreen")]
+    Green,
+    #[serde(alias = "MegaManBlue")]
+    Blue,
+    #[serde(alias = "ProtoManRed")]
+    Red,
+    #[serde(alias = "RollPink")]
+    Pink,
+    #[serde(alias = "GutsManYellow")]
+    Yellow,
+    #[serde(alias = "BassPurple", alias = "BassGold")]
+    Purple,
 }
 
 /// How a two-screen console's screens are arranged in the emulator
@@ -198,10 +206,12 @@ pub struct Config {
     pub accent: AccentColor,
     /// When `true`, the patch autoupdater (`patch::Autoupdater`)
     /// runs in the background and refreshes the local patch
-    /// directory every 15 minutes. Defaults to true; off
-    /// disables the background loop but leaves the Update button
-    /// in the Patches tab working.
-    #[serde(default = "default_true")]
+    /// directory every 15 minutes. Off by default in tangoAW2, which
+    /// has no patch tab (a config without the key must not start
+    /// fetching the Battle Network patch feed); off disables the
+    /// background loop but leaves the Update button in the Patches
+    /// tab working.
+    #[serde(default)]
     pub enable_patch_autoupdate: bool,
     /// GPU upscale effect applied to the emulator frame while it's
     /// drawn (the native frame is uploaded once and magnified in the
@@ -361,7 +371,7 @@ impl Default for Config {
             streamer_mode: false,
             theme: ThemeMode::default(),
             accent: AccentColor::default(),
-            // tangoGBA has no patch tab; the Battle Network patch feed is not fetched.
+            // tangoAW2 has no patch tab; the Battle Network patch feed is not fetched.
             enable_patch_autoupdate: false,
             video_filter: String::new(),
             fractional_scaling: false,
@@ -502,7 +512,7 @@ impl Drop for Writer {
 /// `None` only when the OS user-dirs lookup fails, the same degraded
 /// case [`Config::load_or_create`] already tolerates.
 ///
-/// `TANGOGBA_PROFILE=<dir>` puts config, cache and a fresh install's data
+/// `TANGOAW2_PROFILE=<dir>` puts config, cache and a fresh install's data
 /// under `<dir>` instead, so two copies can run on one machine as two
 /// players (how netplay is tested locally).
 pub fn config_dir() -> Option<std::path::PathBuf> {
@@ -513,7 +523,7 @@ pub fn config_dir() -> Option<std::path::PathBuf> {
 }
 
 fn profile_dir() -> Option<std::path::PathBuf> {
-    std::env::var_os("TANGOGBA_PROFILE").map(std::path::PathBuf::from)
+    std::env::var_os("TANGOAW2_PROFILE").map(std::path::PathBuf::from)
 }
 
 /// The platform cache directory (e.g. `~/Library/Caches/net.n1gp.tango`
@@ -556,7 +566,7 @@ mod tests {
             "language": "ja-JP",
             "streamer_mode": true,
             "theme": "Light",
-            "accent": "RollPink",
+            "accent": "Pink",
             "data_path": "/home/someone/Tango",
             "matchmaking_endpoint": "wss://example.invalid/mm",
             "patch_repo": "https://example.invalid/patches",
@@ -657,7 +667,13 @@ mod tests {
         let config: Config =
             serde_json::from_value(serde_json::json!({ "show_opponent_pip": true, "accent": "BassGold" })).unwrap();
         assert_eq!(config.opponent_view, OpponentView::PictureInPicture);
-        assert_eq!(config.accent, AccentColor::BassPurple);
+        assert_eq!(config.accent, AccentColor::Purple);
+        let blue: Config = serde_json::from_value(serde_json::json!({ "accent": "MegaManBlue" })).unwrap();
+        assert_eq!(blue.accent, AccentColor::Blue);
+        assert_eq!(
+            serde_json::to_value(blue).unwrap().get("accent"),
+            Some(&serde_json::json!("Blue"))
+        );
 
         let off: Config = serde_json::from_value(serde_json::json!({ "show_opponent_pip": false })).unwrap();
         assert_eq!(off.opponent_view, OpponentView::Off);

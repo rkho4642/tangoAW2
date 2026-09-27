@@ -9,7 +9,7 @@ with open(os.path.join(os.path.dirname(__file__), "..", "tango", "Cargo.toml")) 
 
 version = semver.Version.parse(cargo_toml["package"]["version"])
 
-%>!define NAME "TangoGBA"
+%>!define NAME "TangoAW2"
 !define REGPATH_UNINSTSUBKEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\<%text>$</%text>{NAME}"
 
 LoadLanguageFile "<%text>$</%text>{NSISDIR}\Contrib\Language files\English.nlf"
@@ -24,7 +24,7 @@ OutFile "installer.exe"
 VIProductVersion "${version.major}.${version.minor}.${version.patch}.0"
 VIAddVersionKey "ProductName" "<%text>$</%text>{NAME}"
 VIAddVersionKey "FileVersion" "${version.major}.${version.minor}.${version.patch}.0"
-VIAddVersionKey "FileDescription" "TangoGBA Installer"
+VIAddVersionKey "FileDescription" "TangoAW2 Installer"
 VIAddVersionKey "LegalCopyright" "© Copyright The Tango Developers"
 
 SetCompressor /solid /final lzma
@@ -81,7 +81,7 @@ LangString MessageDeleteConfig <%text>$</%text>{LANG_TRADCHINESE} "您是否也�
 Function un.onGUIInit
     MessageBox MB_YESNO "$(MessageDeleteConfig)" /SD IDNO IDYES true IDNO false
     true:
-        Delete "$APPDATA\\TangoGBA\\config\\config.json"
+        Delete "$APPDATA\\TangoAW2\\config\\config.json"
     false:
 FunctionEnd
 
@@ -118,14 +118,14 @@ Section
 
     WriteRegDWORD HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "NoModify" 1
     WriteRegDWORD HKCU "<%text>$</%text>{REGPATH_UNINSTSUBKEY}" "NoRepair" 1
-    CreateShortcut "$SMPROGRAMS\\TangoGBA.lnk" "$INSTDIR\\tango.exe"
-    CreateShortcut "$DESKTOP\\TangoGBA.lnk" "$INSTDIR\\tango.exe"
+    CreateShortcut "$SMPROGRAMS\\TangoAW2.lnk" "$INSTDIR\\tango.exe"
+    CreateShortcut "$DESKTOP\\TangoAW2.lnk" "$INSTDIR\\tango.exe"
 SectionEnd
 
 Section "uninstall"
     SetDetailsPrint none
-    Delete "$DESKTOP\\TangoGBA.lnk"
-    Delete "$SMPROGRAMS\\TangoGBA.lnk"
+    Delete "$DESKTOP\\TangoAW2.lnk"
+    Delete "$SMPROGRAMS\\TangoAW2.lnk"
     Delete "$INSTDIR\\libEGL.dll"
     Delete "$INSTDIR\\libGLESv2.dll"
     ; The melonDS core is linked into tango.exe now, but earlier versions
