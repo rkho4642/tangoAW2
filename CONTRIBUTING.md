@@ -29,13 +29,18 @@ examples; the unit tests need none):
 cargo test --locked -p tango-gamesupport-aw2 -p tango-backend-mgba
 cargo run --release -p tango-gamesupport-aw2 --example aw2_rollback_sim -- rom.gba out/
 cargo run --release -p tango-gamesupport-aw2 --example aw2_offline_check -- rom.gba out/
+cargo run --release -p tango-gamesupport-aw2 --example aw2_teams_check -- rom.gba out/
+cargo run --release -p tango-gamesupport-aw2 --example aw2_colour_matrix -- rom.gba out/
 cargo run --release -p tango-session --example aw2_direct_netplay -- rom.gba out/
 ```
 
 `aw2_rollback_sim` runs two rollback peers over a delayed, jittery fake
 network; `aw2_direct_netplay` runs two peers through the real lobby, direct
 link and sessions on localhost; `aw2_offline_check` covers single-player
-with an Armies pick. Each compares both peers' frames or the army colours.
+with an Armies pick. `aw2_teams_check` exercises SELECT/L on the Teams
+screen; `aw2_colour_matrix` picks every colour, Black Hole included, on
+2-, 3- and 4-army maps and a 2 vs 2 team game, offline and in netplay,
+and reads the battle's armies back from both peers.
 
 For wider native coverage, including the upstream games the workspace
 still carries, use:

@@ -75,6 +75,14 @@ pub trait Link: Send + 'static {
     /// for one call chain, so the cost is a small allocation, not a
     /// design constraint.
     fn side(&mut self, player: usize) -> Box<dyn Side + '_>;
+
+    /// Read the console's memory at `addr` into `buf`, for tools and tests
+    /// that check what a game did. Engines that cannot answer leave `buf`
+    /// alone and return `false`. Never part of the simulation.
+    fn peek(&mut self, addr: u32, buf: &mut [u8]) -> bool {
+        let _ = (addr, buf);
+        false
+    }
 }
 
 /// One console of a boot, as the seam reads it: everything a console

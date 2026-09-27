@@ -129,6 +129,20 @@ pub fn army_state(core: &Core) -> (u8, [u8; 4]) {
     )
 }
 
+/// Where the battle's army colours live, for tools reading them through
+/// [`tango_match::Link::peek`]: `PLAYER_STRIDE` bytes apart.
+pub const ARMY_COLOUR_ADDRS: [u32; 4] = [
+    PLAYER_BLOCK + COLOUR,
+    PLAYER_BLOCK + PLAYER_STRIDE + COLOUR,
+    PLAYER_BLOCK + PLAYER_STRIDE * 2 + COLOUR,
+    PLAYER_BLOCK + PLAYER_STRIDE * 3 + COLOUR,
+];
+
+/// The Teams record's colour for each army (Teams screen), for tests.
+pub fn teams_colours(core: &Core) -> [u8; 4] {
+    [0, 1, 2, 3].map(|s| core.raw_read_8(TEAMS_COLOUR + s, -1))
+}
+
 pub struct Aw2;
 
 pub static AW2E: Aw2 = Aw2;

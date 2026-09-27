@@ -166,6 +166,11 @@ impl tango_match::Link for SharedLink {
     fn side(&mut self, player: usize) -> Box<dyn Side + '_> {
         Box::new(SharedSide { link: self, player })
     }
+
+    fn peek(&mut self, addr: u32, buf: &mut [u8]) -> bool {
+        self.inner.core(0).raw_read_range(addr, -1, buf);
+        true
+    }
 }
 
 struct SharedSide<'a> {
