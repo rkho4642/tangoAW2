@@ -31,7 +31,8 @@ USA cartridge `AW2E`, CRC32 `5AD0E571`, 64 KiB Flash save.
 | `0x02017C50` | Versus Teams record: `+0x08` army count, `+0x09` controllers (1 human, 2 computer), `+0x0D` army colours, `+0x32` cursor (two stops per army). The battle's player blocks are built from it. |
 | task `0x08064E5D` in `0x03001500..0x03001A00` | Present only while the Teams screen is up. |
 | `0x0200F920 + 0x88*g` | Sprite group `g`: VRAM base, palette slot, count, (tile, id) pairs. Group 1 is the emblems, ids `0x3E..=0x42`; the Teams screen loads only four. |
-| `0x0203FFF0..` | tangoAW2's own state (the previous joypad word), in EWRAM the game never touches. |
+| `0x0203FFF0..` | tangoAW2's own state (previous joypad word, claimed buttons, invention pick, Teams-screen bookkeeping), in EWRAM the game never touches. |
+| `0x03003FC2` | The Versus map being played; design maps are `0xB4..0xB7`. |
 | `0x030033FC` | Title-menu mode: 1 Campaign, 3 Versus, 5 War Room. Kept through the mode's menus and battles. |
 | `0x03000000` | Main-loop callback; `0x08043591` while the full-screen CO page is open (the battle scene is unloaded then). |
 | `0x020232C0 + 0x3C*n` | Player block for army n+1. Colour byte at `+0x1A`: 1 Orange Star, 2 Blue Moon, 3 Green Earth, 4 Yellow Comet, 5 Black Hole. |
@@ -61,6 +62,34 @@ current army sees a dark screen, except on the hand-off screen.
 Sources: Xenesis' RAM notes and hacking threads on Wars World News, the
 libretro CodeBreaker list, the aw2bhr decompilation, and probing with
 `gba_probe`. `aw2_rollback_sim` checks the whole flow under rollback.
+
+## Design Room (`tango-gamesupport-aw2/src/design.rs`, offline only)
+
+Mode 8 with sub-mode 5 (`0x03003FC1`) is the map editor; its state block
+is at `0x0200B000` (tool bar open at `+0x04 == 2`, bar type `+0x07`,
+cursor `+0x08/+0x0A`, terrain tool `+0x2A`, colour slots `+0x2E/+0x2F`,
+first visible bar entry `+0x36/+0x38`, bar entries at `0x0200B224`). The
+editor map is at `0x0201E450` (size, camera at `+4/+6`, tiles `+0xA22`,
+classes `+0x1432`, units `+0x12`, row offsets `+0x417A`); tile classes come
+from the ROM table `0x080C1BC4`.
+
+- Black Hole: the design map's spare colour byte `0x03003FF3[0]` (saved at
+  record `+0x4C4`, restored on load, cached at `0x020280D4 + 0x1C*k` for the
+  map list) is set to 4 when slot 4 is Black Hole. The editor's slot 4 is
+  then drawn with colour 5 (player colour byte, palette rows, and the army
+  list's emblem). In Versus the Teams screen starts that army as Black
+  Hole, and design-map battles swap palettes to the picked colours
+  (design maps load palettes from the map's own colours, `0x03003FF3`).
+- Inventions are terrain tiles with their campaign footprints (anchor tile
+  carries the class): minicannons `0x182..0x185`, laser `0x181`, Black
+  Cannon `0x187`/`0x18A` (3x3), Black Factory `0x18D` (3x4), Volcano
+  `0x1A7` (4x4), Deathray `0x190` (3x3); other cells are underlay `0x1A4`
+  (Volcano rim `0x1A5`). The battle registers them by scanning the map.
+  The Black Factory and the Volcano share graphics memory in battle, so
+  a map may hold one of them.
+- Buttons tangoAW2 takes are hidden from the game for as long as they
+  stay held (`0x0203FFF6`), so a held press never reaches the editor as a
+  new one.
 
 ## Known limits
 

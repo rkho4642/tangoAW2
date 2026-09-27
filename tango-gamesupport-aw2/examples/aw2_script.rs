@@ -1,7 +1,8 @@
-//! Drive one GBA headlessly from a script, for reverse engineering a game's
-//! menus and RAM without a window.
+//! gba_probe's script language, run on the shared console with tangoAW2's
+//! Advance Wars 2 patches installed (single-player: seat 0's pad), so a
+//! script sees exactly what Play offline does.
 //!
-//! Usage: gba_probe <rom> <script> [--save <sav>] [--state-out <file>]
+//! Usage: aw2_script <rom> <script> [--save <sav>]
 //!
 //! Script lines (blank lines and `#` comments are skipped):
 //!   wait N               run N frames with nothing held
@@ -42,22 +43,43 @@ fn hex(s: &str) -> u32 {
     u32::from_str_radix(s.trim_start_matches("0x"), 16).expect("hex number")
 }
 
-fn write_bmp(path: &str, bgr555: &[u8]) {
-    let mut rgba = vec![0u8; bgr555.len() * 2];
-    mgba::gba::bgr555_to_rgba8(bgr555, &mut rgba);
+/// The shared console with tangoAW2's patches, behind the calls the probe
+/// script runner makes.
+struct Aw2Link(tango_backend_mgba::SharedLink);
+
+impl Aw2Link {
+    fn tick(&mut self, keys: &[u32]) {
+        use tango_match::Link;
+        self.0.tick([
+            tango_match::HostInput::keys(keys[0]),
+            tango_match::HostInput::keys(keys[0]),
+        ]);
+    }
+    fn core(&self, _: usize) -> &mgba::core::Core {
+        self.0.core()
+    }
+    fn core_mut(&mut self, _: usize) -> &mut mgba::core::Core {
+        self.0.core_mut()
+    }
+    fn frame(&mut self) -> Vec<u8> {
+        use tango_match::Link;
+        self.0.side(0).frame().expect("frame")
+    }
+    fn export_save(&mut self, _: usize) -> Option<Vec<u8>> {
+        use tango_match::Link;
+        self.0.side(0).export_save()
+    }
+}
+
+fn write_rgba_bmp(path: &str, rgba: &[u8]) {
     let (w, h) = (240u32, 160u32);
-    let row = w * 3;
-    let size = 54 + row * h;
-    let mut out = Vec::with_capacity(size as usize);
+    let mut out = Vec::new();
     out.extend_from_slice(b"BM");
-    out.extend_from_slice(&size.to_le_bytes());
-    out.extend_from_slice(&0u32.to_le_bytes());
-    out.extend_from_slice(&54u32.to_le_bytes());
-    out.extend_from_slice(&40u32.to_le_bytes());
+    out.extend_from_slice(&(54 + w * h * 3).to_le_bytes());
+    out.extend_from_slice(&[0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0]);
     out.extend_from_slice(&(w as i32).to_le_bytes());
     out.extend_from_slice(&(-(h as i32)).to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&24u16.to_le_bytes());
+    out.extend_from_slice(&[1, 0, 24, 0]);
     out.extend_from_slice(&[0u8; 24]);
     for px in rgba.chunks(4) {
         out.extend_from_slice(&[px[2], px[1], px[0]]);
@@ -79,23 +101,21 @@ fn main() {
             i += 1;
         }
     }
-    let mut link = mgba_rollback::Link::with_options(mgba_rollback::LinkOptions {
-        sides: vec![mgba_rollback::SideOptions { rom, save }],
-        rtc: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)),
-        peripheral: mgba_rollback::Peripheral::Cable,
-    })
-    .expect("boot");
+    let mut link = Aw2Link(
+        tango_backend_mgba::SharedLink::boot(
+            &rom,
+            save.as_deref(),
+            Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)),
+            &tango_gamesupport_aw2::pvp::AW2E,
+            None,
+            None,
+        )
+        .expect("boot"),
+    );
     let mut frame = 0u64;
     let mut sticky: Vec<(u32, u8)> = Vec::new();
     let mut watch: Vec<(u32, u32)> = Vec::new();
-    fn run(
-        link: &mut mgba_rollback::Link,
-        sticky: &[(u32, u8)],
-        watch: &mut [(u32, u32)],
-        frame: &mut u64,
-        keys: u32,
-        n: u32,
-    ) {
+    fn run(link: &mut Aw2Link, sticky: &[(u32, u8)], watch: &mut [(u32, u32)], frame: &mut u64, keys: u32, n: u32) {
         for _ in 0..n {
             for w in watch.iter_mut() {
                 let v = link.core(0).raw_read_8(w.0, -1) as u32;
@@ -135,7 +155,7 @@ fn main() {
                 key_bits(parts[1]),
                 parts[2].parse().unwrap(),
             ),
-            "shot" => write_bmp(&format!("{}.bmp", parts[1]), link.video_buffer(0).expect("frame")),
+            "shot" => write_rgba_bmp(&format!("{}.bmp", parts[1]), &link.frame()),
             "dump" => {
                 let core = link.core(0);
                 let mut ew = vec![0u8; 0x40000];
@@ -144,6 +164,11 @@ fn main() {
                 core.raw_read_range(0x0300_0000, -1, &mut iw);
                 std::fs::write(format!("{}.ewram", parts[1]), ew).unwrap();
                 std::fs::write(format!("{}.iwram", parts[1]), iw).unwrap();
+            }
+            "dumpvram" => {
+                let mut v = vec![0u8; 0x18000];
+                link.core(0).raw_read_range(0x0600_0000, -1, &mut v);
+                std::fs::write(format!("{}.vram", parts[1]), v).unwrap();
             }
             "save" => {
                 if let Some(s) = link.export_save(0) {

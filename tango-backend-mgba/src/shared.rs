@@ -62,6 +62,15 @@ pub trait SharedGame: Sync {
         false
     }
 
+    /// Draw game-specific help onto `seat`'s picture (RGBA8, 240x160):
+    /// labels a patched mode shows that the cartridge cannot draw itself.
+    /// Presentation only, read after the tick, like
+    /// [`conceal`](Self::conceal); `mode` as for
+    /// [`before_tick`](Self::before_tick).
+    fn overlay(&self, core: &mgba::core::Core, mode: Option<(u8, u8)>, seat: usize, rgba: &mut [u8]) {
+        let _ = (core, mode, seat, rgba);
+    }
+
     /// Traps installed on the console at boot. Like the pair engine's
     /// primer traps they must be pure functions of emulation state.
     fn traps(&self) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)> {
@@ -129,6 +138,12 @@ impl SharedLink {
         self.inner.core(0)
     }
 
+    /// The console, for tools that poke its memory (never the simulation's
+    /// own path: that goes through [`SharedGame::before_tick`]).
+    pub fn core_mut(&mut self) -> &mut mgba::core::Core {
+        self.inner.core_mut(0)
+    }
+
     fn apply_render(&mut self) {
         let on = self.render[0] || self.render[1];
         self.inner.set_frameskip(0, if on { 0 } else { i32::MAX });
@@ -180,10 +195,12 @@ struct SharedSide<'a> {
 
 impl Side for SharedSide<'_> {
     fn frame(&mut self) -> Option<Vec<u8>> {
-        let frame = self.link.inner.video_buffer(0).map(to_rgba)?;
-        if self.link.game.conceal(self.link.inner.core(0), self.player) {
+        let mut frame = self.link.inner.video_buffer(0).map(to_rgba)?;
+        let core = self.link.inner.core(0);
+        if self.link.game.conceal(core, self.player) {
             return Some(concealed(&frame));
         }
+        self.link.game.overlay(core, self.link.mode, self.player, &mut frame);
         Some(frame)
     }
 

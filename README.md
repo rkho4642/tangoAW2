@@ -64,6 +64,28 @@ Versus against the computer and the Design Room all work.
 In Versus, change any army's colour on the Teams screen with **SELECT**
 (or **R**, and **L** to go back). Each army starts in the map's own colour.
 
+## Design Room: Black Hole and its inventions (offline)
+
+In **Design Room → Map**, tangoAW2 adds Black Hole to the map editor:
+
+- **Black Hole army.** On a building or unit in the tool bars (R for
+  terrain, L for units), press **UP** past Yellow Comet to get Black Hole.
+  Black Hole shares Yellow Comet's slot, so a design map has one or the
+  other, just like the campaign. The choice is saved with the map, and in
+  Versus that army starts as Black Hole on the Teams screen.
+- **Inventions.** Highlight **Silo** in the terrain bar and press
+  **UP/DOWN** to pick an invention; its name shows in the top-right
+  corner. Press A to choose it, then A on the map to place it:
+  minicannons (all four directions), laser, Black Cannon (facing down or
+  up), Black Factory, Volcano and Deathray. Big structures are placed
+  around the cursor and are refused if they would leave the map or cover
+  a building or unit. A map can have the Black Factory or the Volcano,
+  not both (the game draws them from the same graphics memory).
+- The editor has no pictures for inventions, so tangoAW2 outlines and
+  labels them on the map. In battle they appear and act like the
+  campaign's: cannons and lasers fire on Black Hole's turn, the factory
+  builds Black Hole units. They only act for an army that is Black Hole.
+
 ## Playing with a friend
 
 Your friend installs tangoAW2 the same way, with their own copy of the

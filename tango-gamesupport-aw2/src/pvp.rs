@@ -67,10 +67,39 @@ const SPRITE_ROWS: u32 = 0x0848_B738;
 const EMBLEM_BASE_ID: u32 = 0x3D;
 const BLACK_HOLE: u8 = 5;
 
+/// The Versus map being played; design maps are 0xB4..=0xB7.
+const MAP_ID: u32 = 0x0300_3FC2;
+const DESIGN_MAPS: std::ops::RangeInclusive<u8> = 0xB4..=0xB7;
+/// A design map's own colour per army slot (index 1..=4), from its save.
+const DESIGN_COLOURS: u32 = 0x0300_3FF3;
+/// The game's working palettes (copied to palette RAM every frame) and
+/// palette RAM itself. Army slot n's buildings use BG row 11 + n and its
+/// units OBJ row 8 + n.
+const PAL_BUFFER: u32 = 0x0300_20C0;
+const PAL_RAM: u32 = 0x0500_0000;
+/// ROM palettes: buildings per colour (1..=5, the last entry's high byte is
+/// a flag the game clears), units per colour 1..=4, and Black Hole's units.
+const BUILDING_PALETTES: u32 = 0x0810_E6E0;
+const UNIT_PALETTES: u32 = 0x080D_3F04;
+const BLACK_HOLE_UNIT_PALETTE: u32 = 0x080D_3E84;
+
 /// tangoAW2's own state, in the last bytes of EWRAM (unused by the game
 /// in every mode probed). Kept in console RAM so rollback snapshots carry
 /// it: the previous frame's joypad word.
 const PREV_KEYS: u32 = 0x0203_FFF0;
+/// Buttons tangoAW2 took for itself on their press: hidden from the game
+/// for as long as they stay held, so a long press is not a fresh one for
+/// the game on its second frame.
+const CLAIMED_KEYS: u32 = 0x0203_FFF6;
+/// Whether this match's Teams screen has been seen (its original colours
+/// recorded and any design-map preset applied).
+const DESIGN_PRESET_DONE: u32 = 0x0203_FFF5;
+/// Each army's colour when this match's Teams screen opened: what the map
+/// itself gives them, and what the game loads palettes for.
+const ORIGINAL_COLOURS: u32 = 0x0203_FFF8;
+/// The design-map list's cache of each saved map (0x1C bytes per slot);
+/// + 0x14 holds the map's saved marker byte (see design::MARKER).
+const DESIGN_CACHE: u32 = 0x0202_80C0;
 
 const KEY_SELECT: u32 = 1 << 2;
 const KEY_R: u32 = 1 << 8;
@@ -209,6 +238,113 @@ fn show_emblems(core: &mut Core, armies: u32) {
     }
 }
 
+fn palette(core: &Core, rom: u32, building: bool) -> [u8; 32] {
+    let mut p = [0u8; 32];
+    core.raw_read_range(rom, -1, &mut p);
+    if building {
+        p[30] = 0;
+        p[31] = 0;
+    }
+    p
+}
+
+fn building_palette(core: &Core, colour: u8) -> [u8; 32] {
+    palette(core, BUILDING_PALETTES + 0x20 * (colour as u32 - 1), true)
+}
+
+fn unit_palette(core: &Core, colour: u8) -> [u8; 32] {
+    let rom = if colour == BLACK_HOLE {
+        BLACK_HOLE_UNIT_PALETTE
+    } else {
+        UNIT_PALETTES + 0x20 * (colour as u32 - 1)
+    };
+    palette(core, rom, false)
+}
+
+/// Where army slot `slot` (0-based)'s building and unit palette rows still
+/// hold exactly colour `from`'s palettes, swap in colour `to`'s. A row the
+/// game is fading or has changed is left alone; a reload is caught on the
+/// next frame. Palettes are written to the game's working buffer and to
+/// palette RAM, so the swap shows this frame and survives the next copy.
+pub fn swap_slot_palettes(core: &mut Core, slot: u32, from: u8, to: u8) {
+    if from == to || !(1..=5).contains(&from) || !(1..=5).contains(&to) {
+        return;
+    }
+    let rows = [
+        (11 + slot + 1, building_palette(core, from), building_palette(core, to)),
+        (16 + 8 + slot + 1, unit_palette(core, from), unit_palette(core, to)),
+    ];
+    for (row, from, to) in rows {
+        let mut now = [0u8; 32];
+        core.raw_read_range(PAL_BUFFER + row * 32, -1, &mut now);
+        if now == from {
+            core.raw_write_range(PAL_BUFFER + row * 32, -1, &to);
+            core.raw_write_range(PAL_RAM + row * 32, -1, &to);
+        }
+    }
+}
+
+/// Design maps load each army's palettes from the map's own colours, not
+/// the Teams pick; swap each army to its picked colour.
+fn recolour_design_armies(core: &mut Core, armies: u32) {
+    for army in 0..armies {
+        let picked = core.raw_read_8(TEAMS_COLOUR + army, -1);
+        let original = core.raw_read_8(ORIGINAL_COLOURS + army, -1);
+        swap_slot_palettes(core, army, original, picked);
+    }
+}
+
+/// The first frame of a match's Teams screen: remember every army's
+/// original colour, and give a design map saved with Black Hole (the
+/// Design Room marker, kept in its map-select cache) its Black Hole army.
+fn first_teams_frame(core: &mut Core, armies: u32) {
+    if core.raw_read_8(DESIGN_PRESET_DONE, -1) != 0 {
+        return;
+    }
+    core.raw_write_8(DESIGN_PRESET_DONE, -1, 1);
+    for army in 0..4 {
+        let c = core.raw_read_8(TEAMS_COLOUR + army, -1);
+        core.raw_write_8(ORIGINAL_COLOURS + army, -1, c);
+    }
+    let id = core.raw_read_8(MAP_ID, -1);
+    if !DESIGN_MAPS.contains(&id) {
+        return;
+    }
+    let k = (id - DESIGN_MAPS.start()) as u32;
+    let marker = core.raw_read_8(DESIGN_CACHE + 0x1C * k + 0x14, -1) as u32;
+    if !(1..=4).contains(&marker) {
+        return;
+    }
+    // The army standing in the marked slot is the one whose map colour is
+    // that slot's.
+    let slot_colour = core.raw_read_8(DESIGN_COLOURS + marker, -1);
+    let taken = (0..armies).any(|a| core.raw_read_8(TEAMS_COLOUR + a, -1) == BLACK_HOLE);
+    if let Some(army) = (0..armies).find(|&a| core.raw_read_8(TEAMS_COLOUR + a, -1) == slot_colour) {
+        if !taken {
+            core.raw_write_8(TEAMS_COLOUR + army, -1, BLACK_HOLE);
+        }
+    }
+}
+
+/// Draw colour `show`'s emblem into the tiles where the loaded emblem group
+/// keeps colour `slot_colour`'s, if that emblem is loaded on this screen.
+pub fn draw_emblem_as(core: &mut Core, slot_colour: u8, show: u8) {
+    let group = SPRITE_GROUPS + EMBLEM_GROUP * SPRITE_GROUP_SIZE;
+    let vram = core.raw_read_32(group, -1);
+    let count = core.raw_read_8(group + 5, -1) as u32;
+    let want = EMBLEM_BASE_ID + slot_colour as u32;
+    let Some(tile) = (0..count.min(31)).find_map(|i| {
+        let e = group + 8 + i * 4;
+        (core.raw_read_16(e + 2, -1) as u32 == want).then(|| core.raw_read_16(e, -1) as u32)
+    }) else {
+        return;
+    };
+    let id = EMBLEM_BASE_ID + show as u32;
+    let mut buf = vec![0u8; (sprite_tiles(core, id) * 32) as usize];
+    core.raw_read_range(sprite_source(core, id, EMBLEM_GROUP), -1, &mut buf);
+    core.raw_write_range(vram + (tile & 0x3FF) * 32, -1, &buf);
+}
+
 /// The next colour (`step` +1 or -1 in [`ARMIES`] order) for army `slot`
 /// that no other army on this map already has.
 fn cycle_colour(core: &Core, slot: u32, armies: u32, step: isize) -> u8 {
@@ -237,16 +373,16 @@ fn set_bits(core: &mut Core, (start, len): (u32, u32)) {
 
 impl tango_backend_mgba::SharedGame for Aw2 {
     fn sim_version(&self) -> u16 {
-        5
+        8
     }
 
-    /// On the battlefield only the army whose turn it is moves, so only
-    /// its seat's buttons reach the pad; the other seat watches. Anywhere
+    /// On a Versus battlefield only the army whose turn it is moves, so
+    /// only its seat's buttons reach the pad; the other seat watches. Anywhere
     /// else (title, map and CO select, results, the hand-off between
     /// turns) both seats share the pad.
     fn merge(&self, core: &Core, inputs: [u32; 2]) -> u32 {
         let current = core.raw_read_8(CURRENT_PLAYER, -1);
-        if in_battle(core) && (1..=4).contains(&current) && !turn_ended(core) {
+        if in_versus(core) && in_battle(core) && (1..=4).contains(&current) && !turn_ended(core) {
             inputs[seat_of(current)]
         } else {
             inputs[0] | inputs[1]
@@ -266,7 +402,13 @@ impl tango_backend_mgba::SharedGame for Aw2 {
             && !turn_ended(core)
     }
 
-    fn before_tick(&self, core: &mut Core, _mode: Option<(u8, u8)>, keys: u32) -> u32 {
+    fn overlay(&self, core: &Core, mode: Option<(u8, u8)>, _seat: usize, rgba: &mut [u8]) {
+        if mode.is_none() {
+            crate::design::overlay(core, rgba);
+        }
+    }
+
+    fn before_tick(&self, core: &mut Core, mode: Option<(u8, u8)>, keys: u32) -> u32 {
         // Everything unlocked: every CO (Sturm and Hachi included), every
         // CO colour edit, every Battle Map, Hard Campaign and the Sound
         // Room. The game saves this block, so a save made here keeps it.
@@ -277,7 +419,17 @@ impl tango_backend_mgba::SharedGame for Aw2 {
 
         let prev = core.raw_read_16(PREV_KEYS, -1) as u32;
         core.raw_write_16(PREV_KEYS, -1, keys as u16);
+        let held = keys;
+        let claimed = core.raw_read_16(CLAIMED_KEYS, -1) as u32 & held;
         let mut keys = keys;
+
+        // The Design Room's Black Hole colour and inventions: offline only.
+        if mode.is_none() && crate::design::in_editor(core) {
+            keys = crate::design::editor_tick(core, keys, prev);
+        }
+        if in_battle(core) {
+            core.raw_write_8(DESIGN_PRESET_DONE, -1, 0);
+        }
 
         // Army colours are picked on Versus' own Teams screen: SELECT/R and
         // L cycle the highlighted army through the five armies, Black Hole
@@ -285,6 +437,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         // story armies are untouched.
         if in_versus(core) && on_teams_screen(core) {
             let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
+            first_teams_frame(core, armies);
             let pressed = keys & !prev;
             let step = if pressed & (KEY_SELECT | KEY_R) != 0 {
                 1
@@ -302,7 +455,27 @@ impl tango_backend_mgba::SharedGame for Aw2 {
             // The Teams screen has no use for these; keep them ours.
             keys &= !(KEY_SELECT | KEY_L | KEY_R);
         }
-        keys
+
+        // Every Versus battle comes from a Teams screen, and its record
+        // keeps the picked colours. Built-in maps build the armies from it
+        // already; design maps take theirs from the map's save instead, so
+        // hold the battle's armies to the pick.
+        if in_versus(core) && in_battle(core) {
+            let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
+            for slot in 0..armies {
+                let colour = core.raw_read_8(TEAMS_COLOUR + slot, -1);
+                if (1..=5).contains(&colour) {
+                    core.raw_write_8(PLAYER_BLOCK + PLAYER_STRIDE * slot + COLOUR, -1, colour);
+                }
+            }
+            if DESIGN_MAPS.contains(&core.raw_read_8(MAP_ID, -1)) {
+                recolour_design_armies(core, armies);
+            }
+        }
+
+        let claimed = claimed | (held & !keys);
+        core.raw_write_16(CLAIMED_KEYS, -1, claimed as u16);
+        keys & !claimed
     }
 }
 

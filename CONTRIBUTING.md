@@ -31,6 +31,7 @@ cargo run --release -p tango-gamesupport-aw2 --example aw2_rollback_sim -- rom.g
 cargo run --release -p tango-gamesupport-aw2 --example aw2_offline_check -- rom.gba out/
 cargo run --release -p tango-gamesupport-aw2 --example aw2_teams_check -- rom.gba out/
 cargo run --release -p tango-gamesupport-aw2 --example aw2_colour_matrix -- rom.gba out/
+cargo run --release -p tango-gamesupport-aw2 --example aw2_script -- rom.gba script.txt
 cargo run --release -p tango-session --example aw2_direct_netplay -- rom.gba out/
 ```
 
@@ -40,7 +41,10 @@ link and sessions on localhost; `aw2_offline_check` covers single-player
 Versus (Black Hole picked with SELECT) and Campaign. `aw2_teams_check` exercises SELECT/L on the Teams
 screen; `aw2_colour_matrix` picks every colour, Black Hole included, on
 2-, 3- and 4-army maps and a 2 vs 2 team game, offline and in netplay,
-and reads the battle's armies back from both peers.
+and reads the battle's armies back from both peers. `aw2_script` runs a
+`gba_probe` script (presses, screenshots, RAM dumps and pokes) on the
+console with tangoAW2's patches, which is how the Design Room support was
+built and checked.
 
 For wider native coverage, including the upstream games the workspace
 still carries, use:
