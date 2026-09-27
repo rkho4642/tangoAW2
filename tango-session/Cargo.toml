@@ -34,3 +34,16 @@ workspace = true
 [features]
 default = ["netplay"]
 netplay = ["dep:tango-net"]
+
+[dev-dependencies]
+# `examples/aw2_direct_netplay.rs`: a real two-peer match over the direct
+# link on localhost, through the desktop's lobby, library and session path.
+futures.workspace = true
+tango-gamesupport-aw2 = { path = "../tango-gamesupport-aw2" }
+tango-library = { path = "../tango-library", features = ["gamesupport-aw2"] }
+tango-lobby = { path = "../tango-lobby" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[[example]]
+name = "aw2_direct_netplay"
+required-features = ["netplay"]
