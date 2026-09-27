@@ -11,7 +11,7 @@ crash-no-log =
     Tango đã gặp lỗi và ngừng hoạt động!
 
     {$error}
-window-title = Tango
+window-title = tangoGBA
     .running = Tango (đang chạy)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Thoát Tango

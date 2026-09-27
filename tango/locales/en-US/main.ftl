@@ -2,7 +2,7 @@
 # Endonym for this locale; shown in the language picker.
 LANGUAGE = English
 
-window-title = Tango
+window-title = tangoGBA
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Exit Tango
 

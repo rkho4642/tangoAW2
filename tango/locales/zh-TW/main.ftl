@@ -2,7 +2,7 @@
 # Endonym for this locale; shown in the language picker.
 LANGUAGE = 繁體中文（台灣、香港、澳門）
 
-window-title = Tango
+window-title = tangoGBA
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = 結束 Tango
 

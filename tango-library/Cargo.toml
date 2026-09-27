@@ -33,6 +33,7 @@ tango-replay = { path = "../tango-replay" }
 
 fluent-templates.workspace = true
 
+tango-gamesupport-aw2 = { path = "../tango-gamesupport-aw2", optional = true }
 tango-gamesupport-bcc = { path = "../tango-gamesupport-bcc", optional = true }
 tango-gamesupport-bn1 = { path = "../tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../tango-gamesupport-bn2", optional = true }
@@ -68,6 +69,7 @@ default = ["native"]
 # does not pull in any games. The registry owns both feature paths.
 ui = [
     "tango-gamesupport/ui",
+    "tango-gamesupport-aw2?/ui",
     "tango-gamesupport-bcc?/ui",
     "tango-gamesupport-bn1?/ui",
     "tango-gamesupport-bn2?/ui",
@@ -82,6 +84,7 @@ ui = [
 # std filesystem + reqwest HTTP + Steam (BNLC) discovery. A wasm build
 # turns this off and supplies its own IndexedDB / fetch implementations.
 native = ["dep:futures", "dep:reqwest", "dep:steamlocate", "dep:tokio", "dep:walkdir", "dep:zip", "reqwest/native-tls"]
+gamesupport-aw2 = ["dep:tango-gamesupport-aw2"]
 gamesupport-bcc = ["dep:tango-gamesupport-bcc"]
 gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
 gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]
@@ -93,6 +96,7 @@ gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
 gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
 gamesupport-exeoss = ["dep:tango-gamesupport-exeoss"]
 gamesupport-all = [
+    "gamesupport-aw2",
     "gamesupport-bcc",
     "gamesupport-bn1",
     "gamesupport-bn2",
@@ -110,6 +114,7 @@ workspace = true
 
 [package.metadata.cargo-machete]
 ignored = [
+    "tango-gamesupport-aw2",
     "tango-gamesupport-bcc",
     "tango-gamesupport-bn1",
     "tango-gamesupport-bn2",

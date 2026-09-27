@@ -1,0 +1,26 @@
+[package]
+name = "tango-gamesupport-aw2"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+# Advance Wars 2: Black Hole Rising. Not a link-cable game: both peers
+# run ONE console in the game's hot-seat Versus mode, through the mgba
+# backend's shared-console engine. No save editor.
+
+[dependencies]
+tango-gamesupport = { path = "../tango-gamesupport" }
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
+tango-backend-mgba = { path = "../tango-backend-mgba" }
+mgba.workspace = true
+
+tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui", optional = true }
+
+[features]
+ui = ["tango-gamesupport/ui", "dep:tango-gamesupport-common-ui"]
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tango-match = { path = "../tango-match" }

@@ -150,6 +150,7 @@ tango-platform = { path = "../tango-platform" }
 # Unlike the desktop app, no games are enabled by default. Each feature
 # also switches the game on in tango-library, which owns the registry.
 default = []
+gamesupport-aw2 = ["tango-library/gamesupport-aw2"]
 gamesupport-bcc = ["tango-library/gamesupport-bcc"]
 gamesupport-bn1 = ["tango-library/gamesupport-bn1"]
 gamesupport-bn2 = ["tango-library/gamesupport-bn2"]
@@ -161,6 +162,7 @@ gamesupport-bn6 = ["tango-library/gamesupport-bn6"]
 gamesupport-exe45 = ["tango-library/gamesupport-exe45"]
 gamesupport-exeoss = ["tango-library/gamesupport-exeoss"]
 gamesupport-all = [
+    "gamesupport-aw2",
     "gamesupport-bcc",
     "gamesupport-bn1",
     "gamesupport-bn2",

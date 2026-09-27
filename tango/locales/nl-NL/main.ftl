@@ -11,7 +11,7 @@ crash-no-log =
     Oepsie woepsie! Tango is stukkie wukkie!
 
     { $error }
-window-title = Tango
+window-title = tangoGBA
     .running = Tango (actief)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Tango afsluiten

@@ -14,13 +14,13 @@ use serde::{Deserialize, Serialize};
 
 /// The folder a fresh install keeps its data in, under the user's
 /// documents directory.
-const DATA_DIR_NAME: &str = "Tango";
+const DATA_DIR_NAME: &str = "TangoGBA";
 /// File name of the config within the platform config directory.
 const FILE_NAME: &str = "config.json";
 
 const QUALIFIER: &str = "net";
 const ORGANIZATION: &str = "n1gp";
-const APPLICATION: &str = "tango";
+const APPLICATION: &str = "tangogba";
 
 fn default_true() -> bool {
     true

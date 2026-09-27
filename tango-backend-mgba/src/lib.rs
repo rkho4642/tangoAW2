@@ -21,9 +21,11 @@
 
 pub mod backend;
 pub mod link;
+pub mod shared;
 pub mod solo;
 
 pub use link::{Link, JOYFLAGS_MASK};
+pub use shared::{SharedBackend, SharedGame, SharedLink};
 pub use solo::SoloConsole;
 
 /// Simulation failure, as this engine reports it. Converts into the

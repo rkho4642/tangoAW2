@@ -55,6 +55,7 @@ macro_rules! register_games {
 
 // The sole registration list. Order is the series order used by pickers.
 register_games! {
+    "gamesupport-aw2" => tango_gamesupport_aw2,
     "gamesupport-bn1" => tango_gamesupport_bn1,
     "gamesupport-exeoss" => tango_gamesupport_exeoss,
     "gamesupport-bn2" => tango_gamesupport_bn2,

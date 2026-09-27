@@ -388,12 +388,8 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool, fullscreen
         // not a destination, so it doesn't get equal billing
         // with Play/Replays — icon-only on the right, with the
         // label exposed as a hover tooltip.
-        widgets::nav_icon_tab_button(
-            Icon::Puzzle,
-            t!(lang, "tab-patches"),
-            Message::TabSelected(Tab::Patches),
-            Tab::Patches == active,
-        ),
+        // tangoGBA applies its own Advance Wars 2 patches in memory,
+        // so the patch-server tab is not offered.
         widgets::nav_icon_tab_button(
             Icon::Settings,
             t!(lang, "tab-settings"),

@@ -11,7 +11,7 @@ crash-no-log =
     Oups, Tango a rencontré une erreur et a planté !
 
     { $error }
-window-title = Tango
+window-title = tangoGBA
     .running = Tango (en cours d'exécution)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Quitter Tango

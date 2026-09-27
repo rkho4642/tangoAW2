@@ -7608,6 +7608,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-gamesupport-aw2"
+version = "0.1.0"
+dependencies = [
+ "mgba",
+ "tango-backend-mgba",
+ "tango-gamesupport",
+ "tango-gamesupport-common-dataview",
+ "tango-gamesupport-common-ui",
+ "tango-match",
+]
+
+[[package]]
 name = "tango-gamesupport-bcc"
 version = "0.1.0"
 dependencies = [
@@ -8021,6 +8033,7 @@ dependencies = [
  "serde_json",
  "steamlocate",
  "tango-gamesupport",
+ "tango-gamesupport-aw2",
  "tango-gamesupport-bcc",
  "tango-gamesupport-bn1",
  "tango-gamesupport-bn2",
