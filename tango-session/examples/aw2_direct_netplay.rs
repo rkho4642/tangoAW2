@@ -10,7 +10,12 @@
 //! Island, a turn each), then ~2 s idle. Both peers' final presented
 //! frames must be identical.
 //!
-//! Usage: aw2_direct_netplay <rom> <out-dir> [port]
+//! Usage: aw2_direct_netplay <rom> <out-dir> [port] [--save <sav>] [--timeline <file>]
+//!
+//! `--save` starts both peers from that save (a design map, say) and
+//! `--timeline` plays a match resolved by tango-gamesupport-aw2's
+//! `aw2_netplay_script` (its `AW2_TIMELINE` output) instead of the built-in
+//! one; its `# shot` lines become marks.
 //! Set `AW2_LOG=info` (or debug) for the stack's own logs.
 
 use futures::StreamExt;
@@ -147,6 +152,34 @@ fn build_script() -> Script {
     s
 }
 
+/// A script from `aw2_netplay_script`'s `AW2_TIMELINE` file: one line per
+/// tick with both seats' keys (hex), and `# shot TICK NAME` marks.
+fn load_timeline(path: &std::path::Path) -> Script {
+    let mut s = Script {
+        keys: [vec![], vec![]],
+        t: 0,
+        marks: vec![],
+    };
+    for line in std::fs::read_to_string(path).expect("timeline").lines() {
+        if let Some(rest) = line.strip_prefix("# shot ") {
+            let (t, name) = rest.split_once(' ').expect("# shot TICK NAME");
+            let name: &'static str = Box::leak(name.to_string().into_boxed_str());
+            s.marks.push((t.parse().expect("tick"), name));
+            continue;
+        }
+        let mut it = line
+            .split_whitespace()
+            .map(|k| u32::from_str_radix(k, 16).expect("keys"));
+        s.keys[0].push(it.next().expect("seat 0"));
+        s.keys[1].push(it.next().expect("seat 1"));
+    }
+    let total = s.keys[0].len() + IDLE_TICKS;
+    for k in &mut s.keys {
+        k.resize(total, 0);
+    }
+    s
+}
+
 fn write_bmp(path: &std::path::Path, rgba: &[u8]) {
     let (w, h) = (240u32, 160u32);
     assert_eq!(rgba.len(), (w * h * 4) as usize, "unexpected frame size");
@@ -190,15 +223,19 @@ struct Library {
     sram: Vec<u8>,
 }
 
-async fn open_library(rom: &std::path::Path, dir: &std::path::Path) -> Result<Library, String> {
+async fn open_library(
+    rom: &std::path::Path,
+    dir: &std::path::Path,
+    save: Option<&std::path::Path>,
+) -> Result<Library, String> {
     std::fs::create_dir_all(dir.join("roms")).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(dir.join("saves")).map_err(|e| e.to_string())?;
     std::fs::copy(rom, dir.join("roms/Advance_wars_2.gba")).map_err(|e| format!("copy rom: {e}"))?;
-    std::fs::write(
-        dir.join("saves/aw2-blank.sav"),
-        vec![0xffu8; tango_gamesupport_aw2::SAVE_SIZE],
-    )
-    .map_err(|e| e.to_string())?;
+    let sram = match save {
+        Some(p) => std::fs::read(p).map_err(|e| format!("read save: {e}"))?,
+        None => vec![0xffu8; tango_gamesupport_aw2::SAVE_SIZE],
+    };
+    std::fs::write(dir.join("saves/aw2-blank.sav"), sram).map_err(|e| e.to_string())?;
 
     let config = tango_library::config::Config::with_data_path(dir.to_path_buf());
     let catalog = tango_library::Catalog::new();
@@ -415,8 +452,10 @@ fn drive(
                 session.remote_disconnected()
             ));
         }
-        if started.elapsed() > Duration::from_secs(300) {
-            return Err(format!("{name}: gave up after 300 s at advance {n}"));
+        // Real time: the script's length at 60 Hz, plus a minute for boot.
+        let limit = Duration::from_secs(60 + total as u64 / 50);
+        if started.elapsed() > limit {
+            return Err(format!("{name}: gave up after {limit:?} at advance {n}"));
         }
         let booting = session.is_booting();
         if !booting && primed_at.is_none() {
@@ -507,12 +546,26 @@ fn drive(
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
-        eprintln!("usage: {} <rom> <out-dir> [port]", args[0]);
+        eprintln!(
+            "usage: {} <rom> <out-dir> [port] [--save <sav>] [--timeline <file from aw2_netplay_script>]",
+            args[0]
+        );
         std::process::exit(2);
     }
     let rom = std::path::PathBuf::from(&args[1]);
     let out = std::path::PathBuf::from(&args[2]);
-    let port: u16 = args.get(3).map(|p| p.parse().expect("port")).unwrap_or(24690);
+    let flag = |name: &str| {
+        args.iter()
+            .position(|a| a == name)
+            .map(|i| std::path::PathBuf::from(&args[i + 1]))
+    };
+    let save = flag("--save");
+    let timeline = flag("--timeline");
+    let port: u16 = args
+        .get(3)
+        .filter(|a| !a.starts_with("--"))
+        .map(|p| p.parse().expect("port"))
+        .unwrap_or(24690);
     let level = std::env::var("AW2_LOG")
         .ok()
         .and_then(|l| l.parse().ok())
@@ -525,21 +578,30 @@ fn main() {
         .enable_all()
         .build()
         .unwrap();
-    let ok = rt.block_on(run(rom, out, port));
+    let ok = rt.block_on(run(rom, out, port, save, timeline));
     // Don't wait on the transport's background threads.
     rt.shutdown_timeout(Duration::from_secs(2));
     std::process::exit(if ok { 0 } else { 1 });
 }
 
-async fn run(rom: std::path::PathBuf, out: std::path::PathBuf, port: u16) -> bool {
-    let lib = match open_library(&rom, &out.join("library")).await {
+async fn run(
+    rom: std::path::PathBuf,
+    out: std::path::PathBuf,
+    port: u16,
+    save: Option<std::path::PathBuf>,
+    timeline: Option<std::path::PathBuf>,
+) -> bool {
+    let lib = match open_library(&rom, &out.join("library"), save.as_deref()).await {
         Ok(lib) => Arc::new(lib),
         Err(e) => {
             println!("library: {e}");
             return false;
         }
     };
-    let script = Arc::new(build_script());
+    let script = Arc::new(match &timeline {
+        Some(path) => load_timeline(path),
+        None => build_script(),
+    });
     println!(
         "script: {} ticks ({} scripted + {} idle), marks {:?}",
         script.keys[0].len(),

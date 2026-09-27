@@ -19,6 +19,10 @@
 //!                       peer's own view)
 //!   peek ADDR LEN       print LEN bytes at ADDR on both peers
 //! KEYS is `+`-joined from A B SELECT START RIGHT LEFT UP DOWN R L.
+//!
+//! `AW2_TIMELINE=<file>` writes the resolved script: one line per tick with
+//! both seats' keys (hex), and `# shot TICK NAME` lines, for replaying the
+//! same match over a real connection (tango-session's aw2_direct_netplay).
 
 use std::collections::VecDeque;
 use tango_match::{HostInput, Link};
@@ -129,6 +133,7 @@ fn main() {
     let mut deepest = 0u32;
     let mut jitter = 99u32;
     let mut t = 0usize;
+    let mut timeline: Vec<String> = Vec::new();
 
     fn keys_for(seat: usize, bits: u32) -> [u32; 2] {
         let mut k = [0, 0];
@@ -200,6 +205,7 @@ fn main() {
         let Some(row) = rows.pop_front() else { break };
         let keys = match row {
             Row::Shot(name) => {
+                timeline.push(format!("# shot {t} {name}"));
                 for (p, peer) in peers.iter_mut().enumerate() {
                     if let Some(f) = peer.frame() {
                         write_bmp(&out.join(format!("{name}_peer{p}.bmp")), &f);
@@ -219,6 +225,7 @@ fn main() {
             }
             Row::Keys(k) => k,
         };
+        timeline.push(format!("{:x} {:x}", keys[0], keys[1]));
         for p in 0..2 {
             while wire[1 - p].front().is_some_and(|&(at, _, _)| at <= t) {
                 let (_, input, adv) = wire[1 - p].pop_front().unwrap();
@@ -252,6 +259,10 @@ fn main() {
             }
             wire[p].push_back((t, adv.outgoing, adv.tick_advantage));
         }
+    }
+
+    if let Ok(path) = std::env::var("AW2_TIMELINE") {
+        std::fs::write(path, timeline.join("\n") + "\n").expect("timeline");
     }
 
     // Ground truth: the confirmed inputs straight through, no rollback.
