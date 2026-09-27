@@ -140,6 +140,23 @@ from the ROM table `0x080C1BC4`.
   until a byte changes and prints the last instructions, `steplog N`
   prints every function entry for N instructions.
 
+## CO panel on design maps
+
+- The CO panel's palettes are loaded at the start of each turn from the
+  army's colour: BG row 8 from `0x080D4188 + (colour-1)*32` (`0x0801A548` ->
+  `0x0802D5CC`) and OBJ row 7 (palette row 23, the header with the funds)
+  from `0x08104264 + (colour-1)*32` (`0x08043834`). On a design map the
+  first turn's are loaded before the colours are held to the Teams pick,
+  so the current army's rows are swapped from its map colour to its pick
+  where they still hold the map colour's.
+
+## Title and menu badge (`tango-gamesupport-aw2/src/branding.rs`)
+
+- A "tangoAW2" badge is drawn by the presentation overlay (no RAM writes)
+  while `ProcScr_TitleScreen` (`0x08581CF8`) or `ProcScr_MainMenu`
+  (`0x0849E818`) is running; the process pool is `sProcArray`
+  (`0x0200D610`, 0x6C bytes each, script pointer first), names from aw2bhr.
+
 ## Known limits
 
 - Black Hole's unique buildings (Black Cannons and so on) are map

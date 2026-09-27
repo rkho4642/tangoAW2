@@ -11,6 +11,13 @@ and networking, and adds Advance Wars 2 on top.
 No game is included. You need your own copy of the cartridge dumped to a
 `.gba` file.
 
+<table>
+<tr>
+<td><img src="docs/screenshots/menu-title-tangoaw2.png" width="360" alt="The title screen with the tangoAW2 badge under the Advance Wars 2 logo"></td>
+<td><img src="docs/screenshots/menu-select-mode-tangoaw2.png" width="360" alt="The Select Mode menu with the tangoAW2 badge"></td>
+</tr>
+</table>
+
 ## What it does
 
 - **Rollback netplay.** Both players run the same emulated Game Boy
@@ -39,6 +46,9 @@ No game is included. You need your own copy of the cartridge dumped to a
 - **Play as Black Hole with its inventions.** The Black Factory deploys
   units for you and the Deathray fires on your enemies, like in the
   campaign, offline and online. See [inventions in battle](#black-holes-inventions-in-battle).
+- **tangoAW2 on the title screen and the main menu**, so you can tell at a
+  glance you're in tangoAW2. It's drawn over the picture: the game itself
+  and your ROM file are unchanged.
 - **Play offline** without a connection, or online with a friend through a
   link code or a direct connection.
 
@@ -275,6 +285,23 @@ Black Hole player moved them, and on day 7 the Deathray took an Orange
 Star infantry to 1 HP while a Black Hole Recon in the same beam kept all
 10. Both players' games stayed identical down to the last byte through
 1,789 rollbacks.
+
+Also played as a full live match through tangoAW2's real online code (two
+players connected directly, on one computer): Yellow Comet (Sonja) against
+Black Hole (Flak), seven days on the same design map, each army in its own
+designs. The factory, the Black Hole player's moves and the day-7 Deathray
+played out the same on both screens from the first frame to the last.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/online-yc-vs-bh-teams.png" width="360" alt="Teams screen: Sonja's Yellow Comet against Flak's Black Hole"></td>
+<td><img src="docs/screenshots/online-yc-vs-bh-deathray.png" width="360" alt="Day 7: the Deathray fires between the Yellow Comet infantry and the Black Hole Recon"></td>
+</tr>
+<tr>
+<td align="center">Yellow Comet (Sonja) against Black Hole (Flak)</td>
+<td align="center">Day 7, live: the Deathray fires</td>
+</tr>
+</table>
 
 <table>
 <tr>
