@@ -264,8 +264,9 @@ fn unit_palette(core: &Core, colour: u8) -> [u8; 32] {
 /// Where army slot `slot` (0-based)'s building and unit palette rows still
 /// hold exactly colour `from`'s palettes, swap in colour `to`'s. A row the
 /// game is fading or has changed is left alone; a reload is caught on the
-/// next frame. Palettes are written to the game's working buffer and to
-/// palette RAM, so the swap shows this frame and survives the next copy.
+/// next frame. The game's working buffer and palette RAM are each swapped
+/// where they hold `from`, so the swap shows this frame and survives the
+/// next copy.
 pub fn swap_slot_palettes(core: &mut Core, slot: u32, from: u8, to: u8) {
     if from == to || !(1..=5).contains(&from) || !(1..=5).contains(&to) {
         return;
@@ -275,11 +276,28 @@ pub fn swap_slot_palettes(core: &mut Core, slot: u32, from: u8, to: u8) {
         (16 + 8 + slot + 1, unit_palette(core, from), unit_palette(core, to)),
     ];
     for (row, from, to) in rows {
-        let mut now = [0u8; 32];
-        core.raw_read_range(PAL_BUFFER + row * 32, -1, &mut now);
-        if now == from {
-            core.raw_write_range(PAL_BUFFER + row * 32, -1, &to);
-            core.raw_write_range(PAL_RAM + row * 32, -1, &to);
+        // The buffer and palette RAM are checked on their own: the game
+        // sometimes writes palette RAM directly, after the buffer was swapped.
+        for base in [PAL_BUFFER, PAL_RAM] {
+            let mut now = [0u8; 32];
+            core.raw_read_range(base + row * 32, -1, &mut now);
+            if now == from {
+                core.raw_write_range(base + row * 32, -1, &to);
+            }
+        }
+    }
+}
+
+/// Writes colour `to`'s building and unit palettes into army slot `slot`
+/// (0-based)'s rows, whatever they hold now (the buffer and palette RAM).
+pub fn force_slot_palettes(core: &mut Core, slot: u32, to: u8) {
+    let rows = [
+        (11 + slot + 1, building_palette(core, to)),
+        (16 + 8 + slot + 1, unit_palette(core, to)),
+    ];
+    for (row, pal) in rows {
+        for base in [PAL_BUFFER, PAL_RAM] {
+            core.raw_write_range(base + row * 32, -1, &pal);
         }
     }
 }
@@ -373,7 +391,7 @@ fn set_bits(core: &mut Core, (start, len): (u32, u32)) {
 
 impl tango_backend_mgba::SharedGame for Aw2 {
     fn sim_version(&self) -> u16 {
-        10
+        11
     }
 
     fn traps(&self) -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {

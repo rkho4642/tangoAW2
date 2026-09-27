@@ -87,6 +87,20 @@ from the ROM table `0x080C1BC4`.
   (Volcano rim `0x1A5`). The battle registers them by scanning the map.
   The Black Factory and the Volcano share graphics memory in battle, so
   a map may hold one of them.
+- The game draws an army's units and HQ in the designs of its CO's army
+  (`0x08042DE0`: player + 0x1D CO -> country, table `0x085D3DD0`), in battle
+  and in the editor. The editor gives slot 4 Kanbei (Yellow Comet), so while
+  slot 4 is Black Hole tangoAW2 gives it Flak (its own CO is kept at
+  `0x0203FFFD`), copies Black Hole's HQ sprite top (`0x080D16C4 +
+  0x100*(country-1)`) over Yellow Comet's in OBJ VRAM, holds slot 4's
+  palette rows to Black Hole's, and sets bit 3 (reload graphics) on the
+  tool bar's ring entries (`gDesignRing`, `0x0200B0D0`, 11 x 0x1C, flags
+  first) so the bar redraws for the new CO. Back to Yellow Comet undoes it.
+- In a tool bar SELECT only swapped bars, like L/R; tangoAW2 turns a SELECT
+  press into UP (next army, Black Hole included; next invention on Silo).
+- The aw2bhr decompilation (`src/design.c`) names most of the editor's
+  drawing: `sub_08002844` (unit icon: `sub_080261A4(slot, kind)`, CO-country
+  based) and `sub_0800272C` (terrain icon; HQs via `sub_0803F6BC(8, army)`).
 - Buttons tangoAW2 takes are hidden from the game for as long as they
   stay held (`0x0203FFF6`), so a held press never reaches the editor as a
   new one.

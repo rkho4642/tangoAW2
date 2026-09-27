@@ -20,6 +20,8 @@
 //!                        instructions), then print the last 400 PCs
 //!   steplog N            single-step N instructions, printing every
 //!                        function entry (Thumb `push {.., lr}`)
+//!   stepreads ADDR LEN N single-step N instructions, printing every Thumb
+//!                        immediate-offset load from [ADDR, ADDR+LEN)
 //! KEYS is `+`-joined from A B SELECT START RIGHT LEFT UP DOWN R L.
 //!
 //! `AW2_TRACE=<file>` (hex ROM addresses, one per line) traps each address
@@ -296,6 +298,34 @@ fn main() {
                                 core.gba().cpu().gpr(14),
                                 core.gba().cpu().gpr(0)
                             );
+                        }
+                    }
+                    core.step();
+                }
+            }
+            "stepreads" => {
+                // Single-step N instructions, printing every Thumb
+                // `ldrb/ldrh/ldr rd, [rn, #imm]` that reads [ADDR, ADDR+LEN).
+                let (lo, len, n): (u32, u32, u64) =
+                    (hex(parts[1]), parts[2].parse().unwrap(), parts[3].parse().unwrap());
+                let core = link.core_mut(0);
+                for _ in 0..n {
+                    let cpu = core.gba().cpu();
+                    if matches!(cpu.execution_mode(), mgba::arm_core::ExecutionMode::Thumb) {
+                        let pc = cpu.thumb_pc();
+                        let op = core.raw_read_16(pc, -1) as u32;
+                        let scale = match op >> 11 {
+                            0b01111 => Some(1), // ldrb
+                            0b10001 => Some(2), // ldrh
+                            0b01101 => Some(4), // ldr
+                            _ => None,
+                        };
+                        if let Some(scale) = scale {
+                            let rn = ((op >> 3) & 7) as usize;
+                            let addr = (cpu.gpr(rn) as u32).wrapping_add(((op >> 6) & 31) * scale);
+                            if addr >= lo && addr < lo + len {
+                                println!("  read {addr:08x} at pc={pc:08x} lr={:08x}", cpu.gpr(14));
+                            }
                         }
                     }
                     core.step();

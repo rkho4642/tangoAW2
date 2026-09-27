@@ -4,8 +4,9 @@
 
 - Advance Wars 2 RAM and ROM research: Xenesis and the
   [Wars World News](https://www.warsworldnews.com) hacking community, the
-  [aw2bhr decompilation](https://github.com/Eebit/aw2bhr) (Eebit, npiriou and
-  contributors), and the [libretro cheat database](https://github.com/libretro/libretro-database)
+  [aw2bhr decompilation](https://github.com/Eebit/aw2bhr) (Eebit, npiriou,
+  Mad-Man-Dan, Veslyquix and contributors; used as a map of the game's code,
+  none of it is copied), and the [libretro cheat database](https://github.com/libretro/libretro-database)
   for the Advance Wars 2 CodeBreaker list.
 - Emulation: [endrift](https://twitter.com/endrift) (mGBA).
 

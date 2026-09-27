@@ -71,6 +71,21 @@ const EDITOR_PLAYERS: u32 = 0x0202_3284;
 /// tangoAW2's Design Room state, in unused EWRAM: which invention the Silo
 /// entry currently stands for (0 = the Silo itself).
 const VARIANT: u32 = 0x0203_FFF4;
+/// Slot 4's own CO while it is shown as Black Hole (0 = not swapped).
+const SAVED_CO: u32 = 0x0203_FFFD;
+
+/// The game draws units and HQs in the style of the army's CO's country
+/// (`0x08042DE0`: CO at player + 0x1D -> country); the editor gives slot 4
+/// Kanbei, so Yellow Comet's designs. While slot 4 is Black Hole it gets
+/// Flak, so Black Hole's own units and HQ.
+const CO: u32 = 0x1D;
+const BLACK_HOLE_CO: u8 = 11;
+fn is_black_hole_co(co: u8) -> bool {
+    (10..=14).contains(&co)
+}
+/// HQ sprite tops, 0x100 bytes per country (1 Orange Star .. 5 Black Hole),
+/// copied into OBJ VRAM when a map loads.
+const HQ_SPRITES: u32 = 0x080D_16C4;
 
 const PLAIN_TILE: u16 = 0x001;
 const UNDERLAY: u16 = 0x1A4;
@@ -82,6 +97,7 @@ const VOLCANO_ANCHOR: u16 = 0x1A7;
 const MAX_INVENTIONS: usize = 15;
 
 const KEY_A: u32 = 1;
+const KEY_SELECT: u32 = 1 << 2;
 const KEY_UP: u32 = 1 << 6;
 const KEY_DOWN: u32 = 1 << 7;
 
@@ -321,8 +337,17 @@ fn is_property_class(class: u8) -> bool {
 /// drawn as Black Hole. Returns the joypad word the editor should see.
 pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     let mut keys = keys;
-    let pressed = keys & !prev;
+    let mut pressed = keys & !prev;
     let bar_open = core.raw_read_8(E_STATE, -1) == 2;
+    // In a tool bar SELECT only repeated L/R (switch bars); tangoAW2 makes
+    // it "next army" like UP, as on Versus' Teams screen: Yellow Comet ->
+    // Black Hole included, and on the Silo entry the next invention.
+    if bar_open && pressed & KEY_SELECT != 0 {
+        keys = (keys & !KEY_SELECT) | KEY_UP;
+        pressed = (pressed & !KEY_SELECT) | KEY_UP;
+    } else if bar_open {
+        keys &= !KEY_SELECT;
+    }
     let terrain_bar = core.raw_read_8(E_BAR, -1) == 0;
     // While a bar is open the tool is only chosen on A: read the
     // highlighted entry. On the map, the chosen tool.
@@ -377,9 +402,19 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     }
 
     clear_orphans(core);
+    show_slot4_as(
+        core,
+        if core.raw_read_8(MARKER, -1) == BLACK_HOLE_SLOT {
+            5
+        } else {
+            4
+        },
+    );
     if core.raw_read_8(MARKER, -1) == BLACK_HOLE_SLOT {
         core.raw_write_8(EDITOR_PLAYERS + 0x3C * BLACK_HOLE_SLOT as u32 + 0x1A, -1, 5);
-        crate::pvp::swap_slot_palettes(core, BLACK_HOLE_SLOT as u32 - 1, 4, 5);
+        // Slot 4's rows belong to slot 4 alone in the editor, so they can
+        // be held to Black Hole's even while the game animates a slot change.
+        crate::pvp::force_slot_palettes(core, BLACK_HOLE_SLOT as u32 - 1, 5);
         // The army list's emblem for slot 4: Black Hole's, drawn into
         // Yellow Comet's emblem tiles.
         crate::pvp::draw_emblem_as(core, 4, 5);
@@ -397,6 +432,52 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
         crate::pvp::draw_emblem_as(core, 4, 4);
     }
     keys
+}
+
+/// The tool bar's item ring: 11 entries of 0x1C bytes, flags first; bit 0
+/// = shown, bit 3 = reload the entry's sprite graphics this frame.
+const DESIGN_RING: u32 = 0x0200_B0D0;
+
+/// Draws slot 4 in `country`'s own designs (4 Yellow Comet, 5 Black Hole):
+/// its CO, and the HQ sprite already in OBJ VRAM. When it switches, the
+/// tool bar reloads its sprites, which were drawn for the old CO.
+fn show_slot4_as(core: &mut Core, country: u8) {
+    let before = core.raw_read_8(SAVED_CO, -1);
+    let co = EDITOR_PLAYERS + 0x3C * BLACK_HOLE_SLOT as u32 + CO;
+    let saved = core.raw_read_8(SAVED_CO, -1);
+    if country == 5 {
+        let now = core.raw_read_8(co, -1);
+        if !is_black_hole_co(now) {
+            core.raw_write_8(SAVED_CO, -1, now.wrapping_add(1));
+            core.raw_write_8(co, -1, BLACK_HOLE_CO);
+        }
+    } else if saved != 0 {
+        core.raw_write_8(co, -1, saved - 1);
+        core.raw_write_8(SAVED_CO, -1, 0);
+    }
+    if core.raw_read_8(SAVED_CO, -1) != before {
+        for i in 0..11 {
+            let flags = DESIGN_RING + 0x1C * i;
+            let f = core.raw_read_32(flags, -1);
+            if f & 1 != 0 {
+                core.raw_write_32(flags, -1, f | 8);
+            }
+        }
+    }
+    let (from, to) = if country == 5 { (4, 5) } else { (5, 4) };
+    let mut want = [0u8; 0x100];
+    let mut have = [0u8; 0x100];
+    core.raw_read_range(HQ_SPRITES + 0x100 * (from - 1), -1, &mut have);
+    core.raw_read_range(HQ_SPRITES + 0x100 * (to - 1), -1, &mut want);
+    let mut vram = vec![0u8; 0x8000];
+    core.raw_read_range(0x0601_0000, -1, &mut vram);
+    let mut at = 0;
+    while at + 0x100 <= vram.len() {
+        if vram[at..at + 0x100] == have {
+            core.raw_write_range(0x0601_0000 + at as u32, -1, &want);
+        }
+        at += 0x20;
+    }
 }
 
 // ---------- On-screen labels ----------
