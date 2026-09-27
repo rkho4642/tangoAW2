@@ -92,9 +92,8 @@ Versus against the computer and the Design Room all work.
 
 In Versus, change any army's colour on the Teams screen with **SELECT**
 (or **R**, and **L** to go back). Each army starts in the map's own colour.
-HQs and units are drawn in the designs of the army's CO, as in the
-original game, so a Black Hole army led by a Black Hole CO (Flak, Lash,
-Adder, Hawke, Sturm) looks fully like Black Hole.
+For Black Hole's HQ and units too, give the army a Black Hole CO (Flak,
+Lash, Adder, Hawke or Sturm).
 
 ## Design Room: Black Hole and its inventions
 
@@ -126,13 +125,12 @@ keys are in brackets (change them in Settings).
 
 1. Press **R** (S) to open the terrain bar, or **L** (A) for the unit bar.
 2. Highlight a building (HQ, City, Base, Airport, Port) or a unit.
-3. Press **SELECT** (Space) or **UP** to go to the next army: Orange Star,
-   Blue Moon, Green Earth, Yellow Comet, then **Black Hole**, then
-   Neutral. SELECT works like it does on Versus' Teams screen. (In a tool
-   bar the game used SELECT to swap bars; **L** and **R** still do that.)
-4. Black Hole shows in its own designs, not Yellow Comet's recoloured:
-   Black Hole's HQ, its buildings, its units and its emblem.
-5. Press **A** (Z) to pick it, then **A** on the map to place it.
+3. Press **SELECT** (Space) or **UP** to change army: Orange Star, Blue
+   Moon, Green Earth, Yellow Comet, **Black Hole**, then Neutral. You get
+   Black Hole's real HQ, buildings and units.
+4. Press **A** (Z) to pick it, then **A** on the map to place it.
+
+To switch between the terrain and unit bars, press **L** or **R**.
 
 <table>
 <tr>
@@ -150,8 +148,7 @@ slot, so a design map has one or the other, like the campaign. While
 Black Hole is showing, press **DOWN** once to go back to Yellow Comet;
 DOWN again gives Green Earth. The choice is for the whole map: switching
 back turns every Black Hole piece you've placed into Yellow Comet's
-designs and colour, and switching to Black Hole turns Yellow Comet's
-pieces into Black Hole's.
+designs and colour, and switching to Black Hole does the reverse.
 
 <table>
 <tr>
@@ -181,12 +178,11 @@ pieces into Black Hole's.
 3. Press **A** to choose it, then **A** on the map to place it. Big ones
    are placed around the cursor.
 
-The editor has no pictures for inventions, so tangoAW2 outlines and
-labels them on the map. A placement is refused if it would leave the map
-or cover a building or unit. A map holds up to 15 inventions, and the
-Black Factory or the Volcano but not both (the game draws them from the
-same graphics memory). To remove one, place any terrain on its labelled
-tile; the rest of it clears itself.
+In the editor, inventions show as labelled outlines; they look like the
+real thing in battle. An invention can't go off the edge of the map or on
+top of a building or unit. A map can hold up to 15 inventions, and either
+a Black Factory or a Volcano, not both. To remove an invention, place any
+terrain on its labelled tile.
 
 <table>
 <tr>
@@ -201,19 +197,21 @@ tile; the rest of it clears itself.
 
 ### Saving and playing the map
 
-Save with **SELECT → File → Save** (on the map, with no tool bar open),
-then play it from **Versus → New → Design Maps**. The army you made Black
-Hole starts as Black Hole on the Teams screen. In battle the game draws an
-army's HQ and units in the designs of its CO's army, as it always has: give
-the Black Hole army a Black Hole CO (Flak, Lash, Adder, Hawke or Sturm;
-UP/DOWN on its portrait) to see Black Hole's own HQ and units. With another
-CO it keeps Black Hole's colours in that CO's army's designs.
+Save with **SELECT → File → Save** (on the map, with no bar open), then
+play it from **Versus → New → Design Maps**. The army you made Black Hole
+starts as Black Hole on the Teams screen. Set it to **1P** (the row under
+the portraits) to command it yourself, or leave it on **CP**.
 
-<img src="docs/screenshots/battle-flak-black-hole-hq.png" width="360" alt="In battle with Flak: Black Hole's own HQ in the terrain panel and a Black Hole Mech"> Set it to **1P** (the row under the portraits) to command
-it yourself, or leave it on **CP**. Design maps live in your save. An
-online match runs on player 1's save, and tangoAW2 picks player 1 when
-the match starts, so your design maps are there online only when you
-are player 1.
+Give it a Black Hole CO (Flak, Lash, Adder, Hawke or Sturm: press UP or
+DOWN on its portrait) to get Black Hole's HQ and units in battle. With
+any other CO, the army keeps Black Hole's colours but uses that CO's
+army's HQ and units, as in the original game.
+
+<img src="docs/screenshots/battle-flak-black-hole-hq.png" width="360" alt="In battle with Flak: Black Hole's HQ in the terrain panel and a Black Hole Mech">
+
+Design maps live in your save. An online match runs on player 1's save,
+and tangoAW2 picks player 1 when the match starts, so your design maps
+are there online only when you are player 1.
 
 ## Black Hole's inventions in battle
 
