@@ -26,6 +26,8 @@ const BATTLE_SCENE: u32 = 0x0300_0004;
 /// current player has not changed yet but the incoming player should press A.
 const MAP_MENU_STATE: u32 = 0x0300_14E2;
 const MAP_MENU_CURSOR: u32 = 0x0300_14F0;
+/// Fog of war for the battle in progress, nonzero when on.
+const FOG: u32 = 0x0300_3FCD;
 
 /// The unlock block the game keeps in EWRAM and saves to Flash.
 const HARD_CAMPAIGN: u32 = 0x0202_8030;
@@ -103,6 +105,19 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         } else {
             inputs[0] | inputs[1]
         }
+    }
+
+    /// With fog of war on, the waiting player sees nothing of the other
+    /// army's turn: the game shows the mover's own fog, which on a shared
+    /// console would give the mover's vision away. The "Next turn" screen
+    /// stays visible so the incoming player can press A.
+    fn conceal(&self, core: &Core, seat: usize) -> bool {
+        let current = core.raw_read_8(CURRENT_PLAYER, -1);
+        in_battle(core)
+            && core.raw_read_8(FOG, -1) != 0
+            && (1..=4).contains(&current)
+            && seat_of(current) != seat
+            && !turn_ended(core)
     }
 
     fn before_tick(&self, core: &mut Core, mode: Option<(u8, u8)>) {

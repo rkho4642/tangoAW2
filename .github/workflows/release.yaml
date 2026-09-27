@@ -115,8 +115,8 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            ./dist/tango-x86_64-windows.exe
-            ./dist/tango-x86_64-windows.pdb
+            ./dist/tangogba-x86_64-windows.exe
+            ./dist/tangogba-x86_64-windows.pdb
 
   release-mac-universal:
     runs-on: macos-14
@@ -159,7 +159,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            ./dist/tango-macos.dmg
+            ./dist/tangogba-macos.dmg
 
   release-linux-x86_64:
     # Pin to Ubuntu 22.04 so the produced binary links against an older glibc
@@ -208,5 +208,5 @@ jobs:
           # The .debug sidecar is the split-out DWARF, published for
           # offline crash symbolication like the Windows .pdb.
           files: |
-            ./dist/tango-x86_64-linux.AppImage
-            ./dist/tango-x86_64-linux.debug
+            ./dist/tangogba-x86_64-linux.AppImage
+            ./dist/tangogba-x86_64-linux.debug

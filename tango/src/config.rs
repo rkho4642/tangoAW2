@@ -361,7 +361,8 @@ impl Default for Config {
             streamer_mode: false,
             theme: ThemeMode::default(),
             accent: AccentColor::default(),
-            enable_patch_autoupdate: true,
+            // tangoGBA has no patch tab; the Battle Network patch feed is not fetched.
+            enable_patch_autoupdate: false,
             video_filter: String::new(),
             fractional_scaling: false,
             ds_screen_stacking: DsScreenStacking::default(),
@@ -500,14 +501,28 @@ impl Drop for Writer {
 /// The platform config directory Tango stores `config.json` under.
 /// `None` only when the OS user-dirs lookup fails, the same degraded
 /// case [`Config::load_or_create`] already tolerates.
+///
+/// `TANGOGBA_PROFILE=<dir>` puts config, cache and a fresh install's data
+/// under `<dir>` instead, so two copies can run on one machine as two
+/// players (how netplay is tested locally).
 pub fn config_dir() -> Option<std::path::PathBuf> {
+    if let Some(profile) = profile_dir() {
+        return Some(profile.join("config"));
+    }
     directories_next::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION).map(|d| d.config_dir().to_path_buf())
+}
+
+fn profile_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("TANGOGBA_PROFILE").map(std::path::PathBuf::from)
 }
 
 /// The platform cache directory (e.g. `~/Library/Caches/net.n1gp.tango`
 /// on macOS, `~/.cache/tango` on Linux) for derived data the app can
 /// always recompute.
 fn cache_dir() -> Option<std::path::PathBuf> {
+    if let Some(profile) = profile_dir() {
+        return Some(profile.join("cache"));
+    }
     directories_next::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION).map(|d| d.cache_dir().to_path_buf())
 }
 
@@ -515,6 +530,9 @@ fn cache_dir() -> Option<std::path::PathBuf> {
 /// the user-dirs lookup fails, so the app still runs in degraded form
 /// rather than panicking.
 fn default_data_path() -> std::path::PathBuf {
+    if let Some(profile) = profile_dir() {
+        return profile.join("data");
+    }
     directories_next::UserDirs::new()
         .and_then(|u| u.document_dir().map(|d| d.join(DATA_DIR_NAME)))
         .unwrap_or_else(|| std::path::PathBuf::from("./tango-data"))
@@ -625,7 +643,7 @@ mod tests {
         assert_eq!(config.patch_repo, "https://example.invalid/patches");
         assert_eq!(config.frame_delay, 7);
         assert_eq!(config.matchmaking_endpoint, DEFAULT_MATCHMAKING_ENDPOINT);
-        assert!(config.enable_patch_autoupdate);
+        assert!(!config.enable_patch_autoupdate);
         assert!(config.enable_updater);
         assert_eq!(config.ui_scale, 1.0);
         assert_eq!(config.volume, 1.0);

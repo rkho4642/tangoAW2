@@ -47,6 +47,15 @@ pub trait SharedGame: Sync {
         let _ = (core, mode);
     }
 
+    /// Whether `seat` should be shown nothing right now: a hot-seat game
+    /// hides one player's view from the other between turns, and on a
+    /// networked shared console nothing else would. Presentation only,
+    /// read after the tick, so it never touches the simulation.
+    fn conceal(&self, core: &mgba::core::Core, seat: usize) -> bool {
+        let _ = (core, seat);
+        false
+    }
+
     /// Traps installed on the console at boot. Like the pair engine's
     /// primer traps they must be pure functions of emulation state.
     fn traps(&self) -> Vec<(u32, Box<dyn Fn(&mut mgba::core::Core)>)> {
@@ -155,7 +164,11 @@ struct SharedSide<'a> {
 
 impl Side for SharedSide<'_> {
     fn frame(&mut self) -> Option<Vec<u8>> {
-        self.link.inner.video_buffer(0).map(to_rgba)
+        let frame = self.link.inner.video_buffer(0).map(to_rgba)?;
+        if self.link.game.conceal(self.link.inner.core(0), self.player) {
+            return Some(concealed(&frame));
+        }
+        Some(frame)
     }
 
     fn set_render(&mut self, on: bool) {
@@ -177,6 +190,18 @@ impl Side for SharedSide<'_> {
         buf.read(out, (out.len() / 2).min(available));
         available
     }
+}
+
+/// What a concealed seat sees: the picture blacked out except a faint
+/// band, so it reads as "the other player is moving" rather than a crash.
+fn concealed(frame: &[u8]) -> Vec<u8> {
+    let mut out = vec![0u8; frame.len()];
+    for (i, px) in out.chunks_mut(4).enumerate() {
+        let y = i / 240;
+        let v = if (76..84).contains(&y) { 40 } else { 8 };
+        px.copy_from_slice(&[v, v, v + 12, 255]);
+    }
+    out
 }
 
 /// A shared-console game as the engine-neutral backend its registration

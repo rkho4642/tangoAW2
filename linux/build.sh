@@ -13,7 +13,7 @@ chmod a+x appimagetool-x86_64.AppImage
 
 # Build Linux binaries.
 target_arch="x86_64"
-cargo build --bin tango --features gamesupport-all --target="${target_arch}-unknown-linux-gnu" --profile release-dist
+cargo build --bin tango --target="${target_arch}-unknown-linux-gnu" --profile release-dist
 
 # Assemble AppImage stuff.
 mkdir -p "tango_linux_workdir/${target_arch}/bin"
@@ -27,8 +27,8 @@ cp "target/${target_arch}-unknown-linux-gnu/release-dist/tango" "tango_linux_wor
 # the Windows .pdb — so users don't download line tables with every
 # update but crash-log module+offset frames still resolve offline.
 mkdir -p dist
-objcopy --only-keep-debug "tango_linux_workdir/${target_arch}/bin/tango" "dist/tango-${target_arch}-linux.debug"
-objcopy --strip-debug --add-gnu-debuglink="dist/tango-${target_arch}-linux.debug" "tango_linux_workdir/${target_arch}/bin/tango"
+objcopy --only-keep-debug "tango_linux_workdir/${target_arch}/bin/tango" "dist/tangogba-${target_arch}-linux.debug"
+objcopy --strip-debug --add-gnu-debuglink="dist/tangogba-${target_arch}-linux.debug" "tango_linux_workdir/${target_arch}/bin/tango"
 
 # Bundle ffmpeg.
 ffmpeg_version="8.1.2"
@@ -40,5 +40,5 @@ chmod a+x "tango_linux_workdir/${target_arch}/bin/ffmpeg"
 # halves the download for a modest first-access decompression cost
 # (blocks land in the page cache after that), and the AppImageKit
 # runtime decompresses it natively.
-./appimagetool-x86_64.AppImage --comp xz tango_linux_workdir "dist/tango-${target_arch}-linux.AppImage"
+./appimagetool-x86_64.AppImage --comp xz tango_linux_workdir "dist/tangogba-${target_arch}-linux.AppImage"
 rm -rf tango_linux_workdir

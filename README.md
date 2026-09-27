@@ -1,62 +1,126 @@
-# Tango
+# tangoGBA
 
-Tango provides rollback netplay for Mega Man Battle Network, with desktop
-and browser frontends, save editors, and replay playback and video export.
+Rollback netplay for **Advance Wars 2: Black Hole Rising** (GBA, USA), with
+everything unlocked and Black Hole as a fifth playable army.
 
-## Build and run
+tangoGBA is a fork of [Tango](https://github.com/tangobattle/tango), the
+rollback netplay client for Mega Man Battle Network, by the Tango
+developers. It keeps Tango's emulator (mGBA), rollback engine, lobby and
+networking, and adds Advance Wars 2 on top.
 
-Install Rust stable, a C/C++ compiler, CMake, Ninja, and Protocol Buffers
-(`protoc`). Native dependencies include emulator and networking libraries
-built from source. Platform package lists and release setup are in
-[the native CI workflow](.github/workflows/ci.yaml).
+No game is included. You need your own copy of the cartridge dumped to a
+`.gba` file.
+
+## What it does
+
+- **Rollback netplay.** Both players run the same emulated Game Boy
+  Advance in the game's own Versus mode. Your button presses show up
+  instantly. If your friend's input arrives late, the game quietly
+  rewinds a few frames and replays them with the right input.
+- **Turns are enforced.** On the battlefield only the player whose army
+  is moving can press anything. In menus (map select, CO select, rules,
+  the "Next turn" screen) both players can press. With fog of war on,
+  the waiting player's screen goes dark during the other army's turn.
+- **Everything unlocked.** Every CO including Sturm, every CO colour
+  edit, every Battle Map, Hard Campaign and the Sound Room. This is
+  applied while the game runs, like Slippi's codes for Melee, so the ROM
+  file is never modified. Save in-game and it sticks.
+- **Five armies.** Before a match you pick the armies, for example
+  "Black Hole vs Orange Star". The choices are Orange Star, Blue Moon,
+  Yellow Comet, Green Earth and Black Hole. Units, buildings and
+  banners take that army's colours.
+
+## Get it
+
+Download the latest build for your system from
+[Releases](https://github.com/rkho4642/tangoGBA/releases):
+
+| System | File |
+| --- | --- |
+| Windows 10/11 | `tangogba-x86_64-windows.exe` (installer) |
+| macOS (Apple Silicon and Intel) | `tangogba-macos.dmg` |
+| Linux | `tangogba-x86_64-linux.AppImage` |
+
+On macOS the app is not signed. The first time, right-click it and choose
+Open.
+
+## First run
+
+1. Open tangoGBA and pick a nickname.
+2. Put your Advance Wars 2 file in the `roms` folder the welcome screen
+   shows. It must be the USA cartridge (No-Intro
+   `Advance Wars 2 - Black Hole Rising (USA)`, CRC32 `5AD0E571`).
+3. On the Play tab, create a save for Advance Wars 2 if you don't have
+   one. A blank save is fine; everything is unlocked anyway.
+
+## Playing with a friend
+
+Your friend installs tangoGBA the same way, with their own copy of the
+same cartridge. Both of you need the same tangoGBA version.
+
+**Link code (easiest).** Both of you type the same made-up code, such as
+`sturm-4812`, into the link-code box on the Play tab. The matchmaking
+server introduces the two apps and then gets out of the way. It works
+through most home routers without any setup.
+
+**Direct connection (no server).** One player types `/host` and the
+other types `/connect <host's IP address>`. The host must be reachable on
+UDP port 24680. That works on the same network, over a VPN such as
+Tailscale, or with that port forwarded on the host's router.
+
+Then:
+
+1. Pick the armies in the lobby. Both players see the same choice.
+2. Both press Ready. The game starts from power-on for both of you.
+3. Go to **Versus → New**, pick a map, and on the **Teams** screen set
+   army 2 to **2P** (move right to the "CP" marker and press up).
+4. Pick COs and rules. With fog of war on, the screen goes dark for the
+   waiting player during the other army's turn, so nobody sees through
+   the other side's fog.
+5. Play. Player 1 moves army 1 (and army 3 on four-army maps); player 2
+   moves army 2 (and army 4).
+
+The army icons on the Teams screen still show the map's usual colours.
+The colours you picked take over once the battle starts.
+
+## Running two copies on one computer
+
+For testing, start two copies with separate profiles, then `/host` in
+one and `/connect 127.0.0.1` in the other:
+
+```sh
+TANGOGBA_PROFILE=~/tangogba-p1 ./tango
+TANGOGBA_PROFILE=~/tangogba-p2 ./tango
+```
+
+Each profile keeps its own config, saves and `roms` folder.
+
+## Building from source
+
+Install Rust stable, CMake, Ninja and `protoc`, then:
 
 ```sh
 cargo run --release --bin tango
 ```
 
-The desktop app enables all supported games by default. For a build with
-only one game, disable the defaults explicitly:
+The tools behind the Advance Wars 2 work are included:
 
 ```sh
-cargo run --release --bin tango --no-default-features --features gamesupport-bn6
+# Drive the game headlessly from a script: screenshots, RAM dumps, pokes.
+cargo run --release -p tango-backend-mgba --example gba_probe -- rom.gba script.txt
+
+# Two rollback peers with a delayed, jittery fake network; checks both
+# end on the same frame as a replay of the confirmed inputs.
+cargo run --release -p tango-gamesupport-aw2 --example aw2_rollback_sim -- rom.gba out/
 ```
 
-Use `cargo build --release --bin tango` to build without launching.
-Platform packaging scripts in `linux/`, `macos/`, and `win/` use the
-optimized `release-dist` profile. The browser has a separate toolchain
-and server requirements; see [its build instructions](tango-lite-web/README.md).
-
-## Find your way around
-
-| Area | Location | Responsibility |
-| --- | --- | --- |
-| Desktop app | `tango` | Application state, tabs, native input/audio/video, updates |
-| Browser app | `tango-lite-web` | Browser UI, canvas, audio worklet, IndexedDB |
-| Library | `tango-library` | Game registry, catalogs, shared loadout preparation and stats persistence |
-| Sessions | `tango-session` | Single-player, optional netplay, training, replay drivers |
-| Match engine | `tango-match` | Backend interfaces, rollback coordination, audio, telemetry |
-| Emulators | `tango-backend-mgba`, `tango-backend-melonds` | GBA and DS implementations |
-| Matchmaking | `tango-lobby`, `tango-net-protocol` | Lobby state and wire messages |
-| Transport / platform | `tango-net`, `tango-platform` | Connections, reconnect, portable tasks and timers |
-| Replays | `tango-replay`, `tango-replay-renderer` | Recording format and video export |
-| Game interface | `tango-gamesupport` | ROM identity, save/editor contracts, engine hooks |
-| Per-game support | `tango-gamesupport-<game>` | Registration and game-specific engine integration |
-| Save and ROM data | `tango-gamesupport-<game>-dataview` | Binary layouts, parsing, assets |
-| Save editors | `tango-gamesupport-<game>-ui` | Per-game editor presentation |
-| Shared game support | `tango-gamesupport-common*` | Telemetry, parsing, editor state and controls |
-| Shared UI | `tango-ui` | Styles, widgets, animation, copy feedback |
-
-Per-game crates join the workspace through path dependencies. A plain
-root build uses `default-members`, excluding the browser-only target.
-Use explicit packages when checking portable code; `--workspace` also
-selects the browser, which cannot compile for a native target.
-
-[ARCHITECTURE.md](ARCHITECTURE.md) traces session startup, netplay, and
-replay processing. [CONTRIBUTING.md](CONTRIBUTING.md) documents checks and
-how to add a game or dependency.
+How the Advance Wars 2 support works, and the RAM addresses it relies
+on, is in [docs/AW2.md](docs/AW2.md). Tango's own documentation is in
+[docs/TANGO_UPSTREAM_README.md](docs/TANGO_UPSTREAM_README.md),
+[ARCHITECTURE.md](ARCHITECTURE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-GPL-3.0-or-later — see [LICENSE](LICENSE) and [CREDITS.md](CREDITS.md).
-Tango links GPL-licensed [melonDS](https://melonds.kuribo64.net/).
-The game-support crates in this repository use the same license.
+GPL-3.0-or-later, like Tango. See [LICENSE](LICENSE) and
+[CREDITS.md](CREDITS.md). Advance Wars is a trademark of Nintendo.
+tangoGBA is not affiliated with Nintendo or Intelligent Systems.

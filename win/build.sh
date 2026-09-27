@@ -39,7 +39,7 @@ rm -rf Tango.iconset
 
 # Build Windows binaries. MSVC target — statically links the MSVC
 # runtime so no mingw DLL bundling is needed.
-cargo build --bin tango --features gamesupport-all --profile release-dist --target x86_64-pc-windows-msvc
+cargo build --bin tango --profile release-dist --target x86_64-pc-windows-msvc
 
 # Build installer.
 mkdir tango_win_workdir
@@ -62,9 +62,9 @@ makensis installer.nsi
 popd
 
 mkdir -p dist
-mv tango_win_workdir/installer.exe "dist/tango-x86_64-windows.exe"
+mv tango_win_workdir/installer.exe "dist/tangogba-x86_64-windows.exe"
 # Publish the standalone PDB as a release asset so crash-log
 # `module+offset` frames resolve offline (release-dist builds with
 # debug = 1).
-cp target/x86_64-pc-windows-msvc/release-dist/tango.pdb "dist/tango-x86_64-windows.pdb"
+cp target/x86_64-pc-windows-msvc/release-dist/tango.pdb "dist/tangogba-x86_64-windows.pdb"
 rm -rf tango_win_workdir

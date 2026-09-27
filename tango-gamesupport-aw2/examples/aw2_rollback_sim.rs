@@ -195,8 +195,10 @@ fn main() {
         }
         for &(mt, name) in &s.marks {
             if mt == t {
-                if let Some(f) = peers[0].frame() {
-                    write_bmp(&out.join(format!("{name}.bmp")), &f);
+                for (p, peer) in peers.iter_mut().enumerate() {
+                    if let Some(f) = peer.frame() {
+                        write_bmp(&out.join(format!("{name}_seat{p}.bmp")), &f);
+                    }
                 }
             }
         }
@@ -233,11 +235,19 @@ fn main() {
         straight.tick(*row);
     }
     let fs = straight.side(0).frame().unwrap();
+    let fs1 = straight.side(1).frame().unwrap();
     write_bmp(&out.join("final_straight.bmp"), &fs);
 
     println!("ticks simulated: {}", total + 40);
     println!("confirmed rows: {}", confirmed.len());
     println!("advances that rolled back: {rollbacks}, deepest rollback: {deepest} ticks");
-    println!("peer 0 and peer 1 final frames identical: {}", f0 == f1);
-    println!("peer frame equals straight replay frame: {}", f0 == fs);
+    // Each peer presents its own seat's view, which differs by design
+    // while one seat is concealed; compare the same seat on both peers.
+    for seat in 0..2 {
+        let a = peers[0].seat_frame(seat).unwrap();
+        let b = peers[1].seat_frame(seat).unwrap();
+        println!("seat {seat}'s view identical on both peers: {}", a == b);
+    }
+    println!("peers' own views differ (one concealed): {}", f0 != f1);
+    println!("straight replay matches peer 0 / peer 1: {} / {}", f0 == fs, f1 == fs1);
 }
