@@ -38,7 +38,7 @@ glue, stylesheet, icons, and service worker. Override `FEATURES` to choose
 games or `PROFILE` to choose a Cargo profile, for example:
 
 ```sh
-FEATURES=gamesupport-bn6 PROFILE=dev ./build.sh
+FEATURES=gamesupport-aw2 PROFILE=dev ./build.sh
 ```
 
 This crate is a workspace member but not a default member. Native builds

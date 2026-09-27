@@ -22,33 +22,28 @@ cargo test --locked --no-default-features --lib -p tango-session
 cargo test --locked --lib -p tango-lobby -p tango-net
 ```
 
-Exercise the real filesystem/HTTP patch adapter, a registered game, the
-session drivers, and save editor together:
+Exercise Advance Wars 2 end to end (a legal `AW2E` ROM is needed for the
+examples; the unit tests need none):
 
 ```sh
-cargo test --locked --lib -p tango-library \
-  --features tango-library/gamesupport-bn6 \
-  -p tango-session -p tango-gamesupport-common-ui
-cargo test --locked --lib -p tango-library \
-  --features tango-library/ui,tango-library/gamesupport-bn6
+cargo test --locked -p tango-gamesupport-aw2 -p tango-backend-mgba
+cargo run --release -p tango-gamesupport-aw2 --example aw2_rollback_sim -- rom.gba out/
+cargo run --release -p tango-gamesupport-aw2 --example aw2_offline_check -- rom.gba out/
+cargo run --release -p tango-session --example aw2_direct_netplay -- rom.gba out/
 ```
 
-The first command deliberately combines headless BN6 registrations with
-an editor consumer. `Game` and `Family` have the same shape regardless of
-UI features, so Cargo feature unification must not break this combination.
-The second checks the library's optional game-to-editor registration.
+`aw2_rollback_sim` runs two rollback peers over a delayed, jittery fake
+network; `aw2_direct_netplay` runs two peers through the real lobby, direct
+link and sessions on localhost; `aw2_offline_check` covers single-player
+with an Armies pick. Each compares both peers' frames or the army colours.
 
-For wider native coverage, including every game, use:
+For wider native coverage, including the upstream games the workspace
+still carries, use:
 
 ```sh
 cargo test --locked --workspace --exclude tango-lite-web --all-features --lib
 cargo test --locked --bin tango --all-features
 ```
-
-Patch integration tests start a local HTTP server and use temporary
-directories. Only tests that require BN6's registry entries are gated by
-`gamesupport-bn6`; native adapter tests are gated by `native`. The browser
-build is checked separately using its documented nightly toolchain.
 
 The `checks` workflow runs formatting, workspace conventions, an unused
 dependency audit (`cargo machete`), and the portable/native test suites for pull requests and pushes to `main`.

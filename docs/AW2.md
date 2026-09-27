@@ -2,7 +2,7 @@
 
 ## Shared console
 
-Tango's Battle Network games link two emulated GBAs with a cable. Advance
+Tango's original games link two emulated GBAs with a cable. Advance
 Wars 2's multiplayer is hot-seat: players take turns on one console. So
 tangoAW2 runs one console, and both peers simulate it identically.
 

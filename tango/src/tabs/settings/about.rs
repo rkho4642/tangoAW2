@@ -16,17 +16,15 @@ pub struct AboutMarkdown(std::cell::OnceCell<iced::widget::markdown::Content>);
 impl AboutMarkdown {
     fn content(&self) -> &iced::widget::markdown::Content {
         self.0.get_or_init(|| {
-            // tangoAW2's own header, then Tango's credits unchanged:
-            // everything below the fork note is upstream's work.
+            // tangoAW2's own header, then CREDITS.md, which carries both
+            // tangoAW2's credits and upstream Tango's under its own headings.
             iced::widget::markdown::Content::parse(&format!(
                 "# tangoAW2 {}\n\
                  tangoAW2 is rollback netplay for Advance Wars 2: Black Hole Rising. \
                  It is a fork of [Tango](https://github.com/tangobattle/tango) by the Tango developers, \
                  and like Tango it is free software under the \
-                 [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html). \
-                 Advance Wars is a trademark of Nintendo; tangoAW2 is not affiliated with Nintendo \
-                 or Intelligent Systems.\n\n\
-                 ## Tango credits\n{}",
+                 [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html).\n\n\
+                 {}",
                 env!("CARGO_PKG_VERSION"),
                 include_str!("../../../../CREDITS.md")
             ))

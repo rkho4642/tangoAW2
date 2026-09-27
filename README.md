@@ -3,10 +3,9 @@
 Rollback netplay for **Advance Wars 2: Black Hole Rising** (GBA, USA), with
 everything unlocked and Black Hole as a fifth playable army.
 
-tangoAW2 is a fork of [Tango](https://github.com/tangobattle/tango), the
-rollback netplay client for Mega Man Battle Network, by the Tango
-developers. It keeps Tango's emulator (mGBA), rollback engine, lobby and
-networking, and adds Advance Wars 2 on top.
+tangoAW2 is a fork of [Tango](https://github.com/tangobattle/tango) by the
+Tango developers. It keeps Tango's emulator (mGBA), rollback engine, lobby
+and networking, and adds Advance Wars 2 on top.
 
 No game is included. You need your own copy of the cartridge dumped to a
 `.gba` file.
@@ -128,8 +127,7 @@ cargo run --release -p tango-gamesupport-aw2 --example aw2_rollback_sim -- rom.g
 ```
 
 How the Advance Wars 2 support works, and the RAM addresses it relies
-on, is in [docs/AW2.md](docs/AW2.md). Tango's own documentation is in
-[docs/TANGO_UPSTREAM_README.md](docs/TANGO_UPSTREAM_README.md),
+on, is in [docs/AW2.md](docs/AW2.md). The engine's layout and checks are in
 [ARCHITECTURE.md](ARCHITECTURE.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
