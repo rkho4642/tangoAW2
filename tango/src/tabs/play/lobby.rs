@@ -476,7 +476,12 @@ impl<'a> Lobby<'a> {
             .into()
         };
 
-        let match_col = labeled(t!(lang, "lobby-match-type"), self.match_type_picker());
+        // A game with a single mode (tangoAW2: armies are picked on the
+        // game's own Teams screen) has nothing to choose here.
+        let single_mode = self
+            .local_game
+            .is_some_and(|g| g.family.match_types.iter().sum::<usize>() <= 1);
+        let match_col = (!single_mode).then(|| labeled(t!(lang, "lobby-match-type"), self.match_type_picker()));
 
         // Frame delay slider — 2..=10 frames. Set here before the
         // match; it's this side's local frame delay (how far the
@@ -555,7 +560,11 @@ impl<'a> Lobby<'a> {
 
         // Top-align so the captions sit on one line like a table
         // header row, whatever each control's height is.
-        let mut cluster = row![match_col, delay_col].spacing(20).align_y(Alignment::Start);
+        let mut cluster = row![]
+            .push_maybe(match_col)
+            .push(delay_col)
+            .spacing(20)
+            .align_y(Alignment::Start);
         // A blind setup hides a Battle Network folder; Advance Wars 2
         // has no setup to hide, so tangoAW2 leaves the checkbox out.
         if crate::flavor::BATTLE_NETWORK_EXTRAS {

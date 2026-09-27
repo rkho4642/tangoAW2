@@ -3,10 +3,9 @@
 //! Boots the console as Play offline does, goes to Versus → Bean Island →
 //! Teams, presses SELECT on army 1 until it reaches Black Hole, moves to
 //! army 2 and presses L, then starts the battle and prints each army's
-//! colour. With `--preset T,S` the launcher's Armies preset is applied
-//! first (as the lobby or the offline picker would).
+//! colour.
 //!
-//! Usage: aw2_teams_check <rom> <out-dir> [--preset T,S]
+//! Usage: aw2_teams_check <rom> <out-dir>
 
 use tango_match::{HostInput, Link};
 
@@ -37,13 +36,9 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let rom = std::fs::read(&args[1]).expect("rom");
     let out = std::path::PathBuf::from(&args[2]);
-    let preset = args.iter().position(|a| a == "--preset").map(|i| {
-        let v: Vec<u8> = args[i + 1].split(',').map(|x| x.parse().unwrap()).collect();
-        (v[0], v[1])
-    });
     let save = vec![0xffu8; tango_gamesupport_aw2::SAVE_SIZE];
     let mut link =
-        tango_backend_mgba::SharedLink::boot(&rom, Some(&save), None, &tango_gamesupport_aw2::pvp::AW2E, preset, None)
+        tango_backend_mgba::SharedLink::boot(&rom, Some(&save), None, &tango_gamesupport_aw2::pvp::AW2E, None, None)
             .expect("boot");
     let wait = |link: &mut tango_backend_mgba::SharedLink, n: u32| {
         for _ in 0..n {
@@ -91,5 +86,5 @@ fn main() {
     wait(&mut link, 700);
     shot(&mut link, "battle");
     let (mode, colours) = tango_gamesupport_aw2::pvp::army_state(link.core());
-    println!("preset {preset:?}: mode {mode}, battle army colours {colours:?}");
+    println!("mode {mode}, battle army colours {colours:?}");
 }

@@ -344,10 +344,6 @@ pub struct Config {
     /// each lobby remains independently toggleable thereafter.
     #[serde(default)]
     pub last_blind_setup: bool,
-    /// The Play tab's offline Armies pick, in the game's match-type
-    /// encoding; `None` plays with each map's own colours.
-    #[serde(default)]
-    pub offline_armies: Option<(u8, u8)>,
     /// Slide the opponent's setup drawer open automatically at PvP
     /// match start (when they haven't blinded their setup). Off, the
     /// drawer starts closed and the edge handle is the invitation.
@@ -398,7 +394,6 @@ impl Default for Config {
             frame_delay: default_frame_delay(),
             relay_mode: RelayMode::default(),
             last_blind_setup: false,
-            offline_armies: None,
             show_opponent_setup: false,
             input_mapping: crate::platform::input::Mapping::default(),
             replay_custom_screen_speedup: false,
@@ -606,7 +601,6 @@ mod tests {
             "frame_delay": 7,
             "relay_mode": "Never",
             "last_blind_setup": true,
-            "offline_armies": [4, 0],
             "show_opponent_setup": true,
             "input_mapping": serde_json::to_value(crate::platform::input::Mapping::default()).unwrap(),
             "replay_custom_screen_speedup": true,

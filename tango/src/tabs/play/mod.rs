@@ -46,9 +46,6 @@ pub enum Message {
     /// Bottom strip: start the selected game on its own, with no link
     /// code, server or network.
     PlayOfflinePressed,
-    /// Bottom strip: the offline Armies picker moved (`None` = the maps'
-    /// own colours).
-    SetOfflineArmies(Option<(u8, u8)>),
     Disconnect,
     /// Lobby UI: user picked a different match type. App routes
     /// this through Effect::SetMatchType so the resend
@@ -190,8 +187,6 @@ pub enum Effect {
     /// User pressed Play → start a single-player session from the
     /// current selection.
     StartSinglePlayer,
-    /// Remember the offline Armies pick in the config.
-    SetOfflineArmies(Option<(u8, u8)>),
     /// User pressed Training → start a training session (single-player
     /// ride + do-nothing dummy controller) from the current selection.
     StartTraining,
@@ -313,7 +308,6 @@ impl State {
                 Some(Effect::CopyText(s))
             }
             Message::PlayOfflinePressed => Some(Effect::StartSinglePlayer),
-            Message::SetOfflineArmies(v) => Some(Effect::SetOfflineArmies(v)),
             Message::FightPressed => {
                 // An empty bar means "just get me a lobby": generate a
                 // fresh random adjective-word-noun code and connect with
@@ -534,8 +528,6 @@ impl State {
                 streamer_mode,
                 loadout.patch_ready(scanners),
                 loadout.is_playable(),
-                loadout.game(),
-                config.offline_armies,
             )
         };
         let mut group: Element<'a, Message> = column![widgets::hud_scanline_bottom(), bottom].width(Fill).into();
@@ -693,8 +685,6 @@ impl State {
         streamer_mode: bool,
         patch_ready: bool,
         playable: bool,
-        game: Option<rom::GameRef>,
-        offline_armies: Option<(u8, u8)>,
     ) -> Element<'a, Message> {
         const BOTTOM_SIZE: f32 = 15.0;
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
@@ -766,37 +756,8 @@ impl State {
             .into()
         };
 
-        // Which armies an offline Versus battle uses: the maps' own
-        // colours, or any pairing of the five (Black Hole included). The
-        // same match-up names the lobby's Armies picker shows.
-        let armies_picker: Element<'a, Message> = {
-            let mut options = vec![ArmiesOption {
-                value: None,
-                label: t!(lang, "play-offline-armies-map"),
-            }];
-            if let Some(g) = game {
-                let family = g.family_and_variant().0;
-                for (mode, subtypes) in g.family.match_types.iter().enumerate() {
-                    for sub in 0..*subtypes {
-                        options.push(ArmiesOption {
-                            value: Some((mode as u8, sub as u8)),
-                            label: game::match_type_name(lang, family, mode as u8, sub as u8),
-                        });
-                    }
-                }
-            }
-            let selected = options.iter().find(|o| o.value == offline_armies).cloned();
-            iced::widget::tooltip(
-                widgets::picker(options, selected, |o: ArmiesOption| Message::SetOfflineArmies(o.value))
-                    .width(Length::Fixed(240.0)),
-                text(t!(lang, "play-offline-armies-tooltip")).size(TEXT_CAPTION),
-                iced::widget::tooltip::Position::Top,
-            )
-            .into()
-        };
-
         container(
-            row![offline_button, armies_picker, link_input, fight_button]
+            row![offline_button, link_input, fight_button]
                 .spacing(10)
                 .align_y(Alignment::Center)
                 .padding([10, 8]),
@@ -804,18 +765,6 @@ impl State {
         .width(Fill)
         .style(widgets::hud_bar)
         .into()
-    }
-}
-
-/// One entry of the offline Armies picker.
-#[derive(Clone, PartialEq, Eq, Debug)]
-struct ArmiesOption {
-    value: Option<(u8, u8)>,
-    label: String,
-}
-impl std::fmt::Display for ArmiesOption {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
     }
 }
 

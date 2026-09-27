@@ -94,39 +94,39 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         label: "3 armies",
         category: 3,
-        targets: &[3, 5, 1],
+        targets: &[4, 5, 1],
         alliance_ups: &[],
     },
     Scenario {
         label: "4 armies",
         category: 4,
-        targets: &[5, 2, 4, 3],
+        targets: &[5, 2, 3, 4],
         alliance_ups: &[],
     },
     Scenario {
         label: "4 armies",
         category: 4,
-        targets: &[1, 5, 4, 3],
+        targets: &[1, 5, 3, 4],
         alliance_ups: &[],
     },
     Scenario {
         label: "4 armies",
         category: 4,
-        targets: &[1, 2, 5, 3],
+        targets: &[1, 2, 5, 4],
         alliance_ups: &[],
     },
     Scenario {
         label: "4 armies",
         category: 4,
-        targets: &[1, 2, 4, 5],
+        targets: &[1, 2, 3, 5],
         alliance_ups: &[],
     },
     Scenario {
         label: "4 armies, 2 vs 2",
         category: 4,
-        targets: &[1, 2, 4, 5],
+        targets: &[1, 2, 3, 5],
         // B -> A for army 2, D -> C for army 4: Orange Star + Blue Moon
-        // against Yellow Comet + Black Hole.
+        // against Green Earth + Black Hole.
         alliance_ups: &[0, 1, 0, 1],
     },
 ];
@@ -342,21 +342,19 @@ fn main() {
     let mut all_ok = true;
     for (n, sc) in SCENARIOS.iter().enumerate() {
         let armies = sc.targets.len();
-        // Offline, with the same starting preset the netplay run gets from
-        // the lobby's first match-up (Orange Star vs Blue Moon, then Yellow
-        // Comet and Green Earth), so both walk the same presses.
-        let preset = tango_gamesupport_aw2::pvp::slot_colours((0, 0));
+        // Offline: every army starts in the map's own colour.
+        let map_colours = [1u8, 2, 3, 4];
         let link = tango_backend_mgba::SharedLink::boot(
             &rom,
             Some(&save),
             Some(rtc),
             &tango_gamesupport_aw2::pvp::AW2E,
-            Some((0, 0)),
+            None,
             None,
         )
         .expect("boot");
         let mut off = Rig::Offline(link, VecDeque::new());
-        let offline = play(&mut off, sc, &preset[..armies], false);
+        let offline = play(&mut off, sc, &map_colours[..armies], false);
         let Rig::Offline(link, _) = &off else { unreachable!() };
         let used = tango_gamesupport_aw2::pvp::army_state(link.core()).1[..armies].to_vec();
         let offline_ok = used == sc.targets;
@@ -364,9 +362,8 @@ fn main() {
         write_bmp(&out.join(format!("{tag}_teams.bmp")), &offline.teams[0]);
         write_bmp(&out.join(format!("{tag}_battle.bmp")), &offline.battle[0]);
 
-        // Netplay: the lobby's first match-up (Orange Star vs Blue Moon,
-        // then Yellow Comet and Green Earth) is the preset, then the same
-        // picks from both seats over a delayed wire.
+        // Netplay: the same picks, each army's by its own player, over a
+        // delayed wire.
         let game = &tango_gamesupport_aw2::AW2;
         let start = |local_player| {
             game.pvp
@@ -396,7 +393,7 @@ fn main() {
             t: 0,
             jitter: 99 + n as u32,
         };
-        let net = play(&mut net_rig, sc, &preset[..armies], true);
+        let net = play(&mut net_rig, sc, &map_colours[..armies], true);
         write_bmp(&out.join(format!("{tag}_net_teams.bmp")), &net.teams[0]);
         write_bmp(&out.join(format!("{tag}_net_battle.bmp")), &net.battle[0]);
         let peers_agree = net.teams[0] == net.teams[1] && net.battle[0] == net.battle[1];

@@ -81,7 +81,8 @@ fn main() {
     let save = vec![0xffu8; tango_gamesupport_aw2::SAVE_SIZE];
     let rtc = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
     // Player 1 Black Hole, player 2 Orange Star.
-    let match_type = (4u8, 0u8);
+    // One mode; the armies are picked on the Teams screen below.
+    let match_type = (0u8, 0u8);
 
     let mut s = Script {
         keys: [vec![], vec![]],
@@ -103,8 +104,23 @@ fn main() {
     s.wait(150);
     s.press(0, A); // Bean Island
     s.wait(150);
+    // Player 1 picks Black Hole for army 1 (Orange Star -> Yellow Comet
+    // -> Green Earth -> Black Hole, skipping Blue Moon), player 2 picks
+    // Orange Star for army 2 on their own pad, then army 2 becomes "2P".
+    for _ in 0..3 {
+        s.press(0, SELECT);
+        s.wait(10);
+    }
+    s.press(0, RIGHT);
+    s.wait(20);
+    s.press(0, RIGHT);
+    s.wait(20);
+    for _ in 0..3 {
+        s.press(1, SELECT);
+        s.wait(10);
+    }
     s.mark("teams");
-    for b in [RIGHT, RIGHT, RIGHT, UP] {
+    for b in [RIGHT, UP] {
         s.press(0, b); // slot 2 to "2P"
         s.wait(20);
     }

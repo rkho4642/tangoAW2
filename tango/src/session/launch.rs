@@ -201,8 +201,8 @@ pub fn spawn_singleplayer(
         Some(save.clone()),
         // Leave the cart clock on the real one, as it has always been.
         None,
-        // The Play tab's offline Armies pick (tangoAW2 colours Versus with it).
-        config.offline_armies,
+        // No preset: tangoAW2's armies are picked on the game's Teams screen.
+        None,
         audio_binder.sample_rate(),
     )?;
     let mut runtime = RunningSession::new(session, audio);

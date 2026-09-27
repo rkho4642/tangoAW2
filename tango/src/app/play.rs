@@ -118,11 +118,6 @@ impl App {
                 }
                 self.resend_settings_if_lobby()
             }
-            E::SetOfflineArmies(v) => {
-                self.config.offline_armies = v;
-                self.persist_config();
-                iced::Task::none()
-            }
             E::SetBlindSetup(v) => {
                 self.netplay.set_blind_setup(v);
                 // Remember the choice so the next lobby (this session or

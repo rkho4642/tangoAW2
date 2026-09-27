@@ -549,7 +549,8 @@ async fn run(rom: std::path::PathBuf, out: std::path::PathBuf, port: u16) -> boo
     );
 
     // Player 1 Black Hole, player 2 Orange Star (as in aw2_rollback_sim).
-    let match_type = (4u8, 0u8);
+    // tangoAW2 has one mode; armies are picked in the game.
+    let match_type = (0u8, 0u8);
     let lobby_start = Instant::now();
     let host = run_lobby("A", format!("/host {port}"), &lib, match_type);
     let client = async {

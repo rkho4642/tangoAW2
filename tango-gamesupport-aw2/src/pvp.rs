@@ -69,10 +69,8 @@ const BLACK_HOLE: u8 = 5;
 
 /// tangoAW2's own state, in the last bytes of EWRAM (unused by the game
 /// in every mode probed). Kept in console RAM so rollback snapshots carry
-/// it: the previous frame's joypad word, and whether the launcher's
-/// Armies preset has been applied to this match's Teams screen.
+/// it: the previous frame's joypad word.
 const PREV_KEYS: u32 = 0x0203_FFF0;
-const PRESET_DONE: u32 = 0x0203_FFF2;
 
 const KEY_SELECT: u32 = 1 << 2;
 const KEY_R: u32 = 1 << 8;
@@ -95,24 +93,8 @@ pub const ARMIES: [(u8, &str); 5] = [
     (5, "Black Hole"),
 ];
 
-/// The match types a lobby offers: type = army 1's pick, subtype = army
-/// 2's pick among the four left.
-pub const MATCH_TYPES: &[usize] = &[4, 4, 4, 4, 4];
-
-/// The army colours for player slots 1..=4 under a match type: slots 1 and
-/// 2 as picked, 3 and 4 the remaining armies in pick order.
-pub fn slot_colours(match_type: (u8, u8)) -> [u8; 4] {
-    let first = (match_type.0 as usize).min(ARMIES.len() - 1);
-    let rest: Vec<usize> = (0..ARMIES.len()).filter(|&i| i != first).collect();
-    let second = rest[(match_type.1 as usize).min(rest.len() - 1)];
-    let mut others = (0..ARMIES.len()).filter(|&i| i != first && i != second);
-    [
-        ARMIES[first].0,
-        ARMIES[second].0,
-        ARMIES[others.next().unwrap()].0,
-        ARMIES[others.next().unwrap()].0,
-    ]
-}
+/// One mode, Versus: armies are picked on the game's own Teams screen.
+pub const MATCH_TYPES: &[usize] = &[1];
 
 /// Which seat drives army slot `slot` (1..=4): odd slots are the first
 /// player's, even slots the second's.
@@ -255,7 +237,7 @@ fn set_bits(core: &mut Core, (start, len): (u32, u32)) {
 
 impl tango_backend_mgba::SharedGame for Aw2 {
     fn sim_version(&self) -> u16 {
-        4
+        5
     }
 
     /// On the battlefield only the army whose turn it is moves, so only
@@ -284,7 +266,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
             && !turn_ended(core)
     }
 
-    fn before_tick(&self, core: &mut Core, mode: Option<(u8, u8)>, keys: u32) -> u32 {
+    fn before_tick(&self, core: &mut Core, _mode: Option<(u8, u8)>, keys: u32) -> u32 {
         // Everything unlocked: every CO (Sturm and Hachi included), every
         // CO colour edit, every Battle Map, Hard Campaign and the Sound
         // Room. The game saves this block, so a save made here keeps it.
@@ -297,28 +279,12 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         core.raw_write_16(PREV_KEYS, -1, keys as u16);
         let mut keys = keys;
 
-        // A battle ends this match's Teams screen: the next one gets the
-        // preset again.
-        if in_battle(core) {
-            core.raw_write_8(PRESET_DONE, -1, 0);
-        }
-
-        // Army colours are picked on Versus' own Teams screen. The
-        // launcher's Armies choice (lobby online, picker offline) is only
-        // a preset: applied once when this match's Teams screen opens,
-        // then SELECT/R and L cycle the highlighted army through the five
-        // armies, Black Hole included. Campaign and War Room never reach
-        // this screen, so their story armies are untouched.
+        // Army colours are picked on Versus' own Teams screen: SELECT/R and
+        // L cycle the highlighted army through the five armies, Black Hole
+        // included. Campaign and War Room never reach this screen, so their
+        // story armies are untouched.
         if in_versus(core) && on_teams_screen(core) {
             let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
-            if core.raw_read_8(PRESET_DONE, -1) == 0 {
-                if let Some(mode) = mode {
-                    for (slot, colour) in slot_colours(mode).into_iter().take(armies as usize).enumerate() {
-                        core.raw_write_8(TEAMS_COLOUR + slot as u32, -1, colour);
-                    }
-                }
-                core.raw_write_8(PRESET_DONE, -1, 1);
-            }
             let pressed = keys & !prev;
             let step = if pressed & (KEY_SELECT | KEY_R) != 0 {
                 1
@@ -343,24 +309,6 @@ impl tango_backend_mgba::SharedGame for Aw2 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn every_match_type_gives_four_distinct_armies() {
-        for t in 0..MATCH_TYPES.len() {
-            for s in 0..MATCH_TYPES[t] {
-                let mut c = slot_colours((t as u8, s as u8)).to_vec();
-                c.sort();
-                c.dedup();
-                assert_eq!(c.len(), 4, "type {t} subtype {s}");
-            }
-        }
-    }
-
-    #[test]
-    fn black_hole_can_be_either_army() {
-        assert_eq!(slot_colours((4, 0))[0], 5);
-        assert_eq!(slot_colours((0, 3))[1], 5);
-    }
 
     #[test]
     fn seats_alternate_by_slot() {

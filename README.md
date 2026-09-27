@@ -26,12 +26,11 @@ No game is included. You need your own copy of the cartridge dumped to a
   file is never modified. Save in-game and it sticks.
 - **Five armies, picked in the game.** On Versus' **Teams** screen, move
   to an army and press **SELECT** (or **R**) to change its colour, **L**
-  to go back: Orange Star, Blue Moon, Yellow Comet, Green Earth and Black
-  Hole, each with its own emblem. The launcher's Armies choice (in the
-  lobby online, beside Play offline) just sets where the Teams screen
-  starts. The choices are Orange Star, Blue Moon,
-  Yellow Comet, Green Earth and Black Hole. Units, buildings and
-  banners take that army's colours.
+  to go back: Orange Star, Blue Moon, Yellow Comet, Green Earth and
+  **Black Hole**, each with its own emblem. It works on 2-, 3- and 4-army
+  maps, team (alliance) games included, online and offline. Units,
+  buildings, HQs and banners take the picked army's colours; Campaign and
+  War Room keep their story armies.
 
 ## Get it
 
@@ -63,10 +62,7 @@ everything unlocked, and needs no internet connection. Campaign, War Room,
 Versus against the computer and the Design Room all work.
 
 In Versus, change any army's colour on the Teams screen with **SELECT**
-(or **R**, and **L** to go back). The picker beside Play offline only sets
-the colours the Teams screen starts with, for example "Black Hole vs
-Orange Star", or "Map colours" for each map's own. Campaign and War Room
-always keep their story armies.
+(or **R**, and **L** to go back). Each army starts in the map's own colour.
 
 ## Playing with a friend
 
@@ -85,12 +81,12 @@ Tailscale, or with that port forwarded on the host's router.
 
 Then:
 
-1. Pick the armies in the lobby. Both players see the same choice.
-2. Both press Ready. The game starts from power-on for both of you.
-3. Go to **Versus → New**, pick a map, and on the **Teams** screen set
-   army 2 to **2P** (move right to the "CP" marker and press up). Either
-   player can press **SELECT** on an army to change its colour, Black Hole
-   included.
+1. Both press Ready. The game starts from power-on for both of you.
+2. Go to **Versus → New** and pick a map (2P, 3P or 4P).
+3. On the **Teams** screen, set army 2 to **2P** (move right to the "CP"
+   marker and press up). Highlight an army and press **SELECT** to change
+   its colour, Black Hole included; either player can press it. On 3- and
+   4-army maps, set alliances next if you want a team game.
 4. Pick COs and rules. With fog of war on, the screen goes dark for the
    waiting player during the other army's turn, so nobody sees through
    the other side's fog.

@@ -31,7 +31,7 @@ USA cartridge `AW2E`, CRC32 `5AD0E571`, 64 KiB Flash save.
 | `0x02017C50` | Versus Teams record: `+0x08` army count, `+0x09` controllers (1 human, 2 computer), `+0x0D` army colours, `+0x32` cursor (two stops per army). The battle's player blocks are built from it. |
 | task `0x08064E5D` in `0x03001500..0x03001A00` | Present only while the Teams screen is up. |
 | `0x0200F920 + 0x88*g` | Sprite group `g`: VRAM base, palette slot, count, (tile, id) pairs. Group 1 is the emblems, ids `0x3E..=0x42`; the Teams screen loads only four. |
-| `0x0203FFF0..` | tangoAW2's own state (previous joypad word, preset flag), in EWRAM the game never touches. |
+| `0x0203FFF0..` | tangoAW2's own state (the previous joypad word), in EWRAM the game never touches. |
 | `0x030033FC` | Title-menu mode: 1 Campaign, 3 Versus, 5 War Room. Kept through the mode's menus and battles. |
 | `0x03000000` | Main-loop callback; `0x08043591` while the full-screen CO page is open (the battle scene is unloaded then). |
 | `0x020232C0 + 0x3C*n` | Player block for army n+1. Colour byte at `+0x1A`: 1 Orange Star, 2 Blue Moon, 3 Green Earth, 4 Yellow Comet, 5 Black Hole. |
@@ -50,9 +50,7 @@ Armies: picked on Versus' Teams screen. SELECT or R moves the highlighted
 army (cursor / 2) to the next colour no other army has, L to the previous
 one; the game then builds the battle's armies from the Teams record, so
 nothing is forced during play and Campaign and War Room are untouched.
-The lobby's match type (online) or the offline Armies picker is only a
-preset, written into the record once when a match's Teams screen opens
-(re-armed when a battle loads). Black Hole's emblem (sprite `0x42`) is not
+Black Hole's emblem (sprite `0x42`) is not
 loaded on that screen, so while an army is Black Hole its emblem is drawn
 into the tiles of a standard emblem no army uses, and all standard
 emblems are restored from ROM every frame.

@@ -11,6 +11,7 @@
 use tango_match::{HostInput, Link};
 
 const A: u32 = 1;
+const SELECT: u32 = 1 << 2;
 const START: u32 = 1 << 3;
 const DOWN: u32 = 1 << 7;
 
@@ -69,8 +70,8 @@ fn main() {
     let rom = std::fs::read(&args[1]).expect("rom");
     let out = std::path::PathBuf::from(args.get(2).cloned().unwrap_or_else(|| ".".into()));
 
-    // 1. Versus vs the computer, Armies = Black Hole vs Orange Star.
-    let mut vs = Run::new(&rom, Some((4, 0)));
+    // 1. Versus vs the computer, Black Hole picked with SELECT on Teams.
+    let mut vs = Run::new(&rom, None);
     vs.wait(700);
     vs.press(START);
     vs.wait(300);
@@ -84,6 +85,10 @@ fn main() {
     vs.wait(150);
     vs.press(A); // Bean Island
     vs.wait(150);
+    for _ in 0..3 {
+        vs.press(SELECT); // Orange Star -> Yellow Comet -> Green Earth -> Black Hole
+        vs.wait(10);
+    }
     vs.press(A); // Teams (army 2 stays the computer)
     vs.wait(100);
     vs.press(A); // Rules
@@ -91,12 +96,12 @@ fn main() {
     vs.shot(out.join("offline_versus.bmp"));
     let colours = tango_gamesupport_aw2::pvp::army_state(vs.link.core());
     println!(
-        "versus: mode {} army colours {:?} (want [5, 1, ..])",
+        "versus: mode {} army colours {:?} (want [5, 2, ..])",
         colours.0, colours.1
     );
 
     // 2. Campaign with the same pick: story colours must survive.
-    let mut camp = Run::new(&rom, Some((4, 0)));
+    let mut camp = Run::new(&rom, None);
     camp.wait(700);
     camp.press(START);
     camp.wait(300);
@@ -113,7 +118,7 @@ fn main() {
     camp.shot(out.join("offline_campaign.bmp"));
     let colours = tango_gamesupport_aw2::pvp::army_state(camp.link.core());
     println!(
-        "campaign: mode {} army colours {:?} (want story colours, not [5, 1, ..])",
+        "campaign: mode {} army colours {:?} (want the story colours: Orange Star vs Black Hole)",
         colours.0, colours.1
     );
 }

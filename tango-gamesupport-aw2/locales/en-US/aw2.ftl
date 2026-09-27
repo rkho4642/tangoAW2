@@ -1,24 +1,4 @@
 name = Advance Wars 2
 short = AW2
 variant-0 = Advance Wars 2: Black Hole Rising
-# Match types pick the armies: <player 1's army>-<player 2's army among the other four>.
-match-type-0-0 = Orange Star vs Blue Moon
-match-type-0-1 = Orange Star vs Yellow Comet
-match-type-0-2 = Orange Star vs Green Earth
-match-type-0-3 = Orange Star vs Black Hole
-match-type-1-0 = Blue Moon vs Orange Star
-match-type-1-1 = Blue Moon vs Yellow Comet
-match-type-1-2 = Blue Moon vs Green Earth
-match-type-1-3 = Blue Moon vs Black Hole
-match-type-2-0 = Yellow Comet vs Orange Star
-match-type-2-1 = Yellow Comet vs Blue Moon
-match-type-2-2 = Yellow Comet vs Green Earth
-match-type-2-3 = Yellow Comet vs Black Hole
-match-type-3-0 = Green Earth vs Orange Star
-match-type-3-1 = Green Earth vs Blue Moon
-match-type-3-2 = Green Earth vs Yellow Comet
-match-type-3-3 = Green Earth vs Black Hole
-match-type-4-0 = Black Hole vs Orange Star
-match-type-4-1 = Black Hole vs Blue Moon
-match-type-4-2 = Black Hole vs Yellow Comet
-match-type-4-3 = Black Hole vs Green Earth
+match-type-0-0 = Versus
