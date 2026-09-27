@@ -111,4 +111,8 @@ pub struct SoloConfig<'a> {
     /// [`channel`](crate::audio::channel) whose other end the host
     /// plays. `None` for a caller with nobody listening.
     pub audio: Option<crate::AudioIn>,
+    /// The mode a game's single-player patches should assume, in the
+    /// registration's `match_types` encoding (tangoAW2: the armies to
+    /// colour Versus with). `None` leaves the game as it is.
+    pub match_type: Option<(u8, u8)>,
 }

@@ -20,6 +20,15 @@ const CURRENT_PLAYER: u32 = 0x0300_33EC;
 /// time a battle is loaded (every turn, menus and hand-off screens on the
 /// map) and zero in menus, results and save prompts.
 const BATTLE_SCENE: u32 = 0x0300_0004;
+/// The main-loop callback. The full-screen CO page (map menu → CO) unloads
+/// the battle scene while it is up and runs this callback instead.
+const MAIN_LOOP: u32 = 0x0300_0000;
+const CO_PAGE_LOOP: u32 = 0x0804_3591;
+/// Which mode was picked on the title menu: 1 Campaign, 3 Versus,
+/// 5 War Room. Set on entering the mode, kept through its menus and
+/// battles.
+const GAME_MODE: u32 = 0x0300_33FC;
+const VERSUS: u8 = 3;
 /// The map menu (CO, Intel, Options, Save, End): its state, 5 once an item
 /// is chosen, and its cursor, 4 on End. Both together mean the turn was
 /// ended and the game waits on the fog-of-war "Next turn" screen, where the
@@ -71,12 +80,25 @@ pub fn seat_of(slot: u8) -> usize {
     ((slot - 1) % 2) as usize
 }
 
+/// The title-menu mode and every army slot's colour byte, for tests.
+pub fn army_state(core: &Core) -> (u8, [u8; 4]) {
+    let colour = |slot: u32| core.raw_read_8(PLAYER_BLOCK + PLAYER_STRIDE * slot + COLOUR, -1);
+    (
+        core.raw_read_8(GAME_MODE, -1),
+        [colour(0), colour(1), colour(2), colour(3)],
+    )
+}
+
 pub struct Aw2;
 
 pub static AW2E: Aw2 = Aw2;
 
 fn in_battle(core: &Core) -> bool {
-    core.raw_read_32(BATTLE_SCENE, -1) != 0
+    core.raw_read_32(BATTLE_SCENE, -1) != 0 || core.raw_read_32(MAIN_LOOP, -1) == CO_PAGE_LOOP
+}
+
+fn in_versus(core: &Core) -> bool {
+    core.raw_read_8(GAME_MODE, -1) == VERSUS
 }
 
 fn turn_ended(core: &Core) -> bool {
@@ -91,7 +113,7 @@ fn set_bits(core: &mut Core, (start, len): (u32, u32)) {
 
 impl tango_backend_mgba::SharedGame for Aw2 {
     fn sim_version(&self) -> u16 {
-        2
+        3
     }
 
     /// On the battlefield only the army whose turn it is moves, so only
@@ -129,9 +151,11 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         set_bits(core, BATTLE_MAPS);
         set_bits(core, COS_AND_EDITS);
 
-        // Netplay: every army slot takes the colour the lobby agreed on,
-        // Black Hole included. Palettes follow the colour byte.
-        if let Some(mode) = mode {
+        // Versus only (Campaign and War Room keep their story armies):
+        // every army slot takes the picked colour, Black Hole included.
+        // Palettes follow the colour byte. `mode` is the lobby's pick
+        // online and the Armies picker's offline.
+        if let Some(mode) = mode.filter(|_| in_versus(core)) {
             for (slot, colour) in slot_colours(mode).into_iter().enumerate() {
                 core.raw_write_8(PLAYER_BLOCK + PLAYER_STRIDE * slot as u32 + COLOUR, -1, colour);
             }

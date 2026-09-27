@@ -40,8 +40,8 @@ pub trait SharedGame: Sync {
 
     /// Runs before every tick, with the console in hand: the place for a
     /// game's runtime patches (Slippi-style memory writes). `mode` is the
-    /// session's match type for a netplay match or its replay, and `None`
-    /// for a console played alone. Must be a pure function of core state
+    /// session's match type for a netplay match or its replay, and for a
+    /// console played alone whatever its host picked (`None` for nothing). Must be a pure function of core state
     /// and `mode`, like everything else that touches the simulation.
     fn before_tick(&self, core: &mut mgba::core::Core, mode: Option<(u8, u8)>) {
         let _ = (core, mode);
@@ -116,6 +116,11 @@ impl SharedLink {
             mode,
             render: [true, true],
         })
+    }
+
+    /// The console, for tests and tools that read its memory.
+    pub fn core(&self) -> &mgba::core::Core {
+        self.inner.core(0)
     }
 
     fn apply_render(&mut self) {
@@ -252,7 +257,7 @@ impl tango_match::Backend for SharedBackend {
 
     /// Played alone, the console still gets the game's runtime patches.
     fn start_solo(&self, config: tango_match::SoloConfig) -> Result<tango_match::Solo, tango_match::Error> {
-        let link = SharedLink::boot(config.rom, config.save, config.rtc, self.game, None, None)?;
+        let link = SharedLink::boot(config.rom, config.save, config.rtc, self.game, config.match_type, None)?;
         Ok(tango_match::Solo::new(SharedSolo(link), config.audio))
     }
 

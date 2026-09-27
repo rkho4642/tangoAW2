@@ -60,6 +60,7 @@ impl SinglePlayerSession {
         rom: Arc<Vec<u8>>,
         save: Option<Vec<u8>>,
         rtc: Option<std::time::SystemTime>,
+        match_type: Option<(u8, u8)>,
         sample_rate: u32,
     ) -> Result<(Self, Driver, crate::audio::Stream), crate::Error> {
         // The console pushes into the ring on its way out of every
@@ -71,6 +72,7 @@ impl SinglePlayerSession {
             save: save.as_deref(),
             rtc,
             audio: Some(audio_in),
+            match_type,
         })?;
 
         let layout = game.pvp.screen_layout(tango_match::SessionMode::Solo);

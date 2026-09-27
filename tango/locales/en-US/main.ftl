@@ -6,6 +6,8 @@ window-title = tangoAW2
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Exit tangoAW2
 play-offline = Play offline
+play-offline-armies-map = Map colours
+play-offline-armies-tooltip = Armies for offline Versus: army 1 vs army 2. Campaign and War Room always use their own armies.
 play-offline-tooltip = Play Advance Wars 2 on your own, no internet needed. Everything is unlocked.
 
 # Crash handler dialogs (parent process)

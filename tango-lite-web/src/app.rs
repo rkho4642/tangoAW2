@@ -250,6 +250,8 @@ fn start_single_player(host: crate::host::Context, loadout: Loadout, mut screen:
             // that PvP negotiates has a single-player counterpart: pin
             // it to now, once, at boot.
             Some(now()),
+            // No Armies picker in the browser build: the game as it is.
+            None,
             crate::audio::sample_rate(),
         );
         match session {

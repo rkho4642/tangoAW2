@@ -26,7 +26,8 @@ No game is included. You need your own copy of the cartridge dumped to a
   applied while the game runs, like Slippi's codes for Melee, so the ROM
   file is never modified. Save in-game and it sticks.
 - **Five armies.** Before a match you pick the armies, for example
-  "Black Hole vs Orange Star". The choices are Orange Star, Blue Moon,
+  "Black Hole vs Orange Star", online in the lobby and offline beside
+  Play offline. The choices are Orange Star, Blue Moon,
   Yellow Comet, Green Earth and Black Hole. Units, buildings and
   banners take that army's colours.
 
@@ -58,6 +59,10 @@ Open.
 Press **Play offline** on the Play tab. The game starts straight away, with
 everything unlocked, and needs no internet connection. Campaign, War Room,
 Versus against the computer and the Design Room all work.
+
+The picker beside Play offline sets the armies for offline Versus, for
+example "Black Hole vs Orange Star", or "Map colours" for each map's own.
+Campaign and War Room always keep their story armies.
 
 ## Playing with a friend
 

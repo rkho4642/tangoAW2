@@ -28,6 +28,8 @@ USA cartridge `AW2E`, CRC32 `5AD0E571`, 64 KiB Flash save.
 | `0x03000004` | Battle scene function table. Nonzero only while a battle is loaded. |
 | `0x030014E2` / `0x030014F0` | Map menu state (5 = item chosen) and cursor (4 = End). Both together mark the "Next turn" hand-off screen. |
 | `0x03003FCD` | Fog of war, nonzero when on. |
+| `0x030033FC` | Title-menu mode: 1 Campaign, 3 Versus, 5 War Room. Kept through the mode's menus and battles. |
+| `0x03000000` | Main-loop callback; `0x08043591` while the full-screen CO page is open (the battle scene is unloaded then). |
 | `0x020232C0 + 0x3C*n` | Player block for army n+1. Colour byte at `+0x1A`: 1 Orange Star, 2 Blue Moon, 3 Green Earth, 4 Yellow Comet, 5 Black Hole. |
 | `0x02028030`, `0x02028031` | Hard Campaign and Sound Room unlocked. |
 | `0x02028040`..`0x02028059` | Battle Maps bought. |
@@ -40,8 +42,10 @@ Elsewhere both seats' buttons are ORed.
 Unlocks: every frame the unlock block is set. The game saves that block,
 so an in-game save keeps it.
 
-Armies: the lobby's match type is (army 1's pick, army 2's pick among the
-remaining four). Every frame each player block's colour byte is set; the
+Armies: the lobby's match type (online) or the offline Armies picker is
+(army 1's pick, army 2's pick among the remaining four). It only applies
+while the title-menu mode is Versus, so Campaign and War Room keep their
+story armies. Every frame each player block's colour byte is set; the
 game draws units, buildings and banners from it. Armies 3 and 4 take the
 remaining colours.
 
