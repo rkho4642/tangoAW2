@@ -310,7 +310,38 @@ fn recolour_design_armies(core: &mut Core, armies: u32) {
         let original = core.raw_read_8(ORIGINAL_COLOURS + army, -1);
         swap_slot_palettes(core, army, original, picked);
     }
+    // The CO panel's palettes are loaded at the start of each turn from the
+    // army's colour; the first turn's are loaded before the colours are
+    // held to the pick, so they can still be the map's colour.
+    let army = core.raw_read_16(CURRENT_PLAYER, -1) as u32;
+    if (1..=armies).contains(&army) {
+        let picked = core.raw_read_8(TEAMS_COLOUR + army - 1, -1);
+        let original = core.raw_read_8(ORIGINAL_COLOURS + army - 1, -1);
+        if picked != original && (1..=5).contains(&picked) && (1..=5).contains(&original) {
+            for (table, row) in CO_PANEL_PALETTES {
+                let pal = |c: u8| {
+                    let mut p = [0u8; 32];
+                    core.raw_read_range(table + (c as u32 - 1) * 32, -1, &mut p);
+                    p
+                };
+                let (from, to) = (pal(original), pal(picked));
+                for base in [PAL_BUFFER, PAL_RAM] {
+                    let mut now = [0u8; 32];
+                    core.raw_read_range(base + row * 32, -1, &mut now);
+                    if now == from {
+                        core.raw_write_range(base + row * 32, -1, &to);
+                    }
+                }
+            }
+        }
+    }
 }
+
+/// The CO panel's per-colour palettes (colour - 1 rows into each table) and
+/// the palette row each is loaded into at the start of a turn: the panel
+/// (`0x0801A548` -> `0x0802D5CC`, BG row 8) and its header with the funds
+/// (`0x08043834`, OBJ row 7).
+const CO_PANEL_PALETTES: [(u32, u32); 2] = [(0x080D_4188, 8), (0x0810_4264, 23)];
 
 /// The first frame of a match's Teams screen: remember every army's
 /// original colour, and give a design map saved with Black Hole (the
@@ -425,6 +456,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
     }
 
     fn overlay(&self, core: &Core, mode: Option<(u8, u8)>, _seat: usize, rgba: &mut [u8]) {
+        crate::branding::overlay(core, rgba);
         if mode.is_none() {
             crate::design::overlay(core, rgba);
         }
