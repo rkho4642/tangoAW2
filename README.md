@@ -92,6 +92,9 @@ Versus against the computer and the Design Room all work.
 
 In Versus, change any army's colour on the Teams screen with **SELECT**
 (or **R**, and **L** to go back). Each army starts in the map's own colour.
+HQs and units are drawn in the designs of the army's CO, as in the
+original game, so a Black Hole army led by a Black Hole CO (Flak, Lash,
+Adder, Hawke, Sturm) looks fully like Black Hole.
 
 ## Design Room: Black Hole and its inventions
 
@@ -123,17 +126,32 @@ keys are in brackets (change them in Settings).
 
 1. Press **R** (S) to open the terrain bar, or **L** (A) for the unit bar.
 2. Highlight a building (HQ, City, Base, Airport, Port) or a unit.
-3. Press **UP** to walk through the armies: Orange Star, Blue Moon, Green
-   Earth, Yellow Comet. Press **UP** once more on Yellow Comet to get
-   **Black Hole**: its HQ, buildings and units, with its emblem.
-4. Press **A** (Z) to pick it, then **A** on the map to place it.
+3. Press **SELECT** (Space) or **UP** to go to the next army: Orange Star,
+   Blue Moon, Green Earth, Yellow Comet, then **Black Hole**, then
+   Neutral. SELECT works like it does on Versus' Teams screen. (In a tool
+   bar the game used SELECT to swap bars; **L** and **R** still do that.)
+4. Black Hole shows in its own designs, not Yellow Comet's recoloured:
+   Black Hole's HQ, its buildings, its units and its emblem.
+5. Press **A** (Z) to pick it, then **A** on the map to place it.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/design-select-cycle.png" width="360" alt="SELECT steps through Orange Star, Blue Moon, Green Earth, Yellow Comet and Black Hole, each with its own HQ"></td>
+<td><img src="docs/screenshots/design-black-hole-hq-on-map.png" width="360" alt="Black Hole's own HQ placed on the map"></td>
+</tr>
+<tr>
+<td align="center">SELECT: each army with its own HQ, Black Hole last</td>
+<td align="center">Black Hole's HQ on the map</td>
+</tr>
+</table>
 
 **Getting Yellow Comet back.** Black Hole and Yellow Comet share one army
 slot, so a design map has one or the other, like the campaign. While
 Black Hole is showing, press **DOWN** once to go back to Yellow Comet;
 DOWN again gives Green Earth. The choice is for the whole map: switching
-back turns every Black Hole piece you've placed into Yellow Comet, and
-switching to Black Hole turns Yellow Comet's pieces black.
+back turns every Black Hole piece you've placed into Yellow Comet's
+designs and colour, and switching to Black Hole turns Yellow Comet's
+pieces into Black Hole's.
 
 <table>
 <tr>
@@ -142,7 +160,15 @@ switching to Black Hole turns Yellow Comet's pieces black.
 </tr>
 <tr>
 <td align="center">Black Hole units</td>
-<td align="center">DOWN: Yellow Comet, placed pieces follow</td>
+<td align="center">DOWN: Yellow Comet's units</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/design-placed-black-hole.png" width="360" alt="A Black Hole infantry and base placed on the map"></td>
+<td><img src="docs/screenshots/design-placed-yellow-comet.png" width="360" alt="After DOWN the same pieces are Yellow Comet's"></td>
+</tr>
+<tr>
+<td align="center">Placed Black Hole pieces</td>
+<td align="center">DOWN: the same pieces become Yellow Comet's</td>
 </tr>
 </table>
 
@@ -175,9 +201,15 @@ tile; the rest of it clears itself.
 
 ### Saving and playing the map
 
-Save with **SELECT → File → Save**, then play it from **Versus → New →
-Design Maps**. The army you made Black Hole starts as Black Hole on the
-Teams screen. Set it to **1P** (the row under the portraits) to command
+Save with **SELECT → File → Save** (on the map, with no tool bar open),
+then play it from **Versus → New → Design Maps**. The army you made Black
+Hole starts as Black Hole on the Teams screen. In battle the game draws an
+army's HQ and units in the designs of its CO's army, as it always has: give
+the Black Hole army a Black Hole CO (Flak, Lash, Adder, Hawke or Sturm;
+UP/DOWN on its portrait) to see Black Hole's own HQ and units. With another
+CO it keeps Black Hole's colours in that CO's army's designs.
+
+<img src="docs/screenshots/battle-flak-black-hole-hq.png" width="360" alt="In battle with Flak: Black Hole's own HQ in the terrain panel and a Black Hole Mech"> Set it to **1P** (the row under the portraits) to command
 it yourself, or leave it on **CP**. Design maps live in your save. An
 online match runs on player 1's save, and tangoAW2 picks player 1 when
 the match starts, so your design maps are there online only when you
