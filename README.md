@@ -50,8 +50,14 @@ Open.
 2. Put your Advance Wars 2 file in the `roms` folder the welcome screen
    shows. It must be the USA cartridge (No-Intro
    `Advance Wars 2 - Black Hole Rising (USA)`, CRC32 `5AD0E571`).
-3. On the Play tab, create a save for Advance Wars 2 if you don't have
-   one. A blank save is fine; everything is unlocked anyway.
+3. That's it. tangoAW2 selects the game and creates a blank save for you
+   the first time. Everything is unlocked anyway.
+
+## Playing alone
+
+Press **Play offline** on the Play tab. The game starts straight away, with
+everything unlocked, and needs no internet connection. Campaign, War Room,
+Versus against the computer and the Design Room all work.
 
 ## Playing with a friend
 
@@ -94,6 +100,8 @@ TANGOAW2_PROFILE=~/tangoaw2-p2 ./tango
 ```
 
 Each profile keeps its own config, saves and `roms` folder.
+`TANGOAW2_AUTOSTART=offline` presses Play offline as soon as the library
+is scanned, which is handy for scripted checks.
 
 ## Building from source
 

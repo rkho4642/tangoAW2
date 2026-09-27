@@ -64,7 +64,7 @@ impl App {
                     self.config.patch_repo.clone(),
                     self.scanners.patches.clone(),
                 );
-                if self.config.enable_patch_autoupdate {
+                if crate::flavor::PATCHES && self.config.enable_patch_autoupdate {
                     self.patch_autoupdater.start();
                 }
                 self.persist_config();

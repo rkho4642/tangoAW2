@@ -99,7 +99,10 @@ fn main() {
             for w in watch.iter_mut() {
                 let v = link.core(0).raw_read_8(w.0, -1) as u32;
                 if v != w.1 {
-                    println!("watch {:08x}: {:02x} -> {:02x} @{} keys={:03x}", w.0, w.1, v, frame, keys);
+                    println!(
+                        "watch {:08x}: {:02x} -> {:02x} @{} keys={:03x}",
+                        w.0, w.1, v, frame, keys
+                    );
                     w.1 = v;
                 }
             }

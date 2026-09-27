@@ -2,19 +2,19 @@
 LANGUAGE = Nederlands
 
 crash =
-    Oepsie woepsie! Tango is een fout tegengekomen en is gecrasht!
+    Oepsie woepsie! tangoAW2 is een fout tegengekomen en is gecrasht!
 
     Bij het rapporteren van deze crash, gaarne het volgende logboekbestand toe te voegen:
 
     { $path }
 crash-no-log =
-    Oepsie woepsie! Tango is stukkie wukkie!
+    Oepsie woepsie! tangoAW2 is stukkie wukkie!
 
     { $error }
-window-title = tangoGBA
-    .running = Tango (actief)
+window-title = tangoAW2
+    .running = tangoAW2 (actief)
 # Tooltip on the top bar's close button (fullscreen only).
-window-quit = Tango afsluiten
+window-quit = tangoAW2 afsluiten
 play-training = Training
 training-pip = Scherm van tegenstander
 training-opponent-view = Tegenstanderweergave
@@ -69,12 +69,6 @@ settings-theme = Thema
 settings-theme-dark = Donker
 settings-theme-light = Licht
 settings-accent = Accentkleur
-settings-accent-tango-green = Tango-groen
-settings-accent-megaman-blue = MegaMan-blauw
-settings-accent-protoman-red = ProtoMan-rood
-settings-accent-roll-pink = Roll-roze
-settings-accent-gutsman-yellow = GutsMan-geel
-settings-accent-bass-purple = Bass-paars
 settings-group-profile = Profiel
 settings-group-interface = Interface
 settings-group-storage = Opslag
@@ -149,7 +143,6 @@ save-template-pick = Kies een sjabloon…
 empty-scanning-title = Bibliotheek scannen…
 empty-scanning-body = ROMs, saves en patches worden gelezen.
 empty-no-roms-title = Geen ROMs gevonden
-empty-no-roms-body = Plaats je Battle Network / Rockman EXE .gba-bestanden in:
 empty-no-saves-title = Geen saves voor dit spel
 empty-no-saves-body = Plaats een .sav voor dit spel in:
 play-patch-downloading = ↓ …
@@ -164,15 +157,15 @@ play-status-waiting-opponent = Wachten op tegenstander…
 play-status-negotiating = Onderhandelen…
 play-status-failed = Verbinding mislukt: { $error }
 play-status-peer-disconnected = De andere speler is vertrokken.
-play-status-signaling-version-too-old = Deze versie van Tango is te oud om online te spelen. Werk Tango bij.
-play-status-signaling-version-too-new = De matchmakingserver is verouderd voor deze versie van Tango.
+play-status-signaling-version-too-old = Deze versie van tangoAW2 is te oud om online te spelen. Werk tangoAW2 bij.
+play-status-signaling-version-too-new = De matchmakingserver is verouderd voor deze versie van tangoAW2.
 play-status-signaling-rejected = De matchmakingserver heeft de verbinding geweigerd: { $reason }
 play-status-signaling-unreachable = Kon de matchmakingserver niet bereiken: { $error }
 play-status-signaling-failed = Matchmaking mislukt: { $error }
 play-status-peer-connection-failed = Kon geen verbinding maken met de andere speler: { $error }
 play-status-negotiate-expected-hello = De andere speler heeft de verwachte handshake niet verzonden.
-play-status-negotiate-version-too-old = De andere speler gebruikt een oudere versie van Tango.
-play-status-negotiate-version-too-new = De andere speler gebruikt een nieuwere versie van Tango.
+play-status-negotiate-version-too-old = De andere speler gebruikt een oudere versie van tangoAW2.
+play-status-negotiate-version-too-new = De andere speler gebruikt een nieuwere versie van tangoAW2.
 play-status-negotiate-failed = Er is een fout opgetreden tijdens de onderhandeling: { $error }
 lobby-waiting = Wachten…
 lobby-no-game = (geen spel gekozen)
@@ -200,8 +193,8 @@ lobby-compat-fetching-patch = Patch voor deze match downloaden…
 lobby-compat-fetching-patch-progress = Patch voor deze match downloaden… { $percent }%
 lobby-compat-patch-failed = Kon de patch voor deze match niet downloaden
 lobby-compat-version-mismatch = Spelversies komen niet overeen (verschillende patch / ROM).
-lobby-compat-sim-too-old = De netplay van dit spel is gewijzigd sinds de Tango-versie van je tegenstander — hij moet bijwerken.
-lobby-compat-sim-too-new = De netplay van dit spel is gewijzigd sinds jouw Tango-versie — je moet bijwerken.
+lobby-compat-sim-too-old = De netplay van dit spel is gewijzigd sinds de tangoAW2-versie van je tegenstander — hij moet bijwerken.
+lobby-compat-sim-too-new = De netplay van dit spel is gewijzigd sinds jouw tangoAW2-versie — je moet bijwerken.
 lobby-compat-match-mismatch = Matchtype komt niet overeen.
 lobby-ready = Klaar
 lobby-unready = Niet klaar
@@ -295,7 +288,6 @@ playback-disconnect-prompt = Verbinding met deze wedstrijd verbreken?
 playback-disconnect-detail = Je beëindigt hiermee de wedstrijd met je tegenstander.
 playback-cancel = Annuleren
 replays-select-prompt = Selecteer een herhaling.
-replays-streamer-hidden = HP- en chipgeschiedenis verborgen in streamermodus.
 replays-streamer-show = Tonen
 replays-queue-add = Aan wachtrij toevoegen
 replays-queue-count = { $n } in wachtrij
@@ -389,10 +381,9 @@ updater-up-to-date = v{ $version } (actueel)
 updater-downloading = Downloaden: { $pct }%
 updater-ready-to-update = Update gedownload en klaar om te installeren.
 updater-update-now = Nu bijwerken
-welcome-title = Welkom bij Tango!
+welcome-title = Welkom bij tangoAW2!
 welcome-subtitle = Nog een paar stappen voor je kunt beginnen met spelen.
 welcome-step-roms = Voeg je ROMs toe
-welcome-step-roms-description = Plaats je Battle Network / Rockman EXE .gba-bestanden in:
 welcome-step-roms-detected = { $count } ROMs gedetecteerd.
 welcome-step-nickname = Stel je bijnaam in
 welcome-step-nickname-description = Je kunt deze altijd wijzigen via Instellingen.

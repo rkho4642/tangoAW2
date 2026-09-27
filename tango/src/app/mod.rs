@@ -211,7 +211,7 @@ impl App {
             config.patch_repo.clone(),
             scanners.patches.clone(),
         );
-        if config.enable_patch_autoupdate {
+        if crate::flavor::PATCHES && config.enable_patch_autoupdate {
             patch_autoupdater.start();
         }
 

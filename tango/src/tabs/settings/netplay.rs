@@ -42,11 +42,16 @@ pub(super) fn settings_netplay<'a>(lang: &'a LanguageIdentifier, config: &'a con
                 Message::RelayModeChanged(c.value)
             })
         }),
-        option_row(
-            t!(lang, "settings-show-opponent-setup"),
-            toggle(config.show_opponent_setup, Message::ToggleShowOpponentSetup),
-        ),
     ]
+    .push_maybe(
+        // Opponent setups are Battle Network folders; Advance Wars 2 has none.
+        crate::flavor::BATTLE_NETWORK_EXTRAS.then(|| {
+            option_row(
+                t!(lang, "settings-show-opponent-setup"),
+                toggle(config.show_opponent_setup, Message::ToggleShowOpponentSetup),
+            )
+        }),
+    )
     .spacing(2)
     .padding(style::PANE_PADDING)
     .into()

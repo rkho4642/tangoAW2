@@ -9,7 +9,16 @@ pub use rpc::activity;
 
 use crate::i18n;
 
+/// Tango's Discord application. Discord shows its name ("Tango") and
+/// its Battle Network artwork next to the presence, so tangoAW2 does not
+/// connect with it; see [`ENABLED`].
 const APP_ID: u64 = 974089681333534750;
+
+/// Rich presence is off until tangoAW2 has a Discord application of its
+/// own (name and Advance Wars 2 art are set on Discord's side, keyed by
+/// [`APP_ID`]). While off, no IPC connection is attempted and every
+/// activity update is dropped.
+const ENABLED: bool = false;
 
 pub struct GameInfo {
     pub title: String,
@@ -39,7 +48,7 @@ pub fn make_base_activity(game_info: Option<GameInfo>) -> rpc::activity::Activit
         details: game_info.as_ref().map(|gi| gi.title.clone()),
         assets: Some(rpc::activity::Assets {
             small_image: Some("logo".to_string()),
-            small_text: Some("Tango".to_string()),
+            small_text: Some("tangoAW2".to_string()),
             large_image: game_info.as_ref().map(|gi| gi.family.clone()),
             large_text: game_info.as_ref().map(|gi| gi.title.clone()),
         }),
@@ -151,7 +160,7 @@ impl Client {
         let current_join_secret = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let rpc = std::sync::Arc::new(tokio::sync::Mutex::new(None));
 
-        {
+        if ENABLED {
             let rpc = rpc.clone();
             let current_activity = current_activity.clone();
             let current_join_secret = current_join_secret.clone();

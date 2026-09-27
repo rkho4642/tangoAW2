@@ -1,6 +1,5 @@
-//! The HUD chrome: the top bar and its scanlines, the cyberworld
-//! backdrop and hex chain, framed panels and modals, and the VS
-//! matchup splitter.
+//! The HUD chrome: the top bar and its scanlines, the map-room
+//! backdrop, framed panels and modals, and the VS matchup splitter.
 
 use super::*;
 // Explicit: a macro reached only through the glob above is ambiguous.
@@ -101,8 +100,8 @@ pub fn hud_bar(theme: &Theme) -> iced::widget::container::Style {
 
 /// Body surface (everything below the HUD bar). Paints no
 /// background of its own — the content layer rides on
-/// [`cyber_backdrop`], stacked underneath by `App::view`, and an
-/// opaque fill here would blot the cyberworld out.
+/// [`map_backdrop`], stacked underneath by `App::view`, and an
+/// opaque fill here would blot the map grid out.
 pub fn body_surface(theme: &Theme) -> iced::widget::container::Style {
     iced::widget::container::Style {
         background: None,
@@ -111,16 +110,20 @@ pub fn body_surface(theme: &Theme) -> iced::widget::container::Style {
     }
 }
 
-/// The cyberworld backdrop — the Legacy Collection's PET menu
-/// background, drawn instead of shipped as a bitmap: a vertical
-/// wash that's lit at the top and falls toward black, two big
-/// soft ring clusters (the de-focused "net" circles behind BNLC's
-/// menus), a dashed orbit ring, and a loose scatter of hexagons.
-/// Static — no animation — and cached; the geometry only
-/// re-tessellates when the canvas resizes or the theme flips.
-pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
-    use iced::widget::canvas::{self, gradient, Canvas, LineDash, Path, Stroke, Style};
+/// The map-room backdrop behind the tabs, welcome and results
+/// screens: a deep navy wash with a faint square grid, like a
+/// campaign map pinned to a war-room table. Every fourth line is a
+/// touch stronger so the grid reads as sectors rather than graph
+/// paper. Static and cached; the geometry only re-tessellates when
+/// the canvas resizes or the theme flips.
+pub fn map_backdrop<'a, M: 'a>() -> Element<'a, M> {
+    use iced::widget::canvas::{self, gradient, Canvas, Path, Stroke, Style};
     use iced::{Point, Rectangle, Renderer};
+
+    /// Grid cell size in logical pixels.
+    const CELL: f32 = 32.0;
+    /// Every `MAJOR`th line is a sector line.
+    const MAJOR: i32 = 4;
 
     struct Backdrop;
 
@@ -129,10 +132,7 @@ pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
         cache: canvas::Cache,
         /// Palette fingerprint the cached geometry was drawn with.
         /// `Cache` only invalidates on size changes, so theme flips
-        /// have to clear it by hand or the old colors stick. Covers
-        /// both the background AND the primary — an accent change
-        /// keeps the background identical, and the whole point of
-        /// the backdrop is the accent-colored glow.
+        /// have to clear it by hand or the old colors stick.
         key: std::cell::Cell<u64>,
     }
 
@@ -148,356 +148,71 @@ pub fn cyber_backdrop<'a, M: 'a>() -> Element<'a, M> {
             _cursor: iced::mouse::Cursor,
         ) -> Vec<canvas::Geometry> {
             let bg = theme.palette().background;
-            let primary = theme.palette().primary;
+            let text = theme.palette().text;
             let dark = theme.extended_palette().is_dark;
             let fp = |c: iced::Color| {
                 (((c.r * 255.0) as u64) << 16) | (((c.g * 255.0) as u64) << 8) | ((c.b * 255.0) as u64)
             };
-            let key = fp(bg) | (fp(primary) << 24) | ((dark as u64) << 63);
+            let key = fp(bg) | (fp(text) << 24) | ((dark as u64) << 63);
             if state.key.replace(key) != key {
                 state.cache.clear();
             }
             let geom = state.cache.draw(renderer, bounds.size(), |frame| {
                 let w = frame.width();
                 let h = frame.height();
-                // Master intensity — the whole backdrop runs at a
-                // fraction of this on light so it stays a texture,
-                // not a watermark fighting dark text. Dialed down a
-                // notch from 0.45 when the lattice + traces landed:
-                // more geometry at the same alpha reads busier.
-                let lvl = if dark { 1.0 } else { 0.40 };
-                let glow = move |a: f32| iced::Color { a: a * lvl, ..primary };
-
-                // Base wash: a faint screen-glow at the top falling
-                // to a darker floor, so the page reads as a lit PET
-                // screen rather than a flat sheet.
+                // Map-table navy on dark; a pale blue-grey chart
+                // paper on light.
+                let navy = iced::Color::from_rgb8(0x10, 0x1c, 0x33);
+                let (top, bottom) = if dark {
+                    (mix(bg, navy, 0.85), mix(mix(bg, navy, 0.6), iced::Color::BLACK, 0.25))
+                } else {
+                    let chart = iced::Color::from_rgb8(0xdc, 0xe3, 0xec);
+                    (mix(bg, chart, 0.55), mix(bg, chart, 0.85))
+                };
                 frame.fill_rectangle(
                     Point::ORIGIN,
                     frame.size(),
                     gradient::Linear::new(Point::ORIGIN, Point::new(0.0, h))
-                        .add_stop(0.0, mix(bg, primary, if dark { 0.06 } else { 0.03 }))
-                        .add_stop(0.55, bg)
-                        .add_stop(1.0, mix(bg, iced::Color::BLACK, if dark { 0.28 } else { 0.06 })),
+                        .add_stop(0.0, top)
+                        .add_stop(1.0, bottom),
                 );
 
-                // One "net ring" cluster: a fat blurry-reading band
-                // (low alpha, huge stroke), a mid ring, a crisp thin
-                // rim, and a dashed orbit — the de-focused circle
-                // stacks behind every BNLC menu.
-                let cluster = |frame: &mut canvas::Frame, c: Point, s: f32, boost: f32| {
-                    let g = |a: f32| glow(a * boost);
-                    frame.fill(&Path::circle(c, s * 0.20), g(0.05));
-                    frame.stroke(
-                        &Path::circle(c, s * 0.46),
-                        Stroke {
-                            style: Style::Solid(g(0.05)),
-                            width: s * 0.16,
-                            ..Stroke::default()
-                        },
-                    );
-                    frame.stroke(
-                        &Path::circle(c, s * 0.62),
-                        Stroke {
-                            style: Style::Solid(g(0.08)),
-                            width: s * 0.05,
-                            ..Stroke::default()
-                        },
-                    );
-                    frame.stroke(
-                        &Path::circle(c, s * 0.72),
-                        Stroke {
-                            style: Style::Solid(g(0.16)),
-                            width: 1.5,
-                            ..Stroke::default()
-                        },
-                    );
-                    frame.stroke(
-                        &Path::circle(c, s * 0.54),
-                        Stroke {
-                            style: Style::Solid(g(0.13)),
-                            width: 2.0,
-                            line_dash: LineDash {
-                                segments: &[18.0, 12.0],
-                                offset: 0,
-                            },
-                            ..Stroke::default()
-                        },
-                    );
+                let ink = if dark {
+                    iced::Color::from_rgb8(0x8f, 0xb4, 0xe8)
+                } else {
+                    iced::Color::from_rgb8(0x2a, 0x45, 0x6e)
                 };
-                cluster(frame, Point::new(w * 0.16, h * 0.40), h * 0.85, 1.0);
-                cluster(frame, Point::new(w * 0.88, h * 0.74), h * 0.55, 0.8);
-                cluster(frame, Point::new(w * 0.60, h * 0.08), h * 0.30, 0.6);
-
-                // Hexagon drift — the collection's other signature
-                // motif, scattered loosely toward the corners the
-                // rings leave empty.
-                let hex = |c: Point, r: f32| {
-                    Path::new(|b| {
-                        for i in 0..6 {
-                            let ang = std::f32::consts::FRAC_PI_3 * i as f32;
-                            let pt = Point::new(c.x + r * ang.cos(), c.y + r * ang.sin());
-                            if i == 0 {
-                                b.move_to(pt);
-                            } else {
-                                b.line_to(pt);
-                            }
-                        }
-                        b.close();
-                    })
-                };
-                let outline = |frame: &mut canvas::Frame, c: Point, r: f32, a: f32| {
+                let (minor_a, major_a) = if dark { (0.05, 0.10) } else { (0.06, 0.12) };
+                let line = |frame: &mut canvas::Frame, from: Point, to: Point, major: bool| {
                     frame.stroke(
-                        &hex(c, r),
+                        &Path::line(from, to),
                         Stroke {
-                            style: Style::Solid(glow(a)),
-                            width: 1.5,
-                            ..Stroke::default()
-                        },
-                    );
-                };
-                outline(frame, Point::new(w * 0.90, h * 0.18), 18.0, 0.12);
-                frame.fill(&hex(Point::new(w * 0.94, h * 0.27), 11.0), glow(0.08));
-                outline(frame, Point::new(w * 0.855, h * 0.295), 9.0, 0.08);
-                outline(frame, Point::new(w * 0.105, h * 0.80), 15.0, 0.10);
-                frame.fill(&hex(Point::new(w * 0.155, h * 0.875), 9.0), glow(0.06));
-
-                // Honeycomb lattice sunk into the bottom edge — a
-                // patch of the cyberworld's floor grid showing
-                // through between the ring clusters. Alpha falls
-                // off away from the center column and a few cells
-                // are skipped (deterministically — the cached
-                // geometry must redraw identically) so it reads as
-                // a ragged lit floor, not wallpaper tiling.
-                let lat_r = 16.0_f32;
-                let lat = Point::new(w * 0.52, h * 1.02);
-                for col in -4i32..=4 {
-                    for row in -1i32..=1 {
-                        if (col * 7 + row * 5).rem_euclid(5) == 0 {
-                            continue;
-                        }
-                        let c = Point::new(
-                            lat.x + 1.5 * lat_r * col as f32,
-                            lat.y + 3f32.sqrt() * lat_r * (row as f32 + if col.rem_euclid(2) == 1 { 0.5 } else { 0.0 }),
-                        );
-                        let fall = 1.0 - (col.abs() as f32 / 4.0) * 0.75;
-                        frame.stroke(
-                            &hex(c, lat_r),
-                            Stroke {
-                                style: Style::Solid(glow((0.10 * fall).max(0.02))),
-                                width: 1.0,
-                                ..Stroke::default()
-                            },
-                        );
-                    }
-                }
-                // One lit cell in the patch — the grid's "live node",
-                // same trick as the hex chain's lead hex.
-                frame.fill(
-                    &hex(
-                        Point::new(lat.x + 1.5 * lat_r, lat.y - 3f32.sqrt() * lat_r * 0.5),
-                        lat_r,
-                    ),
-                    glow(0.05),
-                );
-
-                // Circuit traces — the 45°-jog runs the HUD's hex
-                // chain ends in, etched big and faint across the
-                // flanks the rings leave empty, each terminating in
-                // a haloed node dot.
-                let trace = |frame: &mut canvas::Frame, pts: &[Point], a: f32| {
-                    let path = Path::new(|b| {
-                        b.move_to(pts[0]);
-                        for pt in &pts[1..] {
-                            b.line_to(*pt);
-                        }
-                    });
-                    frame.stroke(
-                        &path,
-                        Stroke {
-                            style: Style::Solid(glow(a)),
-                            width: 1.5,
-                            ..Stroke::default()
-                        },
-                    );
-                    let end = pts[pts.len() - 1];
-                    frame.fill(&Path::circle(end, 2.5), glow(a * 1.8));
-                    frame.stroke(
-                        &Path::circle(end, 5.5),
-                        Stroke {
-                            style: Style::Solid(glow(a)),
+                            style: Style::Solid(iced::Color {
+                                a: if major { major_a } else { minor_a },
+                                ..ink
+                            }),
                             width: 1.0,
                             ..Stroke::default()
                         },
                     );
                 };
-                // Left flank, running in from the window edge; the
-                // jogs keep equal dx/dy so the diagonals hold 45°.
-                trace(
-                    frame,
-                    &[
-                        Point::new(0.0, h * 0.66),
-                        Point::new(w * 0.05, h * 0.66),
-                        Point::new(w * 0.05 + h * 0.06, h * 0.60),
-                        Point::new(w * 0.22, h * 0.60),
-                    ],
-                    0.10,
-                );
-                // Down from the top edge between the HUD and the
-                // small ring cluster.
-                trace(
-                    frame,
-                    &[
-                        Point::new(w * 0.70, 0.0),
-                        Point::new(w * 0.70, h * 0.10),
-                        Point::new(w * 0.70 - h * 0.05, h * 0.15),
-                        Point::new(w * 0.70 - h * 0.05, h * 0.24),
-                    ],
-                    0.08,
-                );
+                // Lines sit on half pixels so the 1 px strokes stay crisp.
+                let columns = (w / CELL).ceil() as i32;
+                for i in 1..=columns {
+                    let x = (i as f32 * CELL).floor() + 0.5;
+                    line(frame, Point::new(x, 0.0), Point::new(x, h), i % MAJOR == 0);
+                }
+                let rows = (h / CELL).ceil() as i32;
+                for i in 1..=rows {
+                    let y = (i as f32 * CELL).floor() + 0.5;
+                    line(frame, Point::new(0.0, y), Point::new(w, y), i % MAJOR == 0);
+                }
             });
             vec![geom]
         }
     }
 
     Canvas::new(Backdrop).width(Length::Fill).height(Length::Fill).into()
-}
-
-/// The Legacy Collection's header hexagon motif, upgraded from a
-/// flat row of pips to a honeycomb burst: a zigzag cluster whose
-/// lead hex burns hot (halo + bright core + rim) and whose tail
-/// decays through dimmer fills into bare outlines, with a circuit
-/// trace carrying the energy off to the right and terminating in
-/// a node dot. Decorative only; `height` pins the canvas so it
-/// slots into the nav row without affecting the strip's height.
-pub fn hex_chain<'a, M: 'a>(height: f32) -> Element<'a, M> {
-    use iced::widget::canvas::{self, Canvas, Path, Stroke, Style};
-    use iced::{Point, Rectangle, Renderer};
-
-    /// Hexes in the honeycomb cluster (zigzag, alternating above /
-    /// below the centerline).
-    const COUNT: usize = 7;
-    /// Length of the circuit trace running out of the last hex,
-    /// including the terminal node.
-    const TRACE: f32 = 30.0;
-
-    struct HexChain {
-        height: f32,
-    }
-
-    impl<M> canvas::Program<M> for HexChain {
-        type State = ();
-
-        fn draw(
-            &self,
-            _state: &(),
-            renderer: &Renderer,
-            theme: &Theme,
-            bounds: Rectangle,
-            _cursor: iced::mouse::Cursor,
-        ) -> Vec<canvas::Geometry> {
-            let mut frame = canvas::Frame::new(renderer, bounds.size());
-            let primary = theme.palette().primary;
-            let cy = bounds.height / 2.0;
-            // Hex circumradius sized so the zigzag (hex height
-            // √3·r plus the ±0.433r row stagger) fills the canvas.
-            let r = self.height / 2.6;
-
-            // Flat-top hexagon (points left/right), like BNLC's.
-            let hex = |c: Point, r: f32| {
-                Path::new(|b| {
-                    for k in 0..6 {
-                        let ang = std::f32::consts::FRAC_PI_3 * k as f32;
-                        let pt = Point::new(c.x + r * ang.cos(), c.y + r * ang.sin());
-                        if k == 0 {
-                            b.move_to(pt);
-                        } else {
-                            b.line_to(pt);
-                        }
-                    }
-                    b.close();
-                })
-            };
-
-            let center = |i: usize| {
-                Point::new(
-                    r + 1.0 + 1.5 * r * i as f32,
-                    // True honeycomb stagger: adjacent columns sit
-                    // ±(√3/4)·r off the centerline.
-                    cy + if i.is_multiple_of(2) { 0.433 * r } else { -0.433 * r },
-                )
-            };
-
-            for i in 0..COUNT {
-                let c = center(i);
-                match i {
-                    // Lead hex: soft halo underneath, hot core fill,
-                    // bright rim on top — the "live node".
-                    0 => {
-                        frame.fill(&hex(c, r * 1.55), iced::Color { a: 0.12, ..primary });
-                        frame.fill(&hex(c, r), mix(primary, iced::Color::WHITE, 0.25));
-                        frame.stroke(
-                            &hex(c, r),
-                            Stroke {
-                                style: Style::Solid(mix(primary, iced::Color::WHITE, 0.6)),
-                                width: 1.2,
-                                ..Stroke::default()
-                            },
-                        );
-                    }
-                    // Decaying solid tail.
-                    1 => frame.fill(&hex(c, r), iced::Color { a: 0.85, ..primary }),
-                    2 => frame.fill(&hex(c, r), iced::Color { a: 0.40, ..primary }),
-                    // Outline fade-out, floored so the tail never
-                    // quite vanishes (or goes negative).
-                    _ => frame.stroke(
-                        &hex(c, r),
-                        Stroke {
-                            style: Style::Solid(iced::Color {
-                                a: (0.50 - 0.12 * (i - 3) as f32).max(0.10),
-                                ..primary
-                            }),
-                            width: 1.5,
-                            ..Stroke::default()
-                        },
-                    ),
-                }
-            }
-
-            // Circuit trace out of the last hex: a short run at the
-            // hex's row, a 45° jog back to the centerline, then on
-            // to a terminal node dot.
-            let last = center(COUNT - 1);
-            let jog = (last.y - cy).abs();
-            let x0 = last.x + r + 1.0;
-            let trace = Path::new(|b| {
-                b.move_to(Point::new(x0, last.y));
-                b.line_to(Point::new(x0 + 5.0, last.y));
-                b.line_to(Point::new(x0 + 5.0 + jog, cy));
-                b.line_to(Point::new(x0 + TRACE - 5.0, cy));
-            });
-            frame.stroke(
-                &trace,
-                Stroke {
-                    style: Style::Solid(iced::Color { a: 0.45, ..primary }),
-                    width: 1.5,
-                    ..Stroke::default()
-                },
-            );
-            frame.fill(
-                &Path::circle(Point::new(x0 + TRACE - 2.0, cy), 2.0),
-                iced::Color { a: 0.8, ..primary },
-            );
-
-            vec![frame.into_geometry()]
-        }
-    }
-
-    let r = height / 2.6;
-    let w = (r + 1.0 + 1.5 * r * (COUNT - 1) as f32) + r + 1.0 + TRACE + 2.0;
-    Canvas::new(HexChain { height })
-        .width(Length::Fixed(w))
-        .height(Length::Fixed(height))
-        .into()
 }
 
 /// The top accent strip, rendered under the HUD bar. 3-px tall,

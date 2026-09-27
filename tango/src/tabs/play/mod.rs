@@ -43,6 +43,9 @@ pub enum Message {
     /// on screen.
     CopyText(String),
     FightPressed,
+    /// Bottom strip: start the selected game on its own, with no link
+    /// code, server or network.
+    PlayOfflinePressed,
     Disconnect,
     /// Lobby UI: user picked a different match type. App routes
     /// this through Effect::SetMatchType so the resend
@@ -304,6 +307,7 @@ impl State {
                 crate::ui::copy_feedback::flash(lobby::LINK_CODE_FLASH_KEY);
                 Some(Effect::CopyText(s))
             }
+            Message::PlayOfflinePressed => Some(Effect::StartSinglePlayer),
             Message::FightPressed => {
                 // An empty bar means "just get me a lobby": generate a
                 // fresh random adjective-word-noun code and connect with
@@ -519,7 +523,12 @@ impl State {
             }
             .view()
         } else {
-            self.bottom_strip(lang, streamer_mode, loadout.patch_ready(scanners))
+            self.bottom_strip(
+                lang,
+                streamer_mode,
+                loadout.patch_ready(scanners),
+                loadout.is_playable(),
+            )
         };
         let mut group: Element<'a, Message> = column![widgets::hud_scanline_bottom(), bottom].width(Fill).into();
         if let Some(phase) = swap {
@@ -675,6 +684,7 @@ impl State {
         lang: &'a LanguageIdentifier,
         streamer_mode: bool,
         patch_ready: bool,
+        playable: bool,
     ) -> Element<'a, Message> {
         const BOTTOM_SIZE: f32 = 15.0;
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
@@ -721,8 +731,33 @@ impl State {
         .width(Length::Fill)
         .into();
 
+        // Offline: the same single-player session the save view's Play
+        // button starts, offered here so it never depends on a save
+        // editor or a connection.
+        let offline_button: Element<'a, Message> = {
+            let label = row![
+                Icon::Gamepad2.widget().size(BOTTOM_SIZE),
+                text(t!(lang, "play-offline")).size(BOTTOM_SIZE),
+            ]
+            .spacing(8)
+            .align_y(Alignment::Center);
+            let mut btn = button(label)
+                .padding(BOTTOM_CTA_PAD)
+                .height(Length::Fixed(crate::ui::style::BAR_CONTROL_HEIGHT))
+                .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
+            if playable && patch_ready {
+                btn = btn.on_press(Message::PlayOfflinePressed);
+            }
+            iced::widget::tooltip(
+                btn,
+                text(t!(lang, "play-offline-tooltip")).size(TEXT_CAPTION),
+                iced::widget::tooltip::Position::Top,
+            )
+            .into()
+        };
+
         container(
-            row![link_input, fight_button]
+            row![offline_button, link_input, fight_button]
                 .spacing(10)
                 .align_y(Alignment::Center)
                 .padding([10, 8]),

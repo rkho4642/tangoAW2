@@ -240,12 +240,13 @@ pub fn view<'a>(
         .identity_strip(lang, loaded, navi_edit, editing_session, actions_tail);
 
     if available.is_empty() {
-        // No section tabs (an unsupported / empty save) — the strip still
-        // goes up, since it carries Play.
-        return column![navi_strip, placeholder(t!(lang, "save-empty"))]
-            .spacing(style::PANE_GAP)
-            .width(Fill)
-            .into();
+        // No section tabs — a game with no save views at all (Advance
+        // Wars 2). tangoAW2 starts single-player from the Play tab's
+        // "Play offline" button, so there is nothing to show here; a lone
+        // strip or an empty "no data" card would only suggest something
+        // is missing.
+        let _ = navi_strip;
+        return column![].width(Fill).into();
     }
     let active = state
         .active_tab

@@ -2,19 +2,19 @@
 LANGUAGE = Tiếng Việt
 
 crash =
-    Tango đã gặp lỗi và ngừng hoạt động!
+    tangoAW2 đã gặp lỗi và ngừng hoạt động!
 
     Khi báo lỗi, hãy đính kèm file log sau đây:
 
     {$path}
 crash-no-log =
-    Tango đã gặp lỗi và ngừng hoạt động!
+    tangoAW2 đã gặp lỗi và ngừng hoạt động!
 
     {$error}
-window-title = tangoGBA
-    .running = Tango (đang chạy)
+window-title = tangoAW2
+    .running = tangoAW2 (đang chạy)
 # Tooltip on the top bar's close button (fullscreen only).
-window-quit = Thoát Tango
+window-quit = Thoát tangoAW2
 play-training = Luyện tập
 training-pip = Màn hình đối thủ
 training-opponent-view = Hiển thị đối thủ
@@ -69,12 +69,6 @@ settings-theme = Giao diện
 settings-theme-dark = Tối
 settings-theme-light = Sáng
 settings-accent = Màu nhấn
-settings-accent-tango-green = Xanh lá Tango
-settings-accent-megaman-blue = Xanh dương MegaMan
-settings-accent-protoman-red = Đỏ ProtoMan
-settings-accent-roll-pink = Hồng Roll
-settings-accent-gutsman-yellow = Vàng GutsMan
-settings-accent-bass-purple = Tím Bass
 settings-group-profile = Hồ sơ
 settings-group-interface = Hiển thị
 settings-group-storage = Lưu trữ
@@ -149,7 +143,6 @@ save-template-pick = Chọn mẫu…
 empty-scanning-title = Đang quét thư viện…
 empty-scanning-body = Đang đọc ROM, save và bản vá.
 empty-no-roms-title = Không tìm thấy ROM nào
-empty-no-roms-body = Đặt các tệp .gba Battle Network / Rockman EXE của bạn vào:
 empty-no-saves-title = Không có save cho game này
 empty-no-saves-body = Đặt tệp .sav cho game này vào:
 play-patch-downloading = ↓ …
@@ -164,15 +157,15 @@ play-status-waiting-opponent = Đang đợi đối thủ…
 play-status-negotiating = Đang thương lượng…
 play-status-failed = Kết nối thất bại: { $error }
 play-status-peer-disconnected = Người chơi kia đã rời đi.
-play-status-signaling-version-too-old = Phiên bản Tango này quá cũ để chơi trực tuyến. Vui lòng cập nhật Tango.
-play-status-signaling-version-too-new = Máy chủ ghép trận đã lỗi thời so với phiên bản Tango này.
+play-status-signaling-version-too-old = Phiên bản tangoAW2 này quá cũ để chơi trực tuyến. Vui lòng cập nhật tangoAW2.
+play-status-signaling-version-too-new = Máy chủ ghép trận đã lỗi thời so với phiên bản tangoAW2 này.
 play-status-signaling-rejected = Máy chủ ghép trận đã từ chối kết nối: { $reason }
 play-status-signaling-unreachable = Không thể kết nối tới máy chủ ghép trận: { $error }
 play-status-signaling-failed = Ghép trận thất bại: { $error }
 play-status-peer-connection-failed = Không thể kết nối tới người chơi kia: { $error }
 play-status-negotiate-expected-hello = Người chơi kia không gửi tín hiệu bắt tay mong đợi.
-play-status-negotiate-version-too-old = Người chơi kia đang dùng phiên bản Tango cũ hơn.
-play-status-negotiate-version-too-new = Người chơi kia đang dùng phiên bản Tango mới hơn.
+play-status-negotiate-version-too-old = Người chơi kia đang dùng phiên bản tangoAW2 cũ hơn.
+play-status-negotiate-version-too-new = Người chơi kia đang dùng phiên bản tangoAW2 mới hơn.
 play-status-negotiate-failed = Đã xảy ra lỗi trong khi đàm phán: { $error }
 lobby-waiting = Đang đợi…
 lobby-no-game = (chưa chọn game)
@@ -200,8 +193,8 @@ lobby-compat-fetching-patch = Đang tải bản vá cho trận này…
 lobby-compat-fetching-patch-progress = Đang tải bản vá cho trận này… { $percent }%
 lobby-compat-patch-failed = Không tải được bản vá cho trận này
 lobby-compat-version-mismatch = Phiên bản game không khớp (khác bản vá / ROM).
-lobby-compat-sim-too-old = Netplay của game này đã thay đổi kể từ phiên bản Tango của đối thủ — họ cần cập nhật.
-lobby-compat-sim-too-new = Netplay của game này đã thay đổi kể từ phiên bản Tango của bạn — bạn cần cập nhật.
+lobby-compat-sim-too-old = Netplay của game này đã thay đổi kể từ phiên bản tangoAW2 của đối thủ — họ cần cập nhật.
+lobby-compat-sim-too-new = Netplay của game này đã thay đổi kể từ phiên bản tangoAW2 của bạn — bạn cần cập nhật.
 lobby-compat-match-mismatch = Kiểu trận không khớp.
 lobby-ready = Sẵn sàng
 lobby-unready = Chưa sẵn sàng
@@ -292,7 +285,6 @@ playback-disconnect-prompt = Ngắt kết nối khỏi trận này?
 playback-disconnect-detail = Bạn sẽ kết thúc trận đấu với đối thủ.
 playback-cancel = Hủy
 replays-select-prompt = Chọn một replay.
-replays-streamer-hidden = Lịch sử HP và chip bị ẩn trong chế độ streamer.
 replays-streamer-show = Hiện
 replays-queue-add = Thêm vào hàng đợi
 replays-queue-count = { $n } trong hàng đợi
@@ -383,10 +375,9 @@ updater-up-to-date = v{ $version } (đã cập nhật)
 updater-downloading = Đang tải: { $pct }%
 updater-ready-to-update = Đã tải xong, sẵn sàng cài.
 updater-update-now = Cập nhật ngay
-welcome-title = Chào mừng đến với Tango!
+welcome-title = Chào mừng đến với tangoAW2!
 welcome-subtitle = Còn vài bước nữa trước khi bạn bắt đầu chơi.
 welcome-step-roms = Thêm ROM của bạn
-welcome-step-roms-description = Đặt các tệp .gba Battle Network / Rockman EXE của bạn vào:
 welcome-step-roms-detected = Đã phát hiện { $count } ROM.
 welcome-step-nickname = Đặt biệt danh
 welcome-step-nickname-description = Bạn có thể đổi bất cứ lúc nào trong Cài đặt.

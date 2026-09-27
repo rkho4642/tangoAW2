@@ -2,17 +2,17 @@
 # Endonym for this locale; shown in the language picker.
 LANGUAGE = 繁體中文（台灣、香港、澳門）
 
-window-title = tangoGBA
+window-title = tangoAW2
 # Tooltip on the top bar's close button (fullscreen only).
-window-quit = 結束 Tango
+window-quit = 結束 tangoAW2
 
 # Crash handler dialogs (parent process)
-crash = 糟糕，Tango 遇到錯誤並已當機！
+crash = 糟糕，tangoAW2 遇到錯誤並已當機！
 
     回報此當機時，請附上以下記錄檔：
 
     { $path }
-crash-no-log = 糟糕，Tango 遇到錯誤並已當機！
+crash-no-log = 糟糕，tangoAW2 遇到錯誤並已當機！
 
     { $error }
 
@@ -52,7 +52,6 @@ empty-scanning-body = 正在讀取 ROM、存檔與補丁。
 
 # Empty-state hints
 empty-no-roms-title = 找不到遊戲 ROM
-empty-no-roms-body = 將你的 Battle Network / Rockman EXE .gba 檔案放入：
 empty-no-saves-title = 此遊戲沒有存檔檔案
 empty-no-saves-body = 將此遊戲的 .sav 檔案放入：
 play-patch-downloading = ↓ …
@@ -83,15 +82,15 @@ play-status-waiting-opponent = 正在等待對手…
 play-status-negotiating = 正在協商…
 play-status-failed = 連線失敗：{ $error }
 play-status-peer-disconnected = 對方已離開。
-play-status-signaling-version-too-old = 此版本的 Tango 過舊，無法進行連線對戰。請更新 Tango。
-play-status-signaling-version-too-new = 配對伺服器版本過舊，不支援此版本的 Tango。
+play-status-signaling-version-too-old = 此版本的 tangoAW2 過舊，無法進行連線對戰。請更新 tangoAW2。
+play-status-signaling-version-too-new = 配對伺服器版本過舊，不支援此版本的 tangoAW2。
 play-status-signaling-rejected = 配對伺服器拒絕了連線：{ $reason }
 play-status-signaling-unreachable = 無法連線至配對伺服器：{ $error }
 play-status-signaling-failed = 配對失敗：{ $error }
 play-status-peer-connection-failed = 無法連線至對方：{ $error }
 play-status-negotiate-expected-hello = 對方未傳送預期的交握訊息。
-play-status-negotiate-version-too-old = 對方執行的是較舊版本的 Tango。
-play-status-negotiate-version-too-new = 對方執行的是較新版本的 Tango。
+play-status-negotiate-version-too-old = 對方執行的是較舊版本的 tangoAW2。
+play-status-negotiate-version-too-new = 對方執行的是較新版本的 tangoAW2。
 play-status-negotiate-failed = 協商過程中發生錯誤：{ $error }
 lobby-waiting = 等待中…
 lobby-no-game = （未選擇遊戲）
@@ -114,8 +113,8 @@ lobby-compat-fetching-patch = 正在下載本場對戰的補丁…
 lobby-compat-fetching-patch-progress = 正在下載本場對戰的補丁… { $percent }%
 lobby-compat-patch-failed = 無法下載本場對戰的補丁
 lobby-compat-version-mismatch = 遊戲版本不一致（補丁 / ROM 不同）。
-lobby-compat-sim-too-old = 本遊戲的連線對戰在對方的 Tango 版本之後有所變更 — 對方需要更新。
-lobby-compat-sim-too-new = 本遊戲的連線對戰在你的 Tango 版本之後有所變更 — 你需要更新。
+lobby-compat-sim-too-old = 本遊戲的連線對戰在對方的 tangoAW2 版本之後有所變更 — 對方需要更新。
+lobby-compat-sim-too-new = 本遊戲的連線對戰在你的 tangoAW2 版本之後有所變更 — 你需要更新。
 lobby-compat-match-mismatch = 對戰類型不一致。
 lobby-ready = 準備
 lobby-unready = 取消準備
@@ -239,7 +238,6 @@ playback-priming-replay-detail = 遊戲正在啟動到戰鬥畫面。
 playback-priming-elapsed = { $secs } 秒
 playback-priming-failed = 遊戲未能進入戰鬥。
 replays-select-prompt = 選擇一個重播。
-replays-streamer-hidden = HP 與晶片記錄在實況模式下隱藏。
 replays-streamer-show = 顯示
 replays-queue-add = 加入佇列
 replays-queue-count = 佇列中 { $n } 個
@@ -364,12 +362,6 @@ settings-theme = 主題
 settings-theme-dark = 深色
 settings-theme-light = 淺色
 settings-accent = 強調色
-settings-accent-tango-green = 探戈綠
-settings-accent-megaman-blue = 洛克人藍
-settings-accent-protoman-red = 布魯斯紅
-settings-accent-roll-pink = 羅爾粉紅
-settings-accent-gutsman-yellow = 氣力人黃
-settings-accent-bass-purple = 佛魯特紫
 settings-group-profile = 個人資料
 settings-group-interface = 介面
 settings-group-storage = 儲存
@@ -413,11 +405,10 @@ updater-ready-to-update = 更新已下載，準備安裝。
 updater-update-now = 立即更新
 
 # Welcome screen
-welcome-title = 歡迎使用 Tango！
+welcome-title = 歡迎使用 tangoAW2！
 welcome-subtitle = 開始遊玩前，你只需完成幾個步驟。
 welcome-continue = 繼續
 welcome-step-roms = 新增你的 ROM
-welcome-step-roms-description = 將你的 Battle Network / Rockman EXE .gba 檔案放入：
 welcome-step-roms-detected = 偵測到 { $count } 個 ROM。
 welcome-step-nickname = 設定你的暱稱
 welcome-step-nickname-description = 你可以隨時在設定中變更。

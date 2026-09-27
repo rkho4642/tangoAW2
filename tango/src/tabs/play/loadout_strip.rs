@@ -376,6 +376,11 @@ pub fn game_row<'a>(
     // the middle of it. Laid out this way the fixed 8 + 8 + version
     // width comes off the row identically in both states, so the game
     // picker never moves.
+    // tangoAW2 has no patch server (`flavor::PATCHES`): the game
+    // picker takes the whole row.
+    if !crate::flavor::PATCHES {
+        return family_picker(loadout, lang, scanners).width(Length::Fill).into();
+    }
     let gap = || iced::widget::space::horizontal().width(Length::Fixed(8.0));
     let download = patch_download(loadout, lang, downloads);
     // The game the download belongs to can't be changed out from under

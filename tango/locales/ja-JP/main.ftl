@@ -2,17 +2,17 @@
 # Endonym for this locale; shown in the language picker.
 LANGUAGE = 日本語
 
-window-title = tangoGBA
+window-title = tangoAW2
 # Tooltip on the top bar's close button (fullscreen only).
-window-quit = Tango を終了
+window-quit = tangoAW2 を終了
 
 # Crash handler dialogs (parent process)
-crash = Tango がエラーで終了しました。
+crash = tangoAW2 がエラーで終了しました。
 
     報告の際は次のログファイルを添付してください：
 
     { $path }
-crash-no-log = Tango がエラーで終了しました。
+crash-no-log = tangoAW2 がエラーで終了しました。
 
     { $error }
 
@@ -52,7 +52,6 @@ empty-scanning-body = ROM・セーブ・パッチを読み込んでいます。
 
 # Empty-state hints
 empty-no-roms-title = ROMが見つかりません
-empty-no-roms-body = バトルネットワーク／ロックマンエグゼの .gba ファイルを次の場所に置いてください：
 empty-no-saves-title = このゲームのセーブがありません
 empty-no-saves-body = このゲームの .sav ファイルを次の場所に置いてください：
 play-patch-downloading = ↓ …
@@ -83,15 +82,15 @@ play-status-waiting-opponent = 対戦相手を待っています…
 play-status-negotiating = ネゴシエーション中…
 play-status-failed = 接続失敗: { $error }
 play-status-peer-disconnected = 相手が退出しました。
-play-status-signaling-version-too-old = このバージョンのTangoはオンライン対戦には古すぎます。Tangoを更新してください。
-play-status-signaling-version-too-new = マッチメイキングサーバーがこのバージョンのTangoに対応していません。
+play-status-signaling-version-too-old = このバージョンのtangoAW2はオンライン対戦には古すぎます。tangoAW2を更新してください。
+play-status-signaling-version-too-new = マッチメイキングサーバーがこのバージョンのtangoAW2に対応していません。
 play-status-signaling-rejected = マッチメイキングサーバーに接続を拒否されました: { $reason }
 play-status-signaling-unreachable = マッチメイキングサーバーに接続できませんでした: { $error }
 play-status-signaling-failed = マッチメイキングに失敗しました: { $error }
 play-status-peer-connection-failed = 相手に接続できませんでした: { $error }
 play-status-negotiate-expected-hello = 相手から想定したハンドシェイクが届きませんでした。
-play-status-negotiate-version-too-old = 相手は古いバージョンのTangoを使用しています。
-play-status-negotiate-version-too-new = 相手は新しいバージョンのTangoを使用しています。
+play-status-negotiate-version-too-old = 相手は古いバージョンのtangoAW2を使用しています。
+play-status-negotiate-version-too-new = 相手は新しいバージョンのtangoAW2を使用しています。
 play-status-negotiate-failed = ネゴシエーション中にエラーが発生しました: { $error }
 lobby-waiting = 待機中…
 lobby-no-game = （ゲーム未選択）
@@ -119,8 +118,8 @@ lobby-compat-fetching-patch = この対戦のパッチをダウンロードし�
 lobby-compat-fetching-patch-progress = この対戦のパッチをダウンロードしています… { $percent }%
 lobby-compat-patch-failed = この対戦のパッチをダウンロードできませんでした
 lobby-compat-version-mismatch = ゲームのバージョンが一致しません（パッチ／ROM が異なる）。
-lobby-compat-sim-too-old = このゲームのネットプレイは相手のTangoのバージョン以降に変更されました — 相手の更新が必要です。
-lobby-compat-sim-too-new = このゲームのネットプレイはあなたのTangoのバージョン以降に変更されました — 更新が必要です。
+lobby-compat-sim-too-old = このゲームのネットプレイは相手のtangoAW2のバージョン以降に変更されました — 相手の更新が必要です。
+lobby-compat-sim-too-new = このゲームのネットプレイはあなたのtangoAW2のバージョン以降に変更されました — 更新が必要です。
 lobby-compat-match-mismatch = 対戦モードが一致しません。
 lobby-ready = 準備完了
 lobby-unready = 取消
@@ -233,7 +232,6 @@ playback-disconnect-prompt = この試合から切断しますか？
 playback-disconnect-detail = 相手との試合を終了します。
 playback-cancel = キャンセル
 replays-select-prompt = リプレイを選択してください。
-replays-streamer-hidden = HPとチップの履歴は配信モードでは非表示です。
 replays-streamer-show = 表示
 replays-queue-add = キューに追加
 replays-queue-count = { $n }件キュー中
@@ -358,12 +356,6 @@ settings-theme = テーマ
 settings-theme-dark = ダーク
 settings-theme-light = ライト
 settings-accent = アクセントカラー
-settings-accent-tango-green = タンゴグリーン
-settings-accent-megaman-blue = ロックマンブルー
-settings-accent-protoman-red = ブルースレッド
-settings-accent-roll-pink = ロールピンク
-settings-accent-gutsman-yellow = ガッツマンイエロー
-settings-accent-bass-purple = フォルテパープル
 settings-group-profile = プロフィール
 settings-group-interface = インターフェース
 settings-group-storage = 保存先
@@ -399,11 +391,10 @@ updater-ready-to-update = 更新の準備が完了しました。
 updater-update-now = 今すぐ更新
 
 # Welcome screen
-welcome-title = Tango へようこそ！
+welcome-title = tangoAW2 へようこそ！
 welcome-subtitle = 対戦できる前にいくつかの初期設定をしてください。
 welcome-continue = 続ける
 welcome-step-roms = ROM を追加
-welcome-step-roms-description = ロックマンエグゼ／Battle Network の .gba ファイルを次の場所に置いてください：
 welcome-step-roms-detected = { $count } 個の ROM を検出しました。
 welcome-step-nickname = ニックネームを設定
 welcome-step-nickname-description = 設定からいつでも変更できます。

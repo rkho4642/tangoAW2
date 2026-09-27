@@ -1,8 +1,6 @@
 //! Graphics pane: window, emulator display, DS screen arrangement.
 
 use super::*;
-// Explicit: macros reached only through the glob above are ambiguous.
-use sweeten::widget::column;
 
 fn ds_screen_stacking_choice(
     lang: &LanguageIdentifier,
@@ -80,7 +78,7 @@ pub(super) fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a co
         .iter()
         .find(|c| (c.value - config.ui_scale).abs() < f32::EPSILON)
         .cloned();
-    column![
+    let mut groups: Vec<Element<'a, Message>> = vec![
         settings_group(
             t!(lang, "settings-group-window"),
             vec![
@@ -115,13 +113,21 @@ pub(super) fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a co
                     t!(lang, "settings-fractional-scaling"),
                     toggle(config.fractional_scaling, Message::ToggleFractionalScaling),
                 ),
+            ]
+            .into_iter()
+            // The border is Legacy Collection art; tangoAW2 never has any.
+            .chain(crate::flavor::BATTLE_NETWORK_EXTRAS.then(|| {
                 option_row(
                     t!(lang, "settings-hide-emulator-border"),
                     toggle(config.hide_emulator_border, Message::ToggleHideEmulatorBorder),
-                ),
-            ],
+                )
+            }))
+            .collect(),
         ),
-        settings_group(
+    ];
+    // Only the Battle Network DS games have a second screen.
+    if crate::flavor::BATTLE_NETWORK_EXTRAS {
+        groups.push(settings_group(
             t!(lang, "settings-group-ds"),
             vec![
                 option_row::<Message>(t!(lang, "settings-ds-screen-stacking"), {
@@ -146,9 +152,10 @@ pub(super) fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a co
                     })
                 }),
             ],
-        ),
-    ]
-    .spacing(24)
-    .padding(style::PANE_PADDING)
-    .into()
+        ));
+    }
+    sweeten::widget::Column::with_children(groups)
+        .spacing(24)
+        .padding(style::PANE_PADDING)
+        .into()
 }

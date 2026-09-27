@@ -5,6 +5,8 @@ LANGUAGE = English
 window-title = tangoAW2
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Exit tangoAW2
+play-offline = Play offline
+play-offline-tooltip = Play Advance Wars 2 on your own, no internet needed. Everything is unlocked.
 
 # Crash handler dialogs (parent process)
 crash = Oops, tangoAW2 has encountered an error and has crashed!
@@ -76,7 +78,7 @@ opponent-view-stack-vertically = Stack vertically
 training-swap = Switch sides
 play-fight = Fight
 play-cancel = Leave
-play-status-idle = Enter a link code to start netplay, or leave blank for single-player.
+play-status-idle = Enter a link code and press Fight to play online, or press Play offline to play alone.
 play-status-connecting = Connecting to matchmaking server…
 play-status-direct-connecting = Connecting to opponent…
 play-status-waiting-opponent = Waiting for opponent…
@@ -372,10 +374,10 @@ settings-theme-light = Light
 settings-accent = Accent color
 settings-accent-tango-green = Green
 settings-accent-megaman-blue = Blue
-settings-accent-protoman-red = ProtoMan Red
-settings-accent-roll-pink = Roll Pink
-settings-accent-gutsman-yellow = GutsMan Yellow
-settings-accent-bass-purple = Bass Purple
+settings-accent-protoman-red = Red
+settings-accent-roll-pink = Pink
+settings-accent-gutsman-yellow = Yellow
+settings-accent-bass-purple = Purple
 settings-group-profile = Profile
 settings-group-interface = Interface
 settings-group-storage = Storage

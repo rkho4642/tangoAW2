@@ -329,6 +329,16 @@ impl App {
     /// save's patch overlay each have to still exist to come back.
     pub(super) fn restore_selection(&mut self) {
         self.loadout.restore(&self.config, &self.scanners);
+        // Nothing remembered yet (a first launch): land on the first game
+        // with a ROM and its first save, so there is nothing to pick.
+        if self.loadout.family().is_none() {
+            let first = self.scanners.roms.read().keys().next().copied();
+            if let Some(game) = first {
+                self.loadout
+                    .pick_family(game.family_and_variant().0, &self.scanners, &self.config);
+                self.persist_selection();
+            }
+        }
     }
 
     /// Record the current selection back to config; called after any

@@ -64,26 +64,26 @@ pub fn trans_flag_stops() -> [(f32, iced::Color); 5] {
 /// Green is the exception: the tango green reads on both.
 pub fn accent_color(accent: config::AccentColor, dark: bool) -> iced::Color {
     let rgb = match (accent, dark) {
-        (config::AccentColor::TangoGreen, _) => (0x4c, 0xaf, 0x50),
-        // The blue bomber's azure — bright enough to glow on
-        // charcoal; cobalt in daylight.
-        (config::AccentColor::MegaManBlue, true) => (0x4d, 0xa6, 0xff),
-        (config::AccentColor::MegaManBlue, false) => (0x14, 0x5c, 0xc2),
+        (config::AccentColor::Green, _) => (0x4c, 0xaf, 0x50),
+        // Azure — bright enough to glow on charcoal; cobalt in
+        // daylight.
+        (config::AccentColor::Blue, true) => (0x4d, 0xa6, 0xff),
+        (config::AccentColor::Blue, false) => (0x14, 0x5c, 0xc2),
         // Crimson, a step deeper than the danger red so alarms still
         // read a notch hotter than the chrome.
-        (config::AccentColor::ProtoManRed, true) => (0xef, 0x40, 0x56),
-        (config::AccentColor::ProtoManRed, false) => (0xb7, 0x1c, 0x30),
-        (config::AccentColor::RollPink, true) => (0xff, 0x6e, 0xa8),
-        (config::AccentColor::RollPink, false) => (0xc2, 0x2f, 0x6d),
-        // GutsMan's metallic amber-gold — deeper than the selection
+        (config::AccentColor::Red, true) => (0xef, 0x40, 0x56),
+        (config::AccentColor::Red, false) => (0xb7, 0x1c, 0x30),
+        (config::AccentColor::Pink, true) => (0xff, 0x6e, 0xa8),
+        (config::AccentColor::Pink, false) => (0xc2, 0x2f, 0x6d),
+        // Metallic amber-gold — deeper than the selection
         // gold, which deliberately stays gold alongside it. Light
         // mode runs bronze (bright gold on cream has no contrast).
-        (config::AccentColor::GutsManYellow, true) => (0xe6, 0xb4, 0x22),
-        (config::AccentColor::GutsManYellow, false) => (0x96, 0x71, 0x18),
-        // Bass's aura violet — bright enough to glow on charcoal;
+        (config::AccentColor::Yellow, true) => (0xe6, 0xb4, 0x22),
+        (config::AccentColor::Yellow, false) => (0x96, 0x71, 0x18),
+        // Violet — bright enough to glow on charcoal;
         // royal purple in daylight for the same reason as the blues.
-        (config::AccentColor::BassPurple, true) => (0xae, 0x6f, 0xf5),
-        (config::AccentColor::BassPurple, false) => (0x6a, 0x35, 0xb5),
+        (config::AccentColor::Purple, true) => (0xae, 0x6f, 0xf5),
+        (config::AccentColor::Purple, false) => (0x6a, 0x35, 0xb5),
     };
     iced::Color::from_rgb(rgb.0 as f32 / 255.0, rgb.1 as f32 / 255.0, rgb.2 as f32 / 255.0)
 }

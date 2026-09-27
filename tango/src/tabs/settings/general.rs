@@ -2,7 +2,7 @@
 
 use super::*;
 // Explicit: macros reached only through the glob above are ambiguous.
-use sweeten::widget::{column, row};
+use sweeten::widget::row;
 
 /// A [`config::ThemeMode`] as a pick_list [`Choice`], labeled in the
 /// UI language (mirrors [`crate::i18n::LanguageChoice`]).
@@ -22,18 +22,18 @@ fn accent_choice(lang: &LanguageIdentifier, accent: config::AccentColor) -> Choi
     Choice::new(
         accent,
         match accent {
-            config::AccentColor::TangoGreen => t!(lang, "settings-accent-tango-green"),
-            config::AccentColor::MegaManBlue => t!(lang, "settings-accent-megaman-blue"),
-            config::AccentColor::ProtoManRed => t!(lang, "settings-accent-protoman-red"),
-            config::AccentColor::RollPink => t!(lang, "settings-accent-roll-pink"),
-            config::AccentColor::GutsManYellow => t!(lang, "settings-accent-gutsman-yellow"),
-            config::AccentColor::BassPurple => t!(lang, "settings-accent-bass-purple"),
+            config::AccentColor::Green => t!(lang, "settings-accent-tango-green"),
+            config::AccentColor::Blue => t!(lang, "settings-accent-megaman-blue"),
+            config::AccentColor::Red => t!(lang, "settings-accent-protoman-red"),
+            config::AccentColor::Pink => t!(lang, "settings-accent-roll-pink"),
+            config::AccentColor::Yellow => t!(lang, "settings-accent-gutsman-yellow"),
+            config::AccentColor::Purple => t!(lang, "settings-accent-bass-purple"),
         },
     )
 }
 
 pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
-    column![
+    let mut groups: Vec<Element<'a, Message>> = vec![
         settings_group(
             t!(lang, "settings-group-profile"),
             vec![
@@ -80,12 +80,12 @@ pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a con
                 }),
                 option_row::<Message>(t!(lang, "settings-accent"), {
                     let options = vec![
-                        accent_choice(lang, config::AccentColor::TangoGreen),
-                        accent_choice(lang, config::AccentColor::MegaManBlue),
-                        accent_choice(lang, config::AccentColor::ProtoManRed),
-                        accent_choice(lang, config::AccentColor::RollPink),
-                        accent_choice(lang, config::AccentColor::GutsManYellow),
-                        accent_choice(lang, config::AccentColor::BassPurple),
+                        accent_choice(lang, config::AccentColor::Green),
+                        accent_choice(lang, config::AccentColor::Blue),
+                        accent_choice(lang, config::AccentColor::Red),
+                        accent_choice(lang, config::AccentColor::Pink),
+                        accent_choice(lang, config::AccentColor::Yellow),
+                        accent_choice(lang, config::AccentColor::Purple),
                     ];
                     let selected = options.iter().find(|c| c.value == config.accent).cloned();
                     widgets::picker(options, selected, |c: Choice<config::AccentColor>| {
@@ -115,23 +115,6 @@ pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a con
             )],
         ),
         settings_group(
-            t!(lang, "settings-group-patches"),
-            vec![
-                option_row::<Message>(
-                    t!(lang, "settings-patch-repo"),
-                    text_input("", &config.patch_repo)
-                        .on_input(Message::PatchRepoChanged)
-                        .padding(STANDARD_PADDING)
-                        .width(Length::Fixed(380.0))
-                        .style(widgets::chunky_text_input),
-                ),
-                option_row(
-                    t!(lang, "settings-enable-patch-autoupdate"),
-                    toggle(config.enable_patch_autoupdate, Message::TogglePatchAutoupdate),
-                ),
-            ],
-        ),
-        settings_group(
             t!(lang, "settings-group-updates"),
             vec![
                 option_row(
@@ -144,8 +127,32 @@ pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a con
                 ),
             ],
         ),
-    ]
-    .spacing(24)
-    .padding(style::PANE_PADDING)
-    .into()
+    ];
+    // The patch server is off in tangoAW2 (see `flavor::PATCHES`).
+    if crate::flavor::PATCHES {
+        groups.insert(
+            3,
+            settings_group(
+                t!(lang, "settings-group-patches"),
+                vec![
+                    option_row::<Message>(
+                        t!(lang, "settings-patch-repo"),
+                        text_input("", &config.patch_repo)
+                            .on_input(Message::PatchRepoChanged)
+                            .padding(STANDARD_PADDING)
+                            .width(Length::Fixed(380.0))
+                            .style(widgets::chunky_text_input),
+                    ),
+                    option_row(
+                        t!(lang, "settings-enable-patch-autoupdate"),
+                        toggle(config.enable_patch_autoupdate, Message::TogglePatchAutoupdate),
+                    ),
+                ],
+            ),
+        );
+    }
+    sweeten::widget::Column::with_children(groups)
+        .spacing(24)
+        .padding(style::PANE_PADDING)
+        .into()
 }

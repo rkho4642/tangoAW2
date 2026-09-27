@@ -22,6 +22,7 @@ impl App {
         // listing to the second rather than walking that tree twice.
         iced::Task::perform(
             async move {
+                ensure_starter_save(&config.saves_path());
                 let listings = Catalog::list(crate::library::storage(), &config).await;
                 let replays = listings.replays.clone();
                 let _ = tokio::task::spawn_blocking(move || {
@@ -172,6 +173,11 @@ impl App {
                 );
                 self.restore_selection();
                 self.refresh_loaded();
+                // Test aid: `TANGOAW2_AUTOSTART=offline` presses Play
+                // offline as soon as the library is ready.
+                if std::env::var("TANGOAW2_AUTOSTART").as_deref() == Ok("offline") {
+                    return iced::Task::done(Message::Play(crate::tabs::play::Message::PlayOfflinePressed));
+                }
                 iced::Task::none()
             }
             RescanFollowup::BootReplays => {
@@ -224,5 +230,25 @@ impl App {
         } else {
             task
         }
+    }
+}
+
+/// A first launch has no save, and Advance Wars 2 needs none to play:
+/// drop in a blank cartridge save (erased 64 KiB Flash) so Play offline
+/// and Fight work straight after the ROM is added. Never touches a folder
+/// that already holds a save.
+fn ensure_starter_save(saves: &std::path::Path) {
+    let has_save = std::fs::read_dir(saves).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("sav")))
+    });
+    if has_save {
+        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(saves)
+        .and_then(|()| std::fs::write(saves.join("Advance Wars 2.sav"), vec![0xffu8; 0x10000]))
+    {
+        log::warn!("could not create the starter save: {e}");
     }
 }

@@ -555,10 +555,13 @@ impl<'a> Lobby<'a> {
 
         // Top-align so the captions sit on one line like a table
         // header row, whatever each control's height is.
-        row![match_col, delay_col, blind_col]
-            .spacing(20)
-            .align_y(Alignment::Start)
-            .into()
+        let mut cluster = row![match_col, delay_col].spacing(20).align_y(Alignment::Start);
+        // A blind setup hides a Battle Network folder; Advance Wars 2
+        // has no setup to hide, so tangoAW2 leaves the checkbox out.
+        if crate::flavor::BATTLE_NETWORK_EXTRAS {
+            cluster = cluster.push(blind_col);
+        }
+        cluster.into()
     }
 
     /// Match-type pick_list — options pulled from the current local

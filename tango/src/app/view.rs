@@ -28,8 +28,7 @@ impl App {
         let enter = self.screen_enter.progress(now);
 
         // First-run gate: no main UI until the user picks a nickname.
-        // Sits on the same cyberworld backdrop as the main shell so
-        // the first thing a new user sees is already the PET screen.
+        // Sits on the same map-room backdrop as the main shell.
         if self.config.nickname.is_none() {
             let roms_count = self.scanners.roms.read().len();
             let welcome = tabs::welcome::view(
@@ -41,7 +40,7 @@ impl App {
             )
             .map(Message::Welcome);
             return anim::slide_in_opt(
-                iced::widget::stack![widgets::cyber_backdrop(), welcome]
+                iced::widget::stack![widgets::map_backdrop(), welcome]
                     .width(Fill)
                     .height(Fill),
                 enter,
@@ -204,12 +203,12 @@ impl App {
         }
 
         // Post-match results: a full-screen moment between the session and
-        // the tabs — same chrome-less cyberworld composition as the welcome
+        // the tabs — same chrome-less map-room composition as the welcome
         // screen. The ScreenKey change animates the swap in both directions.
         if let Some(results) = self.session.results.as_ref() {
             let results_view =
                 session::view::results_view(lang, results).map(|m| Message::Session(session::Message::Results(m)));
-            let composed: Element<'_, Message> = iced::widget::stack![widgets::cyber_backdrop(), results_view]
+            let composed: Element<'_, Message> = iced::widget::stack![widgets::map_backdrop(), results_view]
                 .width(Fill)
                 .height(Fill)
                 .into();
@@ -291,11 +290,11 @@ impl App {
             }
         };
 
-        // Body content rides on the drawn cyberworld backdrop (the
-        // Legacy Collection's ring-and-hex PET screen). The content
-        // container itself paints no background, and the backdrop
-        // sits in a layer underneath — so tab switches slide just
-        // the content sideways while the cyberworld stays fixed
+        // Body content rides on the drawn map-room backdrop (navy
+        // with a faint sector grid). The content container itself
+        // paints no background, and the backdrop sits in a layer
+        // underneath — so tab switches slide just the content
+        // sideways while the grid stays fixed
         // (the top bar stays put too); welcome/session swaps glide
         // the whole window up.
         let mut body_content: Element<'_, Message> = container(body)
@@ -306,7 +305,7 @@ impl App {
         if let (Some(p), EnterScope::Body { dx }) = (enter, self.screen_enter_scope) {
             body_content = anim::slide_in(body_content, p, iced::Vector::new(dx, 0.0));
         }
-        let body_surface: Element<'_, Message> = iced::widget::stack![widgets::cyber_backdrop(), body_content]
+        let body_surface: Element<'_, Message> = iced::widget::stack![widgets::map_backdrop(), body_content]
             .width(Fill)
             .height(Fill)
             .into();
@@ -349,7 +348,7 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool, fullscreen
     use lucide_icons::Icon;
     use std::sync::LazyLock;
 
-    // Small Tango logo at the left edge of the nav strip.
+    // Small tangoAW2 logo at the left edge of the nav strip.
     // Uses `icon.png` (the standalone logo mark) — the emblem
     // image is the long About-page banner, not what we want
     // next to a button-sized tab strip. Parsed once via
@@ -379,16 +378,12 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool, fullscreen
         ),
         tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
         horizontal_space(),
-        // Decorative hexagon burst — the Legacy Collection's
-        // header motif, trailing off ahead of the utility tabs.
-        // Sized just shy of the chips so it fills the band.
-        widgets::hex_chain(32.0),
         // Patches + Settings = low-emphasis utility tabs.
         // Patch management is an occasional maintenance chore,
         // not a destination, so it doesn't get equal billing
         // with Play/Replays — icon-only on the right, with the
         // label exposed as a hover tooltip.
-        // tangoGBA applies its own Advance Wars 2 patches in memory,
+        // tangoAW2 applies its own Advance Wars 2 patches in memory,
         // so the patch-server tab is not offered.
         widgets::nav_icon_tab_button(
             Icon::Settings,

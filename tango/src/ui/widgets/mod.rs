@@ -2,7 +2,7 @@
 //! [`tango_ui::widgets`] — re-exported here, so `crate::ui::widgets::*`
 //! covers both without call sites caring which side of the gamesupport
 //! boundary a widget lives on. The HUD chrome (`hud_bar`,
-//! `hud_scanline_top`, `cyber_backdrop`, `panel`), the nav tabs, the
+//! `hud_scanline_top`, `map_backdrop`, `panel`), the nav tabs, the
 //! ⋮ [`MenuButton`], and the match-analysis chart are all app-only.
 
 pub use tango_ui::widgets::*;
