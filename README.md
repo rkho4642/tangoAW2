@@ -34,9 +34,32 @@ No game is included. You need your own copy of the cartridge dumped to a
   War Room keep their story armies.
 - **Black Hole in the Design Room.** Build maps with a Black Hole army and
   Black Hole's inventions: minicannons, laser, Black Cannons, Black
-  Factory, Volcano and Deathray. See [Design Room](#design-room-black-hole-and-its-inventions-offline).
+  Factory, Volcano and Deathray, and switch back to Yellow Comet any
+  time. See [Design Room](#design-room-black-hole-and-its-inventions-offline).
+- **Play as Black Hole with its inventions.** The Black Factory deploys
+  units for you and the Deathray fires on your enemies, like in the
+  campaign. See [inventions in battle](#black-holes-inventions-in-battle).
 - **Play offline** without a connection, or online with a friend through a
   link code or a direct connection.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/black-hole-teams.png" width="360" alt="Black Hole picked on the Teams screen"></td>
+<td><img src="docs/screenshots/black-hole-versus.png" width="360" alt="A Black Hole army in a Versus battle"></td>
+</tr>
+<tr>
+<td align="center">Black Hole on the Teams screen (SELECT)</td>
+<td align="center">Black Hole in battle</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/black-hole-4-armies.png" width="360" alt="Black Hole in a four-army game"></td>
+<td><img src="docs/screenshots/black-hole-3-armies-battle.png" width="360" alt="Black Hole in a three-army battle"></td>
+</tr>
+<tr>
+<td align="center">Four armies</td>
+<td align="center">Three armies</td>
+</tr>
+</table>
 
 ## Get it
 
@@ -72,30 +95,138 @@ In Versus, change any army's colour on the Teams screen with **SELECT**
 
 ## Design Room: Black Hole and its inventions (offline)
 
-In **Design Room → Map**, tangoAW2 adds Black Hole to the map editor:
+**Design Room → Map** gets Black Hole's army and its inventions. Keyboard
+keys are in brackets (change them in Settings).
 
-- **Black Hole army.** On a building or unit in the tool bars (R for
-  terrain, L for units), press **UP** past Yellow Comet to get Black Hole.
-  Black Hole shares Yellow Comet's slot, so a design map has one or the
-  other, just like the campaign. The choice is saved with the map, and in
-  Versus that army starts as Black Hole on the Teams screen.
-- **Inventions.** Highlight **Silo** in the terrain bar and press
-  **UP/DOWN** to pick an invention; its name shows in the top-right
-  corner. Press A to choose it, then A on the map to place it:
-  minicannons (all four directions), laser, Black Cannon (facing down or
-  up), Black Factory, Volcano and Deathray. Big structures are placed
-  around the cursor and are refused if they would leave the map or cover
-  a building or unit. A map can have the Black Factory or the Volcano,
-  not both (the game draws them from the same graphics memory).
-- The editor has no pictures for inventions, so tangoAW2 outlines and
-  labels them on the map. In battle they appear and act like the
-  campaign's: cannons and lasers fire on Black Hole's turn, the factory
-  builds Black Hole units. They only act for an army that is Black Hole.
-- Save the map (**SELECT → File → Save**) and play it from **Versus → New →
-  Design Maps**.
-- Design maps live in your save. An online match runs on player 1's save,
-  and tangoAW2 picks who is player 1 when the match starts, so your design
-  maps are there online only when you are player 1.
+| Button | Key |
+| --- | --- |
+| A / B | Z / X |
+| L / R | A / S |
+| START / SELECT | Enter / Space |
+
+<table>
+<tr>
+<td><img src="docs/screenshots/design-yellow-comet.png" width="240" alt="Yellow Comet buildings in the terrain bar"></td>
+<td><img src="docs/screenshots/design-black-hole.png" width="240" alt="UP turns them into Black Hole"></td>
+<td><img src="docs/screenshots/design-back-to-yellow-comet.png" width="240" alt="DOWN turns them back into Yellow Comet"></td>
+</tr>
+<tr>
+<td align="center">Yellow Comet</td>
+<td align="center">UP: Black Hole</td>
+<td align="center">DOWN: Yellow Comet again</td>
+</tr>
+</table>
+
+### Black Hole buildings and units
+
+1. Press **R** (S) to open the terrain bar, or **L** (A) for the unit bar.
+2. Highlight a building (HQ, City, Base, Airport, Port) or a unit.
+3. Press **UP** to walk through the armies: Orange Star, Blue Moon, Green
+   Earth, Yellow Comet. Press **UP** once more on Yellow Comet to get
+   **Black Hole**: its HQ, buildings and units, with its emblem.
+4. Press **A** (Z) to pick it, then **A** on the map to place it.
+
+**Getting Yellow Comet back.** Black Hole and Yellow Comet share one army
+slot, so a design map has one or the other, like the campaign. While
+Black Hole is showing, press **DOWN** once to go back to Yellow Comet;
+DOWN again gives Green Earth. The choice is for the whole map: switching
+back turns every Black Hole piece you've placed into Yellow Comet, and
+switching to Black Hole turns Yellow Comet's pieces black.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/design-units-black-hole.png" width="360" alt="Black Hole units in the unit bar"></td>
+<td><img src="docs/screenshots/design-units-yellow-comet.png" width="360" alt="DOWN: Yellow Comet units, and the placed base turns yellow"></td>
+</tr>
+<tr>
+<td align="center">Black Hole units</td>
+<td align="center">DOWN: Yellow Comet, placed pieces follow</td>
+</tr>
+</table>
+
+### Inventions
+
+1. Open the terrain bar (**R**) and highlight **Silo**.
+2. Press **UP/DOWN** to pick an invention. Its name shows in the top-right
+   corner: minicannon (facing down, up, left or right), laser, Black
+   Cannon (facing down or up), Black Factory, Volcano, Deathray.
+3. Press **A** to choose it, then **A** on the map to place it. Big ones
+   are placed around the cursor.
+
+The editor has no pictures for inventions, so tangoAW2 outlines and
+labels them on the map. A placement is refused if it would leave the map
+or cover a building or unit. A map holds up to 15 inventions, and the
+Black Factory or the Volcano but not both (the game draws them from the
+same graphics memory). To remove one, place any terrain on its labelled
+tile; the rest of it clears itself.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/design-invention-picker.png" width="360" alt="Picking the Black Factory on the Silo entry"></td>
+<td><img src="docs/screenshots/design-inventions-editor.png" width="360" alt="Minicannons, laser, Black Cannons and Deathray on a design map"></td>
+</tr>
+<tr>
+<td align="center">Silo + UP/DOWN picks an invention</td>
+<td align="center">Placed inventions, labelled</td>
+</tr>
+</table>
+
+### Saving and playing the map
+
+Save with **SELECT → File → Save**, then play it from **Versus → New →
+Design Maps**. The army you made Black Hole starts as Black Hole on the
+Teams screen. Set it to **1P** (the row under the portraits) to command
+it yourself, or leave it on **CP**. Design maps live in your save. An
+online match runs on player 1's save, and tangoAW2 picks player 1 when
+the match starts, so your design maps are there online only when you
+are player 1.
+
+## Black Hole's inventions in battle
+
+Inventions act at the start of Black Hole's turn, for a human player or
+the computer, offline and online. Units can't be destroyed by an
+invention; it leaves them at 1 HP at worst.
+
+- **Black Factory.** Deploys up to three free ground units on the row
+  under it, on the campaign's Factory Blues schedule (Tanks, Mechs,
+  Recons, Artillery, Neotanks and more, some days nothing). A door tile
+  that's occupied is skipped. The new units can move straight away.
+- **Deathray.** Fires every seventh Black Hole turn, straight down: a
+  strip three tiles wide from just below it to the edge of the map. It
+  hits enemy units only.
+- **Laser.** Fires every turn along its whole row and column and hits
+  every unit there, Black Hole's own included. Keep your units off its
+  lines.
+- **Minicannons** fire at an enemy in front of them every turn. **Black
+  Cannons** fire every other turn at an enemy in range. The **Volcano**
+  rains fire on the map.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/human-factory-spawn.png" width="360" alt="Factory units ready for a human Black Hole player"></td>
+<td><img src="docs/screenshots/human-factory-move.png" width="360" alt="Moving a Recon the factory built"></td>
+</tr>
+<tr>
+<td align="center">The factory's units, yours to command</td>
+<td align="center">Moving a factory-built Recon</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/human-deathray-before.png" width="360" alt="Before the Deathray fires"></td>
+<td><img src="docs/screenshots/human-deathray-fire.png" width="360" alt="The Deathray firing"></td>
+</tr>
+<tr>
+<td align="center">Before: an Orange Star infantry (5 HP) and a Black Hole Recon (10 HP) below the Deathray</td>
+<td align="center">The Deathray fires</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/human-deathray-after.png" width="360" alt="After: the enemy is at 1 HP, the Black Hole Recon is untouched"></td>
+<td><img src="docs/screenshots/human-laser.png" width="360" alt="The laser firing along its row and column"></td>
+</tr>
+<tr>
+<td align="center">After: the enemy is down to 1 HP, the Recon is untouched</td>
+<td align="center">The laser fires along its row and column</td>
+</tr>
+</table>
 
 ## Playing with a friend
 
