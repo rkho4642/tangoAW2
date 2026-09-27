@@ -5,6 +5,11 @@ on:
     tags:
       - "v*.*.*"
 
+# Every job uploads to the release, so every job needs write access. A
+# fork's default GITHUB_TOKEN is read-only.
+permissions:
+  contents: write
+
 jobs:
   create-release:
     runs-on: ubuntu-22.04
