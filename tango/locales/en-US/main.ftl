@@ -7,7 +7,7 @@ window-title = tangoAW2
 window-quit = Exit tangoAW2
 play-offline = Play offline
 play-offline-armies-map = Map colours
-play-offline-armies-tooltip = Armies for offline Versus: army 1 vs army 2. Campaign and War Room always use their own armies.
+play-offline-armies-tooltip = Where Versus colours start: army 1 vs army 2. Change any army on the Teams screen with SELECT (L goes back). Campaign and War Room keep their own armies.
 play-offline-tooltip = Play Advance Wars 2 on your own, no internet needed. Everything is unlocked.
 
 # Crash handler dialogs (parent process)

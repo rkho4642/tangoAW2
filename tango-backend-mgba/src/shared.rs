@@ -39,12 +39,18 @@ pub trait SharedGame: Sync {
     }
 
     /// Runs before every tick, with the console in hand: the place for a
-    /// game's runtime patches (Slippi-style memory writes). `mode` is the
-    /// session's match type for a netplay match or its replay, and for a
-    /// console played alone whatever its host picked (`None` for nothing). Must be a pure function of core state
-    /// and `mode`, like everything else that touches the simulation.
-    fn before_tick(&self, core: &mut mgba::core::Core, mode: Option<(u8, u8)>) {
+    /// game's runtime patches (Slippi-style memory writes). `keys` is the
+    /// joypad word about to reach the console (after [`merge`](Self::merge));
+    /// what comes back is what the console actually sees, so a patch can
+    /// take a button for itself. `mode` is the session's match type for a
+    /// netplay match or its replay, and for a console played alone
+    /// whatever its host picked (`None` for nothing). Must be a pure
+    /// function of core state, `mode` and `keys`, like everything else
+    /// that touches the simulation: state it keeps lives in the console's
+    /// RAM, so snapshots carry it through rollback.
+    fn before_tick(&self, core: &mut mgba::core::Core, mode: Option<(u8, u8)>, keys: u32) -> u32 {
         let _ = (core, mode);
+        keys
     }
 
     /// Whether `seat` should be shown nothing right now: a hot-seat game
@@ -104,8 +110,8 @@ impl SharedLink {
             if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
                 return Err(crate::Error::Cancelled);
             }
-            game.before_tick(inner.core_mut(0), mode);
-            inner.try_tick(&[0])?;
+            let word = game.before_tick(inner.core_mut(0), mode, 0);
+            inner.try_tick(&[word])?;
         }
         let core = inner.core_mut(0);
         core.set_audio_buffer_size(16384);
@@ -136,8 +142,8 @@ impl tango_match::Link for SharedLink {
 
     fn tick(&mut self, inputs: [HostInput; 2]) {
         let keys = inputs.map(|i| i.keys & JOYFLAGS_MASK);
-        self.game.before_tick(self.inner.core_mut(0), self.mode);
         let word = self.game.merge(self.inner.core(0), keys) & JOYFLAGS_MASK;
+        let word = self.game.before_tick(self.inner.core_mut(0), self.mode, word) & JOYFLAGS_MASK;
         self.inner.tick(&[word]);
     }
 
@@ -309,9 +315,12 @@ struct SharedSolo(SharedLink);
 impl tango_match::Console for SharedSolo {
     fn tick(&mut self, input: HostInput) -> Result<(), tango_match::Error> {
         let link = &mut self.0;
-        link.game.before_tick(link.inner.core_mut(0), link.mode);
+        let word = link
+            .game
+            .before_tick(link.inner.core_mut(0), link.mode, input.keys & JOYFLAGS_MASK)
+            & JOYFLAGS_MASK;
         link.inner
-            .try_tick(&[input.keys & JOYFLAGS_MASK])
+            .try_tick(&[word])
             .map_err(|e| tango_match::Error::Backend(Box::new(crate::Error::from(e))))?;
         Ok(())
     }

@@ -24,9 +24,12 @@ No game is included. You need your own copy of the cartridge dumped to a
   edit, every Battle Map, Hard Campaign and the Sound Room. This is
   applied while the game runs, like Slippi's codes for Melee, so the ROM
   file is never modified. Save in-game and it sticks.
-- **Five armies.** Before a match you pick the armies, for example
-  "Black Hole vs Orange Star", online in the lobby and offline beside
-  Play offline. The choices are Orange Star, Blue Moon,
+- **Five armies, picked in the game.** On Versus' **Teams** screen, move
+  to an army and press **SELECT** (or **R**) to change its colour, **L**
+  to go back: Orange Star, Blue Moon, Yellow Comet, Green Earth and Black
+  Hole, each with its own emblem. The launcher's Armies choice (in the
+  lobby online, beside Play offline) just sets where the Teams screen
+  starts. The choices are Orange Star, Blue Moon,
   Yellow Comet, Green Earth and Black Hole. Units, buildings and
   banners take that army's colours.
 
@@ -59,9 +62,11 @@ Press **Play offline** on the Play tab. The game starts straight away, with
 everything unlocked, and needs no internet connection. Campaign, War Room,
 Versus against the computer and the Design Room all work.
 
-The picker beside Play offline sets the armies for offline Versus, for
-example "Black Hole vs Orange Star", or "Map colours" for each map's own.
-Campaign and War Room always keep their story armies.
+In Versus, change any army's colour on the Teams screen with **SELECT**
+(or **R**, and **L** to go back). The picker beside Play offline only sets
+the colours the Teams screen starts with, for example "Black Hole vs
+Orange Star", or "Map colours" for each map's own. Campaign and War Room
+always keep their story armies.
 
 ## Playing with a friend
 
@@ -83,15 +88,14 @@ Then:
 1. Pick the armies in the lobby. Both players see the same choice.
 2. Both press Ready. The game starts from power-on for both of you.
 3. Go to **Versus → New**, pick a map, and on the **Teams** screen set
-   army 2 to **2P** (move right to the "CP" marker and press up).
+   army 2 to **2P** (move right to the "CP" marker and press up). Either
+   player can press **SELECT** on an army to change its colour, Black Hole
+   included.
 4. Pick COs and rules. With fog of war on, the screen goes dark for the
    waiting player during the other army's turn, so nobody sees through
    the other side's fog.
 5. Play. Player 1 moves army 1 (and army 3 on four-army maps); player 2
    moves army 2 (and army 4).
-
-The army icons on the Teams screen still show the map's usual colours.
-The colours you picked take over once the battle starts.
 
 ## Running two copies on one computer
 
