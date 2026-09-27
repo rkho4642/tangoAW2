@@ -35,7 +35,7 @@ No game is included. You need your own copy of the cartridge dumped to a
 ## Get it
 
 Download the latest build for your system from
-[Releases](https://github.com/rkho4642/tangoAW2/releases):
+[Releases](https://github.com/rkoh46/tangoAW2/releases):
 
 | System | File |
 | --- | --- |
