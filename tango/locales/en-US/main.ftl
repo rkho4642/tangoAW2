@@ -4,15 +4,15 @@ LANGUAGE = English
 
 window-title = tangoGBA
 # Tooltip on the top bar's close button (fullscreen only).
-window-quit = Exit Tango
+window-quit = Exit tangoGBA
 
 # Crash handler dialogs (parent process)
-crash = Oops, Tango has encountered an error and has crashed!
+crash = Oops, tangoGBA has encountered an error and has crashed!
 
     When reporting this crash, please include the following log file:
 
     { $path }
-crash-no-log = Oops, Tango has encountered an error and has crashed!
+crash-no-log = Oops, tangoGBA has encountered an error and has crashed!
 
     { $error }
 
@@ -50,9 +50,9 @@ save-template-pick = Pick a template…
 
 # Empty-state hints
 empty-scanning-title = Scanning your library…
-empty-scanning-body = Reading ROMs, saves and patches.
+empty-scanning-body = Reading ROMs and saves.
 empty-no-roms-title = No game ROMs found
-empty-no-roms-body = Drop your Battle Network / Rockman EXE .gba files into:
+empty-no-roms-body = Put your Advance Wars 2: Black Hole Rising (USA) .gba file into:
 empty-no-saves-title = No save files for this game
 empty-no-saves-body = Drop a .sav for this game into:
 play-patch-downloading = ↓ …
@@ -83,15 +83,15 @@ play-status-waiting-opponent = Waiting for opponent…
 play-status-negotiating = Negotiating…
 play-status-failed = Connection failed: { $error }
 play-status-peer-disconnected = The other player left.
-play-status-signaling-version-too-old = This version of Tango is too old to play online. Please update Tango.
-play-status-signaling-version-too-new = The matchmaking server is out of date for this version of Tango.
+play-status-signaling-version-too-old = This version of tangoGBA is too old to play online. Please update tangoGBA.
+play-status-signaling-version-too-new = The matchmaking server is out of date for this version of tangoGBA.
 play-status-signaling-rejected = The matchmaking server refused the connection: { $reason }
 play-status-signaling-unreachable = Couldn't reach the matchmaking server: { $error }
 play-status-signaling-failed = Matchmaking failed: { $error }
 play-status-peer-connection-failed = Couldn't connect to the other player: { $error }
 play-status-negotiate-expected-hello = The other player didn't send the expected handshake.
-play-status-negotiate-version-too-old = The other player is running an older version of Tango.
-play-status-negotiate-version-too-new = The other player is running a newer version of Tango.
+play-status-negotiate-version-too-old = The other player is running an older version of tangoGBA.
+play-status-negotiate-version-too-new = The other player is running a newer version of tangoGBA.
 play-status-negotiate-failed = An error occurred during negotiation: { $error }
 lobby-waiting = Waiting…
 lobby-no-game = (no game selected)
@@ -102,7 +102,7 @@ lobby-link-code = Link code: { $code }
 lobby-direct-host = Hosting on UDP port: { $port }
 lobby-direct-connect = Connecting via UDP: { $target }
 lobby-handshake = Exchanging settings…
-lobby-match-type = Match type
+lobby-match-type = Armies
 lobby-frame-delay-suggest = Suggest based on ping
 lobby-no-match-types = (no match types for this game)
 lobby-pick-game-first = Pick a game first
@@ -114,8 +114,8 @@ lobby-compat-fetching-patch = Downloading the patch for this match…
 lobby-compat-fetching-patch-progress = Downloading the patch for this match… { $percent }%
 lobby-compat-patch-failed = Couldn't download the patch for this match
 lobby-compat-version-mismatch = Game versions don't match (different patch / ROM).
-lobby-compat-sim-too-old = This game's netplay changed since your opponent's version of Tango — they need to update.
-lobby-compat-sim-too-new = This game's netplay changed since your version of Tango — you need to update.
+lobby-compat-sim-too-old = This game's netplay changed since your opponent's version of tangoGBA — they need to update.
+lobby-compat-sim-too-new = This game's netplay changed since your version of tangoGBA — you need to update.
 lobby-compat-match-mismatch = Match type doesn't match.
 lobby-ready = Ready
 lobby-unready = Unready
@@ -245,7 +245,7 @@ playback-priming-replay-detail = Booting the games into their battle.
 playback-priming-elapsed = { $secs }s
 playback-priming-failed = The games didn't reach their battle.
 replays-select-prompt = Select a replay.
-replays-streamer-hidden = HP and chip history hidden in streamer mode.
+replays-streamer-hidden = Match details hidden in streamer mode.
 replays-streamer-show = Show
 replays-queue-add = Add to queue
 replays-queue-count = { $n } queued
@@ -256,7 +256,7 @@ replays-queue-missing = Replay file is gone
 replays-queue-up-next = { $n } up next
 replays-scanning = Scanning replays…
 play-opponent = Opponent
-replays-match-type = Match type:
+replays-match-type = Armies:
 replays-duration = Duration:
 replays-round-count = { $count ->
     [one] 1 round
@@ -370,8 +370,8 @@ settings-theme = Theme
 settings-theme-dark = Dark
 settings-theme-light = Light
 settings-accent = Accent color
-settings-accent-tango-green = Tango Green
-settings-accent-megaman-blue = MegaMan Blue
+settings-accent-tango-green = Green
+settings-accent-megaman-blue = Blue
 settings-accent-protoman-red = ProtoMan Red
 settings-accent-roll-pink = Roll Pink
 settings-accent-gutsman-yellow = GutsMan Yellow
@@ -419,11 +419,11 @@ updater-ready-to-update = Update downloaded and ready to install.
 updater-update-now = Update now
 
 # Welcome screen
-welcome-title = Welcome to Tango!
+welcome-title = Welcome to tangoGBA!
 welcome-subtitle = There's just a few steps you'll need to complete before you can start playing.
 welcome-continue = Continue
-welcome-step-roms = Add your ROMs
-welcome-step-roms-description = Drop your Battle Network / Rockman EXE .gba files into:
+welcome-step-roms = Add your Advance Wars 2 ROM
+welcome-step-roms-description = Put your Advance Wars 2: Black Hole Rising (USA) .gba file into:
 welcome-step-roms-detected = { $count } ROMs detected.
 welcome-step-nickname = Set your nickname
 welcome-step-nickname-description = You can change this at any time in Settings.
