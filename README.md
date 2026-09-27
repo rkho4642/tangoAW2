@@ -1,7 +1,8 @@
 # tangoAW2
 
 Rollback netplay for **Advance Wars 2: Black Hole Rising** (GBA, USA), with
-everything unlocked and Black Hole as a fifth playable army.
+everything unlocked, Black Hole as a fifth playable army, and Black Hole's
+inventions in the Design Room.
 
 tangoAW2 is a fork of [Tango](https://github.com/tangobattle/tango) by the
 Tango developers. It keeps Tango's emulator (mGBA), rollback engine, lobby
@@ -31,6 +32,11 @@ No game is included. You need your own copy of the cartridge dumped to a
   maps, team (alliance) games included, online and offline. Units,
   buildings, HQs and banners take the picked army's colours; Campaign and
   War Room keep their story armies.
+- **Black Hole in the Design Room.** Build maps with a Black Hole army and
+  Black Hole's inventions: minicannons, laser, Black Cannons, Black
+  Factory, Volcano and Deathray. See [Design Room](#design-room-black-hole-and-its-inventions-offline).
+- **Play offline** without a connection, or online with a friend through a
+  link code or a direct connection.
 
 ## Get it
 
@@ -85,6 +91,11 @@ In **Design Room → Map**, tangoAW2 adds Black Hole to the map editor:
   labels them on the map. In battle they appear and act like the
   campaign's: cannons and lasers fire on Black Hole's turn, the factory
   builds Black Hole units. They only act for an army that is Black Hole.
+- Save the map (**SELECT → File → Save**) and play it from **Versus → New →
+  Design Maps**.
+- Design maps live in your save. An online match runs on player 1's save,
+  and tangoAW2 picks who is player 1 when the match starts, so your design
+  maps are there online only when you are player 1.
 
 ## Playing with a friend
 
@@ -143,10 +154,18 @@ The tools behind the Advance Wars 2 work are included:
 # Drive the game headlessly from a script: screenshots, RAM dumps, pokes.
 cargo run --release -p tango-backend-mgba --example gba_probe -- rom.gba script.txt
 
+# The same script language on the console with tangoAW2's patches (what
+# Play offline runs), used to build and check the Design Room support.
+cargo run --release -p tango-gamesupport-aw2 --example aw2_script -- rom.gba script.txt
+
 # Two rollback peers with a delayed, jittery fake network; checks both
 # end on the same frame as a replay of the confirmed inputs.
 cargo run --release -p tango-gamesupport-aw2 --example aw2_rollback_sim -- rom.gba out/
 ```
+
+The full set of checks (offline, every army colour on 2-, 3- and 4-army
+maps, rollback, and two peers over the real network stack) is listed in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 How the Advance Wars 2 support works, and the RAM addresses it relies
 on, is in [docs/AW2.md](docs/AW2.md). The engine's layout and checks are in
