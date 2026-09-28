@@ -1,10 +1,10 @@
 //! The save/ROM dataview substrate — formerly the public
-//! `tango-dataview` crate. The traits every game crate's `dataview`
-//! module implements (`save::Save`, `rom::Assets`) plus the shared
-//! derived views (navicust composition, auto-battle data, msg
-//! decoding). No UI dependencies anywhere below this crate, so headless
-//! game builds (pvp probes, engine hosts) get save parsing with no UI
-//! toolkit linked.
+//! `tango-dataview` crate. The traits every game crate implements
+//! (`save::Save`, `rom::Assets`), headless save preparation
+//! ([`model::prepare`]) and validation ([`build::validate`]). No UI
+//! dependencies anywhere below this crate, so headless game builds
+//! (pvp probes, engine hosts) get save parsing with no UI toolkit
+//! linked.
 //!
 //! The public boundary crosses here through the opaque handles below:
 //! `Game::parse_save` / `Game::load_rom_assets` hand the app
@@ -12,12 +12,8 @@
 //! [`wrap_save`] / [`wrap_assets`]; this crate is the only place that
 //! looks back inside them.
 
-pub mod auto_battle_data;
 pub mod build;
 pub mod model;
-pub mod msg;
-pub mod navicust;
-pub mod nds;
 pub mod rom;
 pub mod save;
 

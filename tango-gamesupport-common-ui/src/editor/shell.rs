@@ -1,12 +1,11 @@
 //! The adapter between the public `tango_gamesupport::SaveEditor`
 //! embedding API and this crate's [`GameSaveEditor`] implementations:
-//! the generic [`SaveEditorShell`], the opaque-envelope plumbing (the
+//! the generic [`SaveEditorShell`] and the opaque-envelope plumbing (the
 //! marker-trait impls for `Action` / `State` / `OpenSave` and the
-//! upcast helpers that reopen them — the only downcasts anywhere), and
-//! the free functions the app drives game-independent state with.
+//! upcast helpers that reopen them — the only downcasts anywhere).
 
 use crate::editor::loaded::{self, OpenSave};
-use crate::editor::view::{Action, Outcome, State};
+use crate::editor::view::{Action, State};
 use crate::editor::GameSaveEditor;
 use tango_gamesupport::LoadedSave;
 use unic_langid::LanguageIdentifier;
@@ -77,7 +76,9 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         LoadedSave {
             editor: self,
             game,
-            chips: crate::editor::loaded::chip_display_table(&open),
+            // No game here has a chip table for the match-analysis
+            // chart to label its lanes with.
+            chips: Vec::new(),
             save_path,
             patch,
             state: Box::new(State::new()),
@@ -90,74 +91,28 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         lang: &'a LanguageIdentifier,
         data: &'a LoadedSave,
         streamer_mode: bool,
-        play_button: Option<bool>,
-        inline_actions: bool,
-        editable: bool,
+        _play_button: Option<bool>,
+        _inline_actions: bool,
+        _editable: bool,
     ) -> iced::Element<'a, std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>> {
-        crate::editor::view::view(
-            lang,
-            loaded::open(data),
-            view_state(&*data.state),
-            streamer_mode,
-            play_button,
-            inline_actions,
-            editable,
-        )
-        .map(wrap)
+        crate::editor::view::view(lang, loaded::open(data), view_state(&*data.state), streamer_mode).map(wrap)
     }
 
     fn update(
         &self,
-        lang: &LanguageIdentifier,
+        _lang: &LanguageIdentifier,
         data: &mut LoadedSave,
         msg: &dyn tango_gamesupport::SaveEditorMessage,
     ) -> (
         iced::Task<std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>>,
         Option<tango_gamesupport::SaveEditorEvent>,
     ) {
-        use tango_gamesupport::SaveEditorEvent as Out;
-
-        let Some(action) = (msg as &dyn std::any::Any).downcast_ref::<Action>() else {
-            return (iced::Task::none(), None);
-        };
-        // Disjoint fields of the same save: the view state folds the
-        // action, the bundle behind the payload backs it.
-        let state = view_state_mut(&mut *data.state);
-        let open = loaded::open_mut(&mut *data.payload);
-
-        let (task, outcome) = state.apply(lang, action, Some(&*open));
-        let outcome = match outcome {
-            // Staged edits land in the loaded bundle right here — the
-            // app never sees them, it just keeps rendering.
-            Some(Outcome::Edit(edit)) => {
-                let invalidated = crate::model::apply_edit(&mut open.model, edit);
-                if invalidated.navicust_render {
-                    crate::editor::loaded::rebuild_navicust_render(open);
-                }
-                None
-            }
-            Some(Outcome::Commit) => {
-                // Every staged edit already kept its derived caches in
-                // sync; commit recomputes the whole-SRAM checksum and
-                // hands the app the bytes to write. Re-bake the
-                // navi-view image too — commit keeps this in-memory
-                // bundle, so without it the read-only grid would lag
-                // until reselection.
-                open.save.rebuild_checksum();
-                crate::editor::loaded::rebuild_navicust_render(open);
-                Some(Out::Commit {
-                    sram: open.save.to_sram_dump(),
-                })
-            }
-            Some(Outcome::Cancel) => Some(Out::Cancel),
-            Some(Outcome::CopyText(s)) => Some(Out::CopyText(s)),
-            Some(Outcome::CopyHtml { text, html }) => Some(Out::CopyHtml { text, html }),
-            Some(Outcome::CopyImage(img)) => Some(Out::CopyImage(img)),
-            Some(Outcome::Play) => Some(Out::Play),
-            Some(Outcome::Training) => Some(Out::Training),
-            None => None,
-        };
-        (task.map(wrap), outcome)
+        // Every action is view-local: nothing here stages an edit, copies,
+        // or launches anything the app must act on.
+        if let Some(action) = (msg as &dyn std::any::Any).downcast_ref::<Action>() {
+            view_state_mut(&mut *data.state).apply(action);
+        }
+        (iced::Task::none(), None)
     }
 
     fn carry_view_position(

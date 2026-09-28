@@ -1,15 +1,20 @@
-use super::*;
-use sweeten::widget::column;
+//! Streamer mode's cover: the game's logo(s) in place of the save
+//! viewer until the reader asks to review the save.
+
+use crate::editor::loaded::OpenSave;
+use crate::i18n::t;
+use iced::widget::{column, container, image as iced_image, Image, Space};
+use iced::{Alignment, ContentFit, Element, Fill, Length};
+use unic_langid::LanguageIdentifier;
 
 /// The game's logo composition, decoded once in loaded-save baking. Logos
 /// vary in aspect ratio, so each is sized to a fixed height and Contain'd.
 fn cover_art<M: 'static>(loaded: &OpenSave) -> Element<'static, M> {
     let inner: Element<'static, M> = match loaded.logos.as_slice() {
-        // Two variant logos in the family (e.g. Gregar/Falzar) — stack
-        // them vertically with a left/right stagger, the way the Legacy
-        // Collection lays out twin-version covers: the family's first
-        // variant sits up and to the left, the second down and to the
-        // right, whichever one of them is loaded.
+        // Two variant logos in the family — stack them vertically with a
+        // left/right stagger: the family's first variant sits up and to
+        // the left, the second down and to the right, whichever one of
+        // them is loaded.
         [top_logo, bottom_logo, ..] => {
             const H: f32 = 140.0;
             const STAGGER: f32 = 64.0;
@@ -63,13 +68,6 @@ fn cover_frame<M: 'static>(content: Element<'static, M>) -> Element<'static, M> 
         .padding([crate::style::PANE_PADDING + 24.0, crate::style::PANE_PADDING + 24.0])
         .style(crate::widgets::pane)
         .into()
-}
-
-/// Legacy per-game render fallback. Cover is no longer included in the tab
-/// list, but keeping this entry point makes older game-specific render arms
-/// harmless while they are still exhaustive over [`Tab`].
-pub fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
-    cover_frame(cover_art(loaded))
 }
 
 /// Streamer-mode gate: Cover replaces the entire save viewer until the user

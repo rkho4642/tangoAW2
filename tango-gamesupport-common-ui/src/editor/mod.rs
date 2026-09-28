@@ -1,13 +1,12 @@
-//! The save editor — everything that loads, draws, and edits a save.
+//! The save editor — everything that loads and draws a save.
 //!
-//! [`GameSaveEditor`] is the per-game interface: each
-//! `tango-gamesupport-GAME-ui` crate implements it and wraps it in a
-//! [`SaveEditorShell`], the one implementation of the public
+//! [`GameSaveEditor`] is the per-game interface, wrapped in a
+//! [`SaveEditorShell`]: the one implementation of the public
 //! `tango_gamesupport::SaveEditor` embedding API (in [`shell`], along
-//! with the opaque-envelope plumbing). [`view`] holds the shell view +
-//! shared components the implementations compose; [`loaded`] bakes the
-//! model into the render-ready [`loaded::OpenSave`] the whole editor
-//! reads from.
+//! with the opaque-envelope plumbing). [`view`] holds the shell view
+//! (the streamer-mode cover gate around the game's body); [`loaded`]
+//! bakes the model into the render-ready [`loaded::OpenSave`] the whole
+//! editor reads from.
 
 pub mod loaded;
 pub(crate) mod shell;
@@ -16,238 +15,46 @@ pub mod view;
 pub use shell::SaveEditorShell;
 
 use crate::editor::loaded::OpenSave;
-use crate::editor::view::{RenderOpts, State, Tab};
 use iced::Element;
 use unic_langid::LanguageIdentifier;
 
-pub use crate::build::BuildViolationKind;
 pub use crate::editor::view::Action;
 pub use tango_gamesupport::{BuildWarnings, OpaqueBuildWarnings};
 
 pub type Save = dyn crate::dataview::save::Save + Send + Sync;
 pub type Assets = dyn crate::dataview::rom::Assets + Send + Sync;
 
-/// Build-legality state used only by the loaded editor. Any tab in
-/// [`error_tabs`](Self::error_tabs) blocks committing until its errors are
-/// resolved. Headless validation runs before editor construction;
-/// [`GameSaveEditor::build_warnings`] formats its findings.
-#[derive(Default)]
-pub struct BuildReport {
-    pub error_tabs: std::collections::HashSet<Tab>,
-}
-
-impl BuildReport {
-    /// Merge game-specific editor metadata without exposing either side's
-    /// concrete violation vocabulary.
-    pub fn extend(&mut self, other: Self) {
-        self.error_tabs.extend(other.error_tabs);
-    }
-
-    pub fn has_errors(&self) -> bool {
-        !self.error_tabs.is_empty()
-    }
-}
-
 pub trait GameSaveEditor: Send + Sync {
-    /// Format structured findings without loading editor state. Games with
-    /// additional findings supply their own warning providers here.
+    /// Format a save's headless validation findings (see
+    /// [`crate::dataview::build::validate`]) without loading editor
+    /// state, for the opponent's build-warning advisory. The default is
+    /// a game that reports none.
     fn build_warnings(
         &self,
         _save: &Save,
-        assets: &Assets,
-        validation: &crate::dataview::build::Validation,
+        _assets: &Assets,
+        _validation: &crate::dataview::build::Validation,
     ) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
-        crate::build::warnings_from_validation(&validation.common, assets)
+        vec![]
     }
 
-    /// The section tabs this game's save editor offers, in display order.
-    /// Streamer mode's Cover is owned by the shell as a full-view gate and
-    /// never appears in this list.
-    /// Called per frame — must stay cheap. Capability that genuinely
-    /// varies at runtime (a BN6 link navi has no navicust) is this
-    /// method's to probe; everything else should be declared statically.
-    /// The default is [`view::standard_tabs`], which probes the shared
-    /// views.
-    fn tabs(&self, loaded: &OpenSave) -> Vec<Tab> {
-        crate::editor::view::standard_tabs(loaded.save.as_ref())
-    }
-
-    /// A control this game puts in the editor's top bar, left of Save /
-    /// Cancel: a whole-save choice, bigger than any one section's body.
-    /// BN5DS's cartridge holds two in-game files, so it offers a file
-    /// switcher there — picking one both points the editor at that file
-    /// and stages the cartridge edit that makes it the played one.
-    ///
-    /// Rendered only **while an edit session is open**: what it changes
-    /// is an edit like any other, staged now and written on Save. A
-    /// read-only view (a pvp setup pane, the replay viewer, the folder
-    /// viewer before Edit) never shows it — there the save is what it
-    /// is. Called per frame; `None` (the default) leaves the bar as it
-    /// was.
-    fn top_bar_control<'a>(&self, lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Option<Element<'a, Action>> {
+    /// The save view's body, drawn whenever the streamer-mode cover
+    /// isn't. The default is nothing at all: a game that models nothing
+    /// behind its save has nothing to show, and an empty "no data" card
+    /// would only suggest something is missing.
+    fn render<'a>(&self, lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element<'a, Action> {
         let _ = (lang, loaded);
-        None
-    }
-
-    /// The strip above the tab body: what identifies the save on the
-    /// left, the `actions` cluster (Edit / Play, or Save / Cancel while
-    /// editing) on the right.
-    ///
-    /// The default is the shared navi strip — the card BN5/BN6 name
-    /// their navi in, becoming the change-navi button when `edit` is
-    /// `Some`. A game whose identity is not a navi off that roster
-    /// overrides this and builds its own card instead, handing it to
-    /// [`view::navi::render_identity_strip`] so the strip stays one
-    /// strip: BN5DS names the GBA-slot cross there, and a save with no
-    /// cross is plain MegaMan, which is exactly what the slot is for.
-    ///
-    /// `editing` is whether the global edit session is open, so an
-    /// override can read as a name while the view is a viewer and become
-    /// the pick itself while it isn't.
-    ///
-    /// [`view::navi::render_identity_strip`]: crate::editor::view::navi::render_identity_strip
-    fn identity_strip<'a>(
-        &self,
-        lang: &'a LanguageIdentifier,
-        loaded: &'a OpenSave,
-        edit: Option<Action>,
-        editing: bool,
-        actions: Element<'a, Action>,
-    ) -> Element<'a, Action> {
-        let _ = editing;
-        crate::editor::view::navi::render_navi_strip(lang, loaded, edit, actions)
-    }
-
-    /// Whether this save has something to edit that the shared
-    /// [`crate::model::Editability`] sections don't cover — a game
-    /// whose only editable thing is its own [`top_bar_control`], say.
-    /// Ors into the probe that decides whether the Edit button appears
-    /// at all; the default is for a game with nothing outside the
-    /// shared sections.
-    ///
-    /// [`top_bar_control`]: GameSaveEditor::top_bar_control
-    fn extra_editable(&self, loaded: &OpenSave) -> bool {
-        let _ = loaded;
-        false
-    }
-
-    /// Read-only body for `tab`. May borrow from `loaded` (most
-    /// components return owned `'static` trees, which coerce). The
-    /// default routes the standard tabs ([`view::render_standard`]); a
-    /// game with tabs of its own matches those and falls back to it.
-    fn render<'a>(
-        &self,
-        lang: &'a LanguageIdentifier,
-        tab: Tab,
-        loaded: &'a OpenSave,
-        opts: RenderOpts,
-    ) -> Element<'a, Action> {
-        crate::editor::view::render_standard(lang, tab, loaded, opts)
-    }
-
-    /// Editor body for `tab`. Only called while the global edit session
-    /// is open *and* the tab's section is editable on this save (per
-    /// [`crate::model::Editability`]). The default routes the standard
-    /// tabs ([`view::render_standard_edit`]); a game that keeps one of
-    /// them read-only (BN3's navicust) overrides this to leave it out.
-    fn render_edit<'a>(
-        &self,
-        lang: &'a LanguageIdentifier,
-        tab: Tab,
-        loaded: &'a OpenSave,
-        state: &'a State,
-    ) -> Element<'a, Action> {
-        crate::editor::view::render_standard_edit(lang, tab, loaded, state)
-    }
-
-    /// Whether `tab`'s section participates in the global edit session
-    /// on this save. The default maps the shared
-    /// [`crate::model::Editability`] capability probe; a game whose
-    /// section lives outside the shared model (BN4's Mod Cards)
-    /// overrides the answer for that tab.
-    fn tab_editable(&self, tab: Tab, loaded: &OpenSave) -> bool {
-        tab.editable_on(&loaded.editability)
-    }
-
-    /// The tab as TSV-ish clipboard text, or `None` for tabs without a
-    /// text form. Section headers localize through `lang`, the same
-    /// keys the rendered view uses. The default covers the standard tabs
-    /// ([`view::standard_as_text`]).
-    fn tab_as_text(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
-        crate::editor::view::standard_as_text(lang, tab, loaded, opts)
-    }
-
-    /// The tab as a raster image for the clipboard, or `None` for tabs
-    /// without an image form. The default covers the standard tabs
-    /// ([`view::standard_as_image`]).
-    fn tab_as_image(&self, tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
-        crate::editor::view::standard_as_image(tab, loaded)
-    }
-
-    /// Game-owned legality collapsed to shared UI metadata and opaque warning
-    /// messages. Concrete rule variants never cross this interface.
-    fn build_report(&self, loaded: &OpenSave) -> BuildReport {
-        let save = loaded.save.as_ref();
-        let assets = loaded.assets.as_ref();
-        let violations = crate::dataview::build::violations(save, assets);
-        crate::build::report(&violations)
-    }
-
-    /// Localized legality errors belonging to `tab`, shown when its red label
-    /// is hovered. Games with private rule sets extend or replace this list.
-    fn tab_errors(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave) -> Vec<String> {
-        crate::build::tab_errors(lang, tab, loaded.save.as_ref(), loaded.assets.as_ref())
+        iced::widget::column![].width(iced::Fill).into()
     }
 }
 
 /// The editor of a game that models nothing behind its save (netplay
-/// only): no section tabs, nothing editable. The shell renders its
-/// empty state — which still carries the navi strip and its Play
-/// button — so such a game reaches a session through the same editor
-/// path as every other one instead of needing an editor-less one.
+/// only): nothing to show and nothing editable. Such a game still
+/// reaches a session through the same editor path as any other, and
+/// streamer mode still covers it.
 pub struct EmptyEditor;
 
 /// Editor registered for a game with no editable save model.
 pub static EMPTY_SAVE_EDITOR: SaveEditorShell<EmptyEditor> = SaveEditorShell(EmptyEditor);
 
-impl GameSaveEditor for EmptyEditor {
-    fn tabs(&self, _loaded: &OpenSave) -> Vec<Tab> {
-        vec![]
-    }
-
-    // With no tabs the shell never asks for a body; the placeholder is
-    // what any game answers for a tab it doesn't render.
-    fn render<'a>(
-        &self,
-        lang: &'a LanguageIdentifier,
-        _tab: Tab,
-        _loaded: &'a OpenSave,
-        _opts: RenderOpts,
-    ) -> Element<'a, Action> {
-        crate::editor::view::placeholder(crate::t!(lang, "save-empty"))
-    }
-
-    fn render_edit<'a>(
-        &self,
-        lang: &'a LanguageIdentifier,
-        _tab: Tab,
-        _loaded: &'a OpenSave,
-        _state: &'a State,
-    ) -> Element<'a, Action> {
-        crate::editor::view::placeholder(crate::t!(lang, "save-empty"))
-    }
-
-    fn tab_as_text(
-        &self,
-        _lang: &LanguageIdentifier,
-        _tab: Tab,
-        _loaded: &OpenSave,
-        _opts: RenderOpts,
-    ) -> Option<String> {
-        None
-    }
-
-    fn tab_as_image(&self, _tab: Tab, _loaded: &OpenSave) -> Option<image::RgbaImage> {
-        None
-    }
-}
+impl GameSaveEditor for EmptyEditor {}

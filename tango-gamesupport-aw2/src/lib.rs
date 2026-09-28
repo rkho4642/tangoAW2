@@ -55,9 +55,6 @@ impl tango_gamesupport_common_dataview::save::Save for Save {
         self.0.as_slice().into()
     }
     fn rebuild_checksum(&mut self) {}
-    fn uses_common_rules(&self) -> bool {
-        false
-    }
 }
 
 /// A fresh cartridge. Everything unlocks at runtime (see `pvp`), so no

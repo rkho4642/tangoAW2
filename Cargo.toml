@@ -39,7 +39,6 @@ default-members = [
 [workspace.dependencies]
 anyhow = "1"
 async-trait = "0.1"
-base64 = "0.22"
 bincode = "1"
 bps = { git = "https://github.com/tangobattle/bps" }
 bytemuck = "1"
@@ -56,17 +55,13 @@ gamepad-facade = { git = "https://github.com/tangobattle/gamepad-facade", defaul
 getgud = { git = "https://github.com/tangobattle/getgud" }
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
 iced_graphics = { version = "0.14", features = ["geometry"] }
-iced_tiny_skia = { version = "0.14", features = ["geometry"] }
 image = { version = "0.25", default-features = false }
-indexmap = "2"
 itertools = "0.13"
 log = "0.4"
 lucide-icons = { version = "1.16", features = ["iced"] }
 mailparse = "0.14"
 mgba = { git = "https://github.com/tangobattle/mgba-rs" }
 mgba-rollback = { git = "https://github.com/tangobattle/mgba-rollback" }
-ndarray = "0.15"
-num-derive = "0.4.2"
 num-rational = { version = "0.4", default-features = false, features = ["std"] }
 num-traits = "0.2"
 prost = "0.14"
@@ -85,7 +80,6 @@ sweeten = "0.14"
 tango-patch = { git = "https://github.com/tangobattle/tango-patch" }
 tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
 thiserror = "1"
-tiny-skia = "0.11"
 tokio = "1"
 tokio-util = "0.7"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
