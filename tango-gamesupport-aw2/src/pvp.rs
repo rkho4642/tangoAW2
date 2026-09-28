@@ -465,6 +465,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         set_bits(core, COS_AND_EDITS);
 
         crate::five::sync(core);
+        crate::obelisk::install(core);
         crate::branding::tick(core);
         crate::design_bar::patch_rom(core);
 

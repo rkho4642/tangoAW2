@@ -5,7 +5,7 @@
 //! `0x0200B224` (`sub_080078E4`), and the editor's code wraps its indices at
 //! 17. tangoAW2 moves the list to unused EWRAM with room for 27 entries,
 //! patches the editor's 17s (and 16s) to 27 (and 26) in the ROM image in
-//! memory (the .gba file is untouched), and inserts the ten inventions after
+//! memory (the .gba file is untouched), and inserts the inventions after
 //! the Silo each time the list is built. Their icons are the game's own
 //! terrain-panel pictures for those terrain types, loaded when the bar asks
 //! for them; the game already has their names (Mini, Laser, Cannon, Volcano,
@@ -14,9 +14,9 @@
 
 use mgba::core::Core;
 
-/// Where the bar's list lives now: 27 entries of (word, tile).
-pub const LIST: u32 = 0x0203_FF80;
-pub const ENTRIES: u32 = 27;
+/// Where the bar's list lives now: 29 entries of (word, tile).
+pub const LIST: u32 = 0x0203_FF00;
+pub const ENTRIES: u32 = 29;
 const OLD_LIST: u32 = 0x0200_B224;
 const OLD_ENTRIES: u32 = 17;
 
@@ -45,13 +45,15 @@ const LENGTH_SITES: [(u32, u8, u8); 11] = [
     (0x0800_6468, 0x11, ENTRIES as u8),       // index -= 17
     (0x0800_6562, 0x11, ENTRIES as u8),       // index += 17
     (0x0800_7798, 0x10, ENTRIES as u8 - 1),   // ring rebuild: list > 16
-    (0x0800_779C, 0x44, (ENTRIES * 4) as u8), //   pointer -= 17 * 4
+    (0x0800_779C, 0x44, (ENTRIES * 4) as u8), //   pointer -= 17 * 4 (29 * 4 = 0x74 still fits)
     (0x0800_779E, 0x11, ENTRIES as u8),       //   list -= 17
 ];
 
-/// The ten inventions' bar entries: (terrain type, tile placed), in
-/// `design::INVENTIONS` order.
-pub const ENTRIES_ADDED: [(u16, u16); 10] = [
+/// The inventions' bar entries: (terrain type, tile placed), in
+/// `design::INVENTIONS` order. The Black Crystal and Black Obelisk are a
+/// minicannon and a Black Cannon to the game (`crate::obelisk`); their words
+/// carry bit 8 ([`OURS`]) so the bar can tell them from the real ones.
+pub const ENTRIES_ADDED: [(u16, u16); 12] = [
     (0x15, 0x182), // minicannon facing down
     (0x16, 0x183), // up
     (0x17, 0x184), // left
@@ -62,15 +64,18 @@ pub const ENTRIES_ADDED: [(u16, u16); 10] = [
     (0x1D, 0x18D), // Black Factory
     (0x1C, 0x1A7), // Volcano
     (0x1E, 0x190), // Deathray
+    (OURS | 0x15, 0x192), // Black Crystal
+    (OURS | 0x1A, 0x193), // Black Obelisk
 ];
+pub const OURS: u16 = 0x100;
 
 pub fn is_invention_type(class: u8) -> bool {
     (0x15..=0x1E).contains(&class)
 }
 
-/// The invention a terrain type stands for, in `design::INVENTIONS` order.
-pub fn invention_of(class: u8) -> Option<usize> {
-    ENTRIES_ADDED.iter().position(|&(c, _)| c as u8 == class)
+/// The invention a bar word stands for, in `design::INVENTIONS` order.
+pub fn invention_of(word: u16) -> Option<usize> {
+    ENTRIES_ADDED.iter().position(|&(w, _)| w == word & (OURS | 0x1F))
 }
 
 /// Every frame: keep the ROM image patched (idempotent; applied from the
@@ -144,18 +149,46 @@ pub fn icon_loader(core: &mut Core) {
     }
     let cpu = core.gba().cpu();
     let (kind, load) = (cpu.gpr(0) as u32 & 0x1F, cpu.gpr(3));
-    let pending = is_invention_type(kind as u8) && load != 0;
-    core.raw_write_8(ICON_PENDING, -1, pending as u8);
+    // The bar's call (0x080027A6) still has the entry's whole word in r6.
+    let word = if cpu.gpr(14) as u32 == BAR_ICON_RETURN {
+        cpu.gpr(6) as u16 & (OURS | 0x1F)
+    } else {
+        kind as u16
+    };
+    let pending = match word {
+        CRYSTAL_WORD => PENDING_CRYSTAL,
+        OBELISK_WORD => PENDING_OBELISK,
+        _ => (is_invention_type(kind as u8) && load != 0) as u8,
+    };
+    core.raw_write_8(ICON_PENDING, -1, pending);
 }
+
+const BAR_ICON_RETURN: u32 = 0x0800_27AD;
+const CRYSTAL_WORD: u16 = OURS | 0x15;
+const OBELISK_WORD: u16 = OURS | 0x1A;
+const PENDING_CRYSTAL: u8 = 2;
+const PENDING_OBELISK: u8 = 3;
 
 /// Trap at [`ICON_LOADED`]: map the loaded icon's colours.
 pub fn icon_loaded(core: &mut Core) {
-    if core.raw_read_8(ICON_PENDING, -1) == 0 {
+    let pending = core.raw_read_8(ICON_PENDING, -1);
+    if pending == 0 {
         return;
     }
     core.raw_write_8(ICON_PENDING, -1, 0);
     let cpu = core.gba().cpu();
     let (kind, dest) = (cpu.gpr(4) as u32, cpu.gpr(5) as u32);
+    // The Crystal and Obelisk: tangoAW2's own pictures, drawn in Black
+    // Hole's invention palette, which is what the bar shows them with.
+    let own: Option<&[u8]> = match pending {
+        PENDING_CRYSTAL => Some(&crate::obelisk_art::CRYSTAL),
+        PENDING_OBELISK => Some(&crate::obelisk_art::OBELISK_SMALL),
+        _ => None,
+    };
+    if let Some(picture) = own {
+        core.raw_write_range(dest, -1, picture);
+        return;
+    }
     if !is_invention_type(kind as u8) {
         return;
     }
@@ -227,7 +260,8 @@ pub fn icon_palette(core: &mut Core) {
     if !crate::design::in_map_editor(core) {
         return;
     }
-    let item = core.gba().cpu().gpr(3) as u32;
+    // The Crystal's and Obelisk's words carry OURS.
+    let item = core.gba().cpu().gpr(3) as u32 & !(OURS as u32);
     if item > 0x1F || !is_invention_type(item as u8) {
         return;
     }
@@ -237,4 +271,22 @@ pub fn icon_palette(core: &mut Core) {
         crate::invention_art::black_hole_palette(core) as i32
     };
     core.gba_mut().cpu_mut().set_gpr(0, palette);
+}
+
+/// Where the bar draws an entry's name (r0 = the name picture, 32x16, the
+/// terrain panel's; r3 = the entry's word).
+pub const BAR_NAME: u32 = 0x0800_2998;
+
+/// Trap at [`BAR_NAME`]: the Crystal's and Obelisk's own names.
+pub fn bar_name(core: &mut Core) {
+    if !crate::design::in_map_editor(core) {
+        return;
+    }
+    let word = core.gba().cpu().gpr(3) as u16 & (OURS | 0x1F);
+    let name = match word {
+        CRYSTAL_WORD => crate::obelisk::CRYSTAL_NAME_AT,
+        OBELISK_WORD => crate::obelisk::OBELISK_NAME_AT,
+        _ => return,
+    };
+    core.gba_mut().cpu_mut().set_gpr(0, name as i32);
 }

@@ -182,6 +182,23 @@ const INVENTIONS: &[Invention] = &[
         dy: -1,
         rows: &[&[UNDERLAY; 3], &[0x18F, 0x190, 0x191], &[UNDERLAY; 3]],
     },
+    // The Black Crystal and Black Obelisk (crate::obelisk).
+    Invention {
+        anchor: crate::obelisk::CRYSTAL_TILE,
+        dx: 0,
+        dy: 0,
+        rows: &[&[crate::obelisk::CRYSTAL_TILE]],
+    },
+    Invention {
+        anchor: crate::obelisk::OBELISK_TILE,
+        dx: -1,
+        dy: -1,
+        rows: &[
+            &[UNDERLAY; 3],
+            &[UNDERLAY, crate::obelisk::OBELISK_TILE, UNDERLAY],
+            &[UNDERLAY; 3],
+        ],
+    },
 ];
 
 /// The Design Room's map editor is loaded, whatever it is showing (its
@@ -304,10 +321,17 @@ fn clear_orphans(core: &mut Core) {
     }
 }
 
-fn highlighted_terrain_class(core: &Core) -> u8 {
+/// The highlighted terrain entry's word (class, plus
+/// [`crate::design_bar::OURS`] for the Crystal and Obelisk).
+fn highlighted_terrain_word(core: &Core) -> u16 {
     let i = (core.raw_read_8(E_TERRAIN_WINDOW, -1) as u32 + 4) % TERRAIN_ENTRIES;
-    core.raw_read_16(BAR_LIST + 4 * i, -1) as u8 & 0x1F
+    core.raw_read_16(BAR_LIST + 4 * i, -1) & (crate::design_bar::OURS | 0x1F)
 }
+
+/// The terrain word last picked from the bar: the editor keeps only the
+/// class (`E_TERRAIN`), which the Crystal shares with the minicannon and the
+/// Obelisk with the Black Cannon.
+const PICKED: u32 = 0x0203_FF7C;
 
 fn highlighted_unit_index(core: &Core) -> u32 {
     (core.raw_read_8(E_UNIT_WINDOW, -1) as u32 + 3) % UNIT_ENTRIES
@@ -336,11 +360,21 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     let terrain_bar = core.raw_read_8(E_BAR, -1) == 0;
     // While a bar is open the tool is only chosen on A: read the
     // highlighted entry. On the map, the chosen tool.
-    let class = if bar_open && terrain_bar {
-        highlighted_terrain_class(core)
+    let word = if bar_open && terrain_bar {
+        highlighted_terrain_word(core)
     } else {
-        core.raw_read_8(E_TERRAIN, -1) & 0x1F
+        let class = core.raw_read_8(E_TERRAIN, -1) as u16 & 0x1F;
+        let picked = core.raw_read_16(PICKED, -1);
+        if picked & 0x1F == class {
+            picked
+        } else {
+            class
+        }
     };
+    let class = word as u8 & 0x1F;
+    if bar_open && terrain_bar && pressed & KEY_A != 0 {
+        core.raw_write_16(PICKED, -1, word);
+    }
     let unit_is_delete = bar_open && !terrain_bar && highlighted_unit_index(core) == UNIT_DELETE_INDEX;
     let marker = core.raw_read_8(MARKER, -1);
 
@@ -381,7 +415,7 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     } else if pressed & KEY_A != 0 && terrain_bar {
         // An invention picked from the terrain bar: A on the map places its
         // whole footprint (the game alone would place just one tile).
-        if let Some(i) = crate::design_bar::invention_of(class) {
+        if let Some(i) = crate::design_bar::invention_of(word) {
             stamp(core, i);
             keys &= !KEY_A;
         }

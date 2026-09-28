@@ -1,6 +1,8 @@
-//! The 5-army Versus maps (five/maps.txt): their tiles, units and names in
-//! the ROM image's free space, listed on a new Versus tab, "5P Maps",
-//! through map-table entries the game never uses (see `five::MAP_IDS`). Also Black Hole's own property tiles
+//! tangoAW2's Versus maps (five/maps.txt): their tiles, units and names in
+//! the ROM image's free space, through map-table entries the game never
+//! uses ([`IDS`]). The 5-army ones are listed on a new Versus tab, "5P
+//! Maps"; the 2-, 3- and 4-army obelisk maps on the game's own tabs. Also
+//! Black Hole's own property tiles
 //! (0x1B4..0x1B9), which army 5 owns: they look like the other property
 //! tiles (the buildings are sprites drawn over plain grass).
 
@@ -31,28 +33,33 @@ const TAB_BOUNDS: [(u32, u16, u16); 6] = [
     (0x0808_65D6, 0x2808, 0x2809),
 ];
 pub const CATEGORY: u16 = 9;
-/// Map ids 0xB4..0xBF are design maps to the game (three Design Room slots,
-/// a suspend copy, and multi-cartridge link slots, which a single console
-/// never uses). These make 0xBC..0xBF ordinary maps (header blob, name, unit
-/// list, preview), for the 5P tab: (address, original, patched).
+/// Each map's id, in five/maps.txt's order: map-table entry 0 (a dummy the
+/// game never lists) and design-map ids 0xB8..0xBF (the Design Room has three
+/// slots, 0xB4..0xB6, and a suspend copy, 0xB7; the rest serve only
+/// multi-cartridge link play).
+pub const IDS: [u8; 9] = [0, 0xBC, 0xBD, 0xBE, 0xBF, 0xB8, 0xB9, 0xBA, 0xBB];
+
+/// Map ids 0xB4..0xBF are design maps to the game. These make 0xB8..0xBF
+/// ordinary maps (header blob, name, unit list, preview): (address,
+/// original, patched).
 const ORDINARY_IDS: &[(u32, u16, u16)] = &[
-    // (u8)(id + 0x4C) <= 0xB, the design range 0xB4..0xBF -> 0xB4..0xBB
-    (0x0801_6D6E, 0x280B, 0x2807), // suspend save
-    (0x0801_6DDA, 0x280B, 0x2807), // suspend load
-    (0x0801_701C, 0x280B, 0x2807), // suspend tile changes
-    (0x0801_733C, 0x280B, 0x2807), // resume
-    (0x0801_73E6, 0x280B, 0x2807), // resume: changed tiles
-    (0x0802_164C, 0x280B, 0x2807), // map setup
-    (0x0802_1828, 0x280B, 0x2807), // property census
-    (0x0802_47B0, 0x280B, 0x2807), // LoadMapData
-    (0x0802_4918, 0x280B, 0x2807), // army count
-    (0x0802_4950, 0x280B, 0x2807), // name
-    (0x0803_C158, 0x280B, 0x2807), // Teams colours
-    // the list filter rejects 0xB7..0xBF; now 0xB7..0xBB
-    (0x0803_7424, 0x2808, 0x2804),
+    // (u8)(id + 0x4C) <= 0xB, the design range 0xB4..0xBF -> 0xB4..0xB7
+    (0x0801_6D6E, 0x280B, 0x2803), // suspend save
+    (0x0801_6DDA, 0x280B, 0x2803), // suspend load
+    (0x0801_701C, 0x280B, 0x2803), // suspend tile changes
+    (0x0801_733C, 0x280B, 0x2803), // resume
+    (0x0801_73E6, 0x280B, 0x2803), // resume: changed tiles
+    (0x0802_164C, 0x280B, 0x2803), // map setup
+    (0x0802_1828, 0x280B, 0x2803), // property census
+    (0x0802_47B0, 0x280B, 0x2803), // LoadMapData
+    (0x0802_4918, 0x280B, 0x2803), // army count
+    (0x0802_4950, 0x280B, 0x2803), // name
+    (0x0803_C158, 0x280B, 0x2803), // Teams colours
+    // the list filter rejects 0xB7..0xBF; now 0xB7 only
+    (0x0803_7424, 0x2808, 0x2800),
     // the map list's preview tests `id <= 0xB3`: a helper in dead code
     // (sub_0803CC3C, no callers) that answers as for an ordinary id for
-    // 0xBC..0xBF. Entries per register the id is loaded from.
+    // 0xB8..0xBF. Entries per register the id is loaded from.
     (0x0803_CC3C, 0xB500, 0x7808), // entry_r1: ldrb r0,[r1]
     (0x0803_CC3E, 0x0400, 0xE004), //   b 0x0803CC4A
     (0x0803_CC40, 0x0C00, 0x7828), // entry_r5: ldrb r0,[r5]
@@ -60,7 +67,7 @@ const ORDINARY_IDS: &[(u32, u16, u16)] = &[
     (0x0803_CC44, 0x39B4, 0x7880), // entry_link: ldrb r0,[r0,#2]
     (0x0803_CC46, 0x0408, 0xE000), //   b 0x0803CC4A
     (0x0803_CC48, 0x0C00, 0x7820), // entry_r4: ldrb r0,[r4]
-    (0x0803_CC4A, 0x280B, 0x28BB), // cmp r0,#0xbb
+    (0x0803_CC4A, 0x280B, 0x28B7), // cmp r0,#0xb7
     (0x0803_CC4C, 0xD807, 0xD801), // bhi (a new id)
     (0x0803_CC4E, 0x1C08, 0x28B3), // cmp r0,#0xb3
     (0x0803_CC50, 0x2103, 0x4770), // bx lr
@@ -89,6 +96,11 @@ const TAB_TEXT: u16 = 0x3D72;
 const STRINGS: u32 = 0x0862_0100;
 pub const TAB_NAME_TEXT: &str = "5P Maps";
 
+/// A 5-army map's id.
+pub fn is_five_map(id: u8) -> bool {
+    MAPS.iter().zip(IDS.iter()).any(|(m, &i)| i == id && m.armies == 5)
+}
+
 pub fn install(core: &mut Core) {
     let mut names = vec![TAB_NAME_TEXT];
     names.extend(MAPS.iter().map(|m| m.name));
@@ -106,8 +118,8 @@ pub fn install(core: &mut Core) {
             core.raw_write_16(addr, -1, new);
         }
     }
-    assert_eq!(MAPS.len(), crate::five::MAP_IDS.len());
-    for (k, (map, &id)) in MAPS.iter().zip(crate::five::MAP_IDS.iter()).enumerate() {
+    assert_eq!(MAPS.len(), IDS.len());
+    for (k, (map, &id)) in MAPS.iter().zip(IDS.iter()).enumerate() {
         let tiles = MAP_DATA + MAP_DATA_SIZE * k as u32;
         let units = tiles + map.tiles.len() as u32;
         assert!(map.tiles.len() + map.units.len() <= MAP_DATA_SIZE as usize);
@@ -120,15 +132,18 @@ pub fn install(core: &mut Core) {
         w32(&mut h, 0x00, tiles);
         w16(&mut h, 0x14, TAB_TEXT + 1 + k as u16);
         h[0x16] = 2; // pre-deployed art
-        h[0x18] = 4; // armies in the header (army 5 is tangoAW2's)
-        w16(&mut h, 0x1A, CATEGORY); // the 5P tab
+        // armies in the header (a 5-army map says 4: army 5 is tangoAW2's)
+        h[0x18] = map.armies.min(4);
+        w16(&mut h, 0x1A, map.tab);
         w16(&mut h, 0x1C, 1);
         w16(&mut h, 0x1E, 1);
         w16(&mut h, 0x20, 0x16);
         h[0x26] = 0xFF;
         w32(&mut h, 0x2C, tiles);
         w32(&mut h, 0x34, units);
-        h[0x40..0x44].copy_from_slice(&[1, 2, 3, 4]);
+        for (i, &c) in map.colours.iter().take(4).enumerate() {
+            h[0x40 + i] = c;
+        }
         h[0x44..0x48].copy_from_slice(&[1, 2, 3, 4]);
         for i in 0..4 {
             h[0x48 + 4 * i..0x4C + 4 * i].copy_from_slice(&[0xFF, 0xFF, 0, 0]);

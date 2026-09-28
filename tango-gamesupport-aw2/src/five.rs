@@ -15,13 +15,8 @@ use mgba::core::Core;
 
 use crate::five_patches::{HALVES, HOOKS, WORDS};
 
-/// The Versus map ids of the 5-army maps (five/maps.txt, in order): entry 0
-/// of the map table, a dummy the game never lists, and 0xBC..0xBF, design-map
-/// ids used only by multi-cartridge link play (made ordinary maps by five_map).
-pub const MAP_IDS: [u8; 5] = [0, 0xBC, 0xBD, 0xBE, 0xBF];
-
 pub fn is_five_map(id: u8) -> bool {
-    MAP_IDS.contains(&id)
+    crate::five_map::is_five_map(id)
 }
 const GAME_MODE: u32 = 0x0300_3FC1;
 const MAP_SELECTED: u32 = 0x0300_3FC2;

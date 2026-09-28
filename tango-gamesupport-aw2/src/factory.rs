@@ -89,11 +89,13 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (crate::design_bar::LIST_BUILT, Box::new(crate::design_bar::list_built)),
         (crate::design_bar::ICON_LOADER, Box::new(crate::design_bar::icon_loader)),
         (crate::design_bar::ICON_LOADED, Box::new(crate::design_bar::icon_loaded)),
+        (crate::design_bar::BAR_NAME, Box::new(crate::design_bar::bar_name)),
         (
             crate::design_bar::ICON_PALETTE,
             Box::new(crate::design_bar::icon_palette),
         ),
     ];
     traps.extend(crate::five::traps());
+    traps.extend(crate::obelisk::traps());
     traps
 }

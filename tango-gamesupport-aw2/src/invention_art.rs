@@ -23,6 +23,8 @@ enum Src {
     Raw(u32),
     /// LZ77-compressed block in the ROM, and the first tile within it.
     Lz(u32, u32),
+    /// tangoAW2's own tiles (the Black Crystal and Black Obelisk).
+    Own(&'static [u8]),
 }
 
 /// One sprite of an invention: offset from the footprint's top-left
@@ -94,6 +96,9 @@ const FACTORY: &[Piece] = &[
     piece(32, 32, 16, 32, Src::Lz(BLACK_FACTORY, 40)),
 ];
 const VOLCANO_ART: &[Piece] = &[piece(0, 0, 64, 64, Src::Lz(VOLCANO, 0))];
+/// Drawn as the battle draws them (`crate::obelisk`'s sprite definitions).
+const CRYSTAL: &[Piece] = &[piece(0, -16, 16, 32, Src::Own(&crate::obelisk_art::CRYSTAL))];
+const OBELISK: &[Piece] = &[piece(8, -16, 32, 64, Src::Own(&crate::obelisk_art::OBELISK))];
 
 /// Per invention, in `design::INVENTIONS` order: its pieces and whether it
 /// uses the Volcano's palette.
@@ -108,7 +113,21 @@ fn art(i: usize) -> (&'static [Piece], bool) {
         6 => (CANNON_N, false),
         7 => (FACTORY, false),
         8 => (VOLCANO_ART, true),
+        10 => (CRYSTAL, false),
+        11 => (OBELISK, false),
         _ => (CANNON_N, false),
+    }
+}
+
+const INVENTION_COUNT: usize = 12;
+const FACTORY_INDEX: usize = 7;
+const VOLCANO_INDEX: usize = 8;
+
+fn key(s: &Src) -> (usize, u32) {
+    match *s {
+        Src::Raw(a) => (a as usize, 0),
+        Src::Lz(a, t) => (a as usize, t),
+        Src::Own(b) => (b.as_ptr() as usize, u32::MAX),
     }
 }
 
@@ -136,16 +155,17 @@ pub fn black_hole_palette(core: &Core) -> u32 {
     }
 }
 
-/// Distinct sources, each loaded once: (source, first tile, count, offset
-/// in sprite memory from FIRST_TILE).
-fn blocks() -> Vec<(Src, u32)> {
+/// Distinct sources, each loaded once: (source, tile count), in sprite
+/// memory order from FIRST_TILE. All of them do not fit, but a map has
+/// either the Black Factory or the Volcano (`design::stamp`), so only that
+/// one's tiles are loaded.
+fn blocks(volcano_on_map: bool) -> Vec<(Src, u32)> {
     let mut out: Vec<(Src, u32)> = Vec::new();
-    for i in 0..10 {
+    for i in 0..INVENTION_COUNT {
+        if i == if volcano_on_map { FACTORY_INDEX } else { VOLCANO_INDEX } {
+            continue;
+        }
         for p in art(i).0 {
-            let key = |s: &Src| match *s {
-                Src::Raw(a) => (a, 0),
-                Src::Lz(a, t) => (a, t),
-            };
             if !out.iter().any(|(s, _)| key(s) == key(&p.src)) {
                 out.push((p.src, p.tiles));
             }
@@ -155,13 +175,9 @@ fn blocks() -> Vec<(Src, u32)> {
 }
 
 /// Where a piece's tiles sit in sprite memory.
-fn tile_of(src: Src) -> u32 {
+fn tile_of(src: Src, volcano_on_map: bool) -> u32 {
     let mut at = FIRST_TILE;
-    let key = |s: &Src| match *s {
-        Src::Raw(a) => (a, 0),
-        Src::Lz(a, t) => (a, t),
-    };
-    for (s, n) in blocks() {
+    for (s, n) in blocks(volcano_on_map) {
         if key(&s) == key(&src) {
             return at;
         }
@@ -213,8 +229,9 @@ fn palette_bytes(core: &Core, addr: u32) -> [u8; 32] {
 pub fn tick(core: &mut Core, volcano_on_map: bool) {
     let mut at = FIRST_TILE;
     let mut lz_cache: Vec<(u32, Vec<u8>)> = Vec::new();
-    for (src, n) in blocks() {
+    for (src, n) in blocks(volcano_on_map) {
         let bytes = match src {
+            Src::Own(b) => b.to_vec(),
             Src::Raw(a) => {
                 let mut b = vec![0u8; n as usize * 32];
                 core.raw_read_range(a, -1, &mut b);
@@ -230,7 +247,9 @@ pub fn tick(core: &mut Core, volcano_on_map: bool) {
                 d[from..from + n as usize * 32].to_vec()
             }
         };
-        debug_assert!(at + n <= LAST_TILE + 1);
+        if at + n > LAST_TILE + 1 {
+            break;
+        }
         let dest = OBJ_VRAM + at * 32;
         let mut now = vec![0u8; bytes.len()];
         core.raw_read_range(dest, -1, &mut now);
@@ -289,7 +308,7 @@ pub fn append(core: &mut Core, list: &[Placed], volcano_on_map: bool, bottom: i3
             }
             let attr0 = (y as u16 & 0xFF) | (piece.shape << 14);
             let attr1 = (x as u16 & 0x1FF) | (piece.size << 14);
-            let attr2 = tile_of(piece.src) as u16 | (p.priority << 10) | ((palette as u16) << 12);
+            let attr2 = tile_of(piece.src, volcano_on_map) as u16 | (p.priority << 10) | ((palette as u16) << 12);
             core.raw_write_16(at, -1, attr0);
             core.raw_write_16(at + 2, -1, attr1);
             core.raw_write_16(at + 4, -1, attr2);
@@ -325,4 +344,17 @@ pub fn extent(i: usize) -> (i32, i32, i32, i32) {
         y1 = y1.max(p.dy + h);
     }
     (x0, y0, x1, y1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tiles_fit_in_the_free_range() {
+        for volcano in [false, true] {
+            let n: u32 = blocks(volcano).iter().map(|&(_, n)| n).sum();
+            assert!(FIRST_TILE + n <= LAST_TILE + 1, "{volcano}: {n} tiles");
+        }
+    }
 }
