@@ -28,19 +28,8 @@ No game is included. You need your own copy of the cartridge dumped to a
 - **Black Monolith** (with the Dual Strike art) gets more cities for every
   army, more neutral cities, neutral airports and roads.
 
-## New in 0.2.0
-
-- **Five armies on one map.** A **5P Maps** tab in Versus: Orange Star,
-  Blue Moon, Green Earth, Yellow Comet and Black Hole all at once, each a
-  person or the computer, offline and online. Six new maps: a sea war, a
-  land war, a volcano, an air war, a siege, and Black Rampart, a
-  campaign-style fortress with a Deathray firing down the middle. See
-  [Five armies](#five-armies-5p-maps).
-- **Hidden feature: the Black Crystal and Black Obelisk** from Advance
-  Wars: Dual Strike. Black Hole structures that heal and resupply Black
-  Hole's units, on four new maps (2, 3, 4 and 5 armies) and in the Design
-  Room. They unlock only if you load your own Dual Strike `.nds` once. See
-  [Black Crystal and Black Obelisk](#black-crystal-and-black-obelisk).
+Older changes are in each release's notes on the
+[Releases](https://github.com/rkoh46/tangoAW2/releases) page.
 
 ## What it does
 
