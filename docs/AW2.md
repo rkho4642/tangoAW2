@@ -68,7 +68,8 @@ libretro CodeBreaker list, the aw2bhr decompilation, and probing with
 Mode 8 with sub-mode 5 (`0x03003FC1`) is the map editor; its state block
 is at `0x0200B000` (tool bar open at `+0x04 == 2`, bar type `+0x07`,
 cursor `+0x08/+0x0A`, terrain tool `+0x2A`, colour slots `+0x2E/+0x2F`,
-first visible bar entry `+0x36/+0x38`, bar entries at `0x0200B224`). The
+first visible bar entry `+0x36/+0x38`, bar entries at `0x0200B224`, moved
+by tangoAW2 to `0x0203FF80`, see below). The
 editor map is at `0x0201E450` (size, camera at `+4/+6`, tiles `+0xA22`,
 classes `+0x1432`, units `+0x12`, row offsets `+0x417A`); tile classes come
 from the ROM table `0x080C1BC4`.
@@ -97,7 +98,41 @@ from the ROM table `0x080C1BC4`.
   tool bar's ring entries (`gDesignRing`, `0x0200B0D0`, 11 x 0x1C, flags
   first) so the bar redraws for the new CO. Back to Yellow Comet undoes it.
 - In a tool bar SELECT only swapped bars, like L/R; tangoAW2 turns a SELECT
-  press into UP (next army, Black Hole included; next invention on Silo).
+  press into UP (next army, Black Hole included).
+- Inventions in the terrain bar (`design_bar.rs`): the bar's list is built
+  from the template `0x08488810` by `sub_080078E4` into 17 (terrain) or 20
+  (units) 4-byte entries (type or unit word, tile placed) at `0x0200B224`,
+  and the HBlank buffer follows at `0x0200B274`. tangoAW2 repoints the nine
+  literal-pool words for the list (`0x08001CFC`, `0x08001D58`,
+  `0x08001D88`, `0x080062B8`, `0x08006340`, `0x08007750`, `0x08007844`,
+  `0x080078D0`, `0x08007918`) to `0x0203FF80`, patches the terrain list's
+  length 17/16/0x44 to 27/26/0x6C where the editor wraps it (`0x08000CEA`,
+  `0x08001D4E`, `0x0800626E/72`, `0x080062E6`, `0x08006460/68`,
+  `0x08006562`, `0x08007798/9C/9E`), all in the ROM image in memory, and a
+  trap at the builder's exit (`0x080079B2`) inserts the ten inventions
+  (types `0x15..0x1E` with their anchor tiles) after the Silo. Icons: the
+  bar's sprite loader `sub_0803F6BC` already loads a type's terrain-panel
+  picture (`0x08104464 + 0x100*(type-1)`) for types it has no case for;
+  traps at its entry and exit (`0x0803F7FE`, r4 kind, r5 dest) remap the
+  colours from the panel palette (`0x08106864`, entry 13; the base under
+  every icon, entry 2) to the palette the icon is drawn with, which a trap
+  on the palette lookup's return (`0x08001D20`) picks (the Volcano's is the
+  editor's mountain palette, 7). Names are the game's own. A on the map
+  with an invention picked places its footprint.
+- Inventions drawn in the editor (`invention_art.rs`): in battle they are
+  only sprites (their map tiles draw as plain; the metatile table
+  `0x080BFBC4` maps them to grass), placed each frame with Black Hole's unit
+  palette `0x080D3E84` at priority 3. The sources: minicannons and laser
+  raw at `0x080D02C4..0x080D07C4` (16x32, one tile above the cell); Black
+  Cannons LZ77 at `0x080D24E0` (down, tiles 36..71) and `0x080D2AE8` (up,
+  0..35; the Deathray uses it too), 48x48 from four sprites; Black Factory
+  `0x080D22C4` (48x64, three sprites); Volcano `0x080D3268` (one 64x64,
+  palette `0x080D3EC4`). In the editor tangoAW2 loads them into OBJ tiles
+  289..512 and palette 2 (never used by the editor) and appends each placed
+  invention's sprites at the game's VBlank sprite flush (`0x0801BBC4`; the
+  frame's list at `[0x03002F2C]` inside the area described at
+  `0x03000268`). On a Volcano map palette 2 holds the Volcano's colours
+  and the rest use slot 4's unit palette (12).
 - The aw2bhr decompilation (`src/design.c`) names most of the editor's
   drawing: `sub_08002844` (unit icon: `sub_080261A4(slot, kind)`, CO-country
   based) and `sub_0800272C` (terrain icon; HQs via `sub_0803F6BC(8, army)`).
@@ -152,10 +187,13 @@ from the ROM table `0x080C1BC4`.
 
 ## Title and menu badge (`tango-gamesupport-aw2/src/branding.rs`)
 
-- A "tangoAW2" badge is drawn by the presentation overlay (no RAM writes)
-  while `ProcScr_TitleScreen` (`0x08581CF8`) or `ProcScr_MainMenu`
-  (`0x0849E818`) is running; the process pool is `sProcArray`
-  (`0x0200D610`, 0x6C bytes each, script pointer first), names from aw2bhr.
+- A "tangoAW2" badge drawn by the game's sprite hardware while
+  `ProcScr_TitleScreen` (`0x08581CF8`) or `ProcScr_MainMenu` (`0x0849E818`)
+  is running (the process pool is `sProcArray`, `0x0200D610`, 0x6C bytes
+  each, script pointer first; names from aw2bhr): its tiles in unused OBJ
+  tiles 928.. (title) and 992.. (menu), its colours in OBJ palette 15, its
+  64x32 sprites appended at the VBlank sprite flush like the Design Room's
+  inventions.
 
 ## Known limits
 

@@ -40,15 +40,15 @@ No game is included. You need your own copy of the cartridge dumped to a
   buildings, HQs and banners take the picked army's colours; Campaign and
   War Room keep their story armies.
 - **Black Hole in the Design Room.** Build maps with a Black Hole army and
-  Black Hole's inventions: minicannons, laser, Black Cannons, Black
-  Factory, Volcano and Deathray, and switch back to Yellow Comet any
-  time. See [Design Room](#design-room-black-hole-and-its-inventions).
+  Black Hole's inventions (minicannons, laser, Black Cannons, Black
+  Factory, Volcano and Deathray), each picked from the terrain bar and
+  shown as it looks in battle. Switch back to Yellow Comet any time. See [Design Room](#design-room-black-hole-and-its-inventions).
 - **Play as Black Hole with its inventions.** The Black Factory deploys
   units for you and the Deathray fires on your enemies, like in the
   campaign, offline and online. See [inventions in battle](#black-holes-inventions-in-battle).
 - **tangoAW2 on the title screen and the main menu**, so you can tell at a
-  glance you're in tangoAW2. It's drawn over the picture: the game itself
-  and your ROM file are unchanged.
+  glance you're in tangoAW2. The game draws it as part of its own picture;
+  your ROM file is unchanged.
 - **Play offline** without a connection, or online with a friend through a
   link code or a direct connection.
 
@@ -182,27 +182,47 @@ already on the map.
 
 ### Inventions
 
-1. Open the terrain bar (**R**) and highlight **Silo**.
-2. Press **UP/DOWN** to pick an invention. Its name shows in the top-right
-   corner: minicannon (facing down, up, left or right), laser, Black
-   Cannon (facing down or up), Black Factory, Volcano, Deathray.
-3. Press **A** to choose it, then **A** on the map to place it. Big ones
+Black Hole's inventions have their own entries in the terrain bar, right
+after **Silo**, each with its icon and name, like any other terrain:
+minicannons (facing down, up, left and right; the game calls them
+"Cannon"), Laser, Black Cannons (facing down and up, also "Cannon"),
+Factory, Volcano and D.Ray (the Deathray).
+
+1. Open the terrain bar (**R**) and move to the invention with
+   **LEFT/RIGHT**.
+2. Press **A** (Z) to pick it, then **A** on the map to place it. Big ones
    are placed around the cursor.
 
-In the editor, inventions show as labelled outlines; they look like the
-real thing in battle. An invention can't go off the edge of the map or on
-top of a building or unit. A map can hold up to 15 inventions, and either
-a Black Factory or a Volcano, not both. To remove an invention, place any
-terrain on its labelled tile.
+Placed inventions show in the editor exactly as they look in battle. An
+invention can't go off the edge of the map or on top of a building or unit.
+A map can hold up to 15 inventions, and either a Black Factory or a
+Volcano, not both. To remove one, place any terrain on the tile the cursor
+was on when you placed it.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/design-invention-picker.png" width="360" alt="Picking the Black Factory on the Silo entry"></td>
-<td><img src="docs/screenshots/design-inventions-editor.png" width="360" alt="Minicannons, laser, Black Cannons and Deathray on a design map"></td>
+<td><img src="docs/screenshots/design-invention-bar.png" width="360" alt="The terrain bar with the inventions: Cannons, Laser, Factory, Volcano"></td>
+<td><img src="docs/screenshots/design-invention-selected.png" width="360" alt="The Laser picked, shown in the Feature panel"></td>
 </tr>
 <tr>
-<td align="center">Silo + UP/DOWN picks an invention</td>
-<td align="center">Placed inventions, labelled</td>
+<td align="center">The inventions in the terrain bar</td>
+<td align="center">Laser picked</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/design-inventions-editor.png" width="360" alt="Minicannons, laser, Black Cannons and the Deathray on a design map in the editor"></td>
+<td><img src="docs/screenshots/design-factory-placed.png" width="360" alt="A Black Factory just placed"></td>
+</tr>
+<tr>
+<td align="center">Placed inventions in the editor</td>
+<td align="center">A Black Factory placed</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/design-volcano-editor.png" width="360" alt="A Volcano in the editor"></td>
+<td></td>
+</tr>
+<tr>
+<td align="center">The Volcano</td>
+<td></td>
 </tr>
 </table>
 
