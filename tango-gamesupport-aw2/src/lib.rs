@@ -20,6 +20,7 @@ mod five_map;
 mod five_map_data;
 mod five_patches;
 pub mod invention_art;
+pub mod ds_art;
 pub mod obelisk;
 mod obelisk_art;
 pub mod pvp;

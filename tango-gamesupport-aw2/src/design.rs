@@ -37,9 +37,8 @@ const E_TERRAIN_SLOT: u32 = EDITOR + 0x2E; // 0..=4
 /// or 3 (units) further on, wrapping around the list.
 const E_TERRAIN_WINDOW: u32 = EDITOR + 0x36;
 const E_UNIT_WINDOW: u32 = EDITOR + 0x38;
-/// The terrain bar's length: 17 in the game, 27 with the inventions
-/// (see [`crate::design_bar`]).
-const TERRAIN_ENTRIES: u32 = crate::design_bar::ENTRIES;
+// The terrain bar's length: 17 in the game, 27 or 29 with the inventions
+// ([`crate::design_bar::entries`]).
 const UNIT_ENTRIES: u32 = 20;
 /// The unit bar's "Del" (eraser) entry.
 const UNIT_DELETE_INDEX: u32 = 2;
@@ -324,7 +323,7 @@ fn clear_orphans(core: &mut Core) {
 /// The highlighted terrain entry's word (class, plus
 /// [`crate::design_bar::OURS`] for the Crystal and Obelisk).
 fn highlighted_terrain_word(core: &Core) -> u16 {
-    let i = (core.raw_read_8(E_TERRAIN_WINDOW, -1) as u32 + 4) % TERRAIN_ENTRIES;
+    let i = (core.raw_read_8(E_TERRAIN_WINDOW, -1) as u32 + 4) % crate::design_bar::entries(core);
     core.raw_read_16(BAR_LIST + 4 * i, -1) & (crate::design_bar::OURS | 0x1F)
 }
 

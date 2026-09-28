@@ -147,6 +147,14 @@ pub struct GameInfo {
     pub sim_version: u32,
 }
 
+/// Bit 7 of a player's match subtype ([`Settings::match_type`]) is not part
+/// of the match type: it says this player can show content their game gates
+/// on (tangoAW2: the Black Crystal and Black Obelisk, whose art each player
+/// imports from their own Dual Strike ROM). The lobby ignores it when it
+/// compares match types, and the match terms keep it only when both
+/// players set it, so both peers and the replay agree.
+pub const SHARED_CONTENT: u8 = 0x80;
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub nickname: String,

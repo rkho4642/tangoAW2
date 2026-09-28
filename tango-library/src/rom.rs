@@ -86,6 +86,30 @@ fn scan_stored_roms(storage: &dyn Storage, listing: &Listing) -> std::collection
                 continue;
             }
         };
+        // tangoAW2: a Dual Strike ROM next to Advance Wars 2 lends the Black
+        // Crystal and Black Obelisk their pictures (never played itself).
+        // Once imported, the art is kept next to the ROMs, so the .nds can go.
+        #[cfg(feature = "gamesupport-aw2")]
+        {
+            use tango_gamesupport_aw2::ds_art;
+            match ds_art::offer(&buf) {
+                ds_art::Offered::No => {}
+                ds_art::Offered::Import => {
+                    log::info!("rom scan: {}: Dual Strike art (imported)", entry.path.display());
+                    continue;
+                }
+                ds_art::Offered::DsRom { imported } => {
+                    log::info!("rom scan: {}: Dual Strike ROM, art imported: {imported}", entry.path.display());
+                    if let Some(data) = ds_art::cache() {
+                        let to = entry.path.with_file_name(ds_art::CACHE_NAME);
+                        if let Err(e) = storage.write(&to, &data) {
+                            log::warn!("{}: {e}", to.display());
+                        }
+                    }
+                    continue;
+                }
+            }
+        }
         let Some(game) = crate::game::detect(&mut buf) else {
             log::debug!("rom scan: {}: not a recognized rom", entry.path.display());
             continue;

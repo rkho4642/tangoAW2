@@ -40,6 +40,17 @@ pub mod storage;
 pub mod bnlc;
 
 pub use catalog::Catalog;
+
+/// This player's [`SHARED_CONTENT`](tango_net_protocol::control::SHARED_CONTENT)
+/// bit for their match subtype: set when they can show the content their
+/// game gates on (tangoAW2: Dual Strike art imported).
+pub fn shared_content_flag() -> u8 {
+    #[cfg(feature = "gamesupport-aw2")]
+    if tango_gamesupport_aw2::ds_art::art().is_some() {
+        return tango_net_protocol::control::SHARED_CONTENT;
+    }
+    0
+}
 pub use storage::Storage;
 
 #[cfg(test)]

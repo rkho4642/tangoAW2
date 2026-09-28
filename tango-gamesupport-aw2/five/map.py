@@ -189,13 +189,13 @@ def main():
     out = os.path.join(HERE, '..', 'src', 'five_map_data.rs')
     with open(out, 'w') as o:
         o.write('// Generated from five/maps.txt by five/map.py; do not edit.\n\n')
-        o.write('pub struct Map {\n    pub name: &\'static str,\n    /// Armies (5: a 5-army map), the Versus tab, the armies\' colours.\n    pub armies: u8,\n    pub tab: u16,\n    pub colours: &\'static [u8],\n    /// The tiles, LZ77 (literal blocks) as the game loads them.\n'
+        o.write('pub struct Map {\n    pub name: &\'static str,\n    /// Armies (5: a 5-army map), the Versus tab, the armies\' colours.\n    pub armies: u8,\n    pub tab: u16,\n    pub colours: &\'static [u8],\n    /// Has a Black Crystal or Black Obelisk (shown only with their art).\n    pub obelisk: bool,\n    /// The tiles, LZ77 (literal blocks) as the game loads them.\n'
                 '    pub tiles: &\'static [u8],\n    /// Pre-deployed units (12-byte records; FE army, FF end).\n    pub units: &\'static [u8],\n}\n\n')
         o.write('pub const MAPS: &[Map] = &[\n')
         for m in maps:
             lz, units, (W, H), counts = build(m, edge)
             o.write(f'    // {m["name"]}: {W}x{H}, properties {counts}\n')
-            o.write(f'    Map {{\n        name: "{m["name"]}",\n        armies: {m["armies"]},\n        tab: {m["tab"]},\n        colours: &{m["colours"]},\n        tiles: &[\n')
+            o.write(f'    Map {{\n        name: "{m["name"]}",\n        armies: {m["armies"]},\n        tab: {m["tab"]},\n        colours: &{m["colours"]},\n        obelisk: {str(any(c in r for r in m["rows"] for c in "XO")).lower()},\n        tiles: &[\n')
             for i in range(0, len(lz), 16):
                 o.write('            ' + ', '.join(f'0x{b:02X}' for b in lz[i:i + 16]) + ',\n')
             o.write('        ],\n        units: &[\n')

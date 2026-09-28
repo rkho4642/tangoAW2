@@ -263,6 +263,7 @@ pub fn match_type_name(
     match_type: u8,
     match_subtype: u8,
 ) -> String {
+    let match_subtype = match_subtype & !tango_net_protocol::control::SHARED_CONTENT;
     family_str(family, lang, &format!("match-type-{match_type}-{match_subtype}"))
         .unwrap_or_else(|| format!("{match_type}.{match_subtype}"))
 }

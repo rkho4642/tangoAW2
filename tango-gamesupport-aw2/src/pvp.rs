@@ -466,8 +466,12 @@ impl tango_backend_mgba::SharedGame for Aw2 {
 
         crate::five::sync(core);
         crate::obelisk::install(core);
+        // The Black Crystal and Black Obelisk appear only with their art,
+        // imported from the player's Dual Strike ROM (see ds_art.rs).
+        let ds_features = crate::ds_art::features(mode);
+        crate::five_map::show_obelisk_maps(core, ds_features);
         crate::branding::tick(core);
-        crate::design_bar::patch_rom(core);
+        crate::design_bar::patch_rom(core, ds_features);
 
         let prev = core.raw_read_16(PREV_KEYS, -1) as u32;
         core.raw_write_16(PREV_KEYS, -1, keys as u16);

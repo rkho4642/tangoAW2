@@ -23,8 +23,9 @@ enum Src {
     Raw(u32),
     /// LZ77-compressed block in the ROM, and the first tile within it.
     Lz(u32, u32),
-    /// tangoAW2's own tiles (the Black Crystal and Black Obelisk).
-    Own(&'static [u8]),
+    /// The Black Crystal (`None`) or a piece of the Black Obelisk, from
+    /// [`crate::ds_art`].
+    Art(Option<usize>),
 }
 
 /// One sprite of an invention: offset from the footprint's top-left
@@ -97,11 +98,12 @@ const FACTORY: &[Piece] = &[
 ];
 const VOLCANO_ART: &[Piece] = &[piece(0, 0, 64, 64, Src::Lz(VOLCANO, 0))];
 /// Drawn as the battle draws them (`crate::obelisk`'s sprite definitions).
-const CRYSTAL: &[Piece] = &[piece(0, -16, 16, 32, Src::Own(&crate::obelisk_art::CRYSTAL))];
+const CRYSTAL: &[Piece] = &[piece(0, -16, 16, 32, Src::Art(None))];
 const OBELISK: &[Piece] = &[
-    piece(8, -16, 32, 64, Src::Own(crate::obelisk::OBELISK_MIDDLE)),
-    piece(0, 16, 8, 32, Src::Own(crate::obelisk::OBELISK_LEFT)),
-    piece(40, 16, 8, 32, Src::Own(crate::obelisk::OBELISK_RIGHT)),
+    piece(0, 0, 32, 32, Src::Art(Some(0))),
+    piece(32, 0, 16, 32, Src::Art(Some(1))),
+    piece(0, 32, 32, 16, Src::Art(Some(2))),
+    piece(32, 32, 16, 16, Src::Art(Some(3))),
 ];
 
 /// Per invention, in `design::INVENTIONS` order: its pieces and whether it
@@ -131,7 +133,7 @@ fn key(s: &Src) -> (usize, u32) {
     match *s {
         Src::Raw(a) => (a as usize, 0),
         Src::Lz(a, t) => (a as usize, t),
-        Src::Own(b) => (b.as_ptr() as usize, u32::MAX),
+        Src::Art(p) => (usize::MAX, p.map_or(u32::MAX, |p| p as u32)),
     }
 }
 
@@ -235,7 +237,11 @@ pub fn tick(core: &mut Core, volcano_on_map: bool) {
     let mut lz_cache: Vec<(u32, Vec<u8>)> = Vec::new();
     for (src, n) in blocks(volcano_on_map) {
         let bytes = match src {
-            Src::Own(b) => b.to_vec(),
+            Src::Art(None) => crate::ds_art::art().map_or(vec![0; 256], |a| a.crystal.clone()),
+            Src::Art(Some(p)) => {
+                let (a, b) = crate::ds_art::OBELISK_PIECES[p];
+                crate::ds_art::art().map_or(vec![0; (b - a) * 32], |art| art.obelisk[a * 32..b * 32].to_vec())
+            }
             Src::Raw(a) => {
                 let mut b = vec![0u8; n as usize * 32];
                 core.raw_read_range(a, -1, &mut b);

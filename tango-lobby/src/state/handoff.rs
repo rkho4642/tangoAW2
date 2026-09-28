@@ -114,6 +114,11 @@ impl State {
                     use_relay: mm.use_relay,
                 })
         };
+        // The match's own subtype, plus the shared-content bit when both
+        // players set it (see `SHARED_CONTENT`).
+        let flag = tango_net_protocol::control::SHARED_CONTENT;
+        let both = local_settings.match_type.1 & remote_settings.match_type.1 & flag;
+        let match_type = (self.lobby.match_type.0, (self.lobby.match_type.1 & !flag) | both);
         let pre_match = PreMatchData {
             link_parts: LinkParts {
                 control_sender: handles.sender,
@@ -133,7 +138,7 @@ impl State {
                 local_settings,
                 remote_settings,
                 link_code,
-                match_type: self.lobby.match_type,
+                match_type,
             },
         };
         Some((HandoffTicket(self.session_id), pre_match))

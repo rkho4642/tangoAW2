@@ -14,9 +14,13 @@
 
 use mgba::core::Core;
 
-/// Where the bar's list lives now: 29 entries of (word, tile).
+/// Where the bar's list lives now: room for 29 entries of (word, tile).
 pub const LIST: u32 = 0x0203_FF00;
-pub const ENTRIES: u32 = 29;
+/// The bar's length: the game's 17 and the ten inventions, and the Black
+/// Crystal and Black Obelisk when their art is there
+/// ([`crate::ds_art::features`]).
+const ENTRIES_BASE: u32 = 27;
+const ENTRIES_ALL: u32 = 29;
 const OLD_LIST: u32 = 0x0200_B224;
 const OLD_ENTRIES: u32 = 17;
 
@@ -34,20 +38,37 @@ const LIST_POINTERS: [u32; 9] = [
 ];
 
 /// Thumb instructions carrying the terrain list's length (17), its last
-/// index (16) or its size in bytes (0x44); the immediate is the low byte.
-const LENGTH_SITES: [(u32, u8, u8); 11] = [
-    (0x0800_0CEA, 0x11, ENTRIES as u8),       // SetSelectedTile: += 17
-    (0x0800_1D4E, 0x10, ENTRIES as u8 - 1),   // list search: i <= 16
-    (0x0800_626E, 0x10, ENTRIES as u8 - 1),   // RIGHT: slot > 16
-    (0x0800_6272, 0x11, ENTRIES as u8),       //        slot -= 17
-    (0x0800_62E6, 0x11, ENTRIES as u8),       // LEFT:  slot += 17
-    (0x0800_6460, 0x10, ENTRIES as u8 - 1),   // index > 16
-    (0x0800_6468, 0x11, ENTRIES as u8),       // index -= 17
-    (0x0800_6562, 0x11, ENTRIES as u8),       // index += 17
-    (0x0800_7798, 0x10, ENTRIES as u8 - 1),   // ring rebuild: list > 16
-    (0x0800_779C, 0x44, (ENTRIES * 4) as u8), //   pointer -= 17 * 4 (29 * 4 = 0x74 still fits)
-    (0x0800_779E, 0x11, ENTRIES as u8),       //   list -= 17
+/// index (16) or its size in bytes (0x44); the immediate is the low byte:
+/// (address, kind) with kind 0 length, 1 last index, 4 size in bytes.
+const LENGTH_SITES: [(u32, u32); 11] = [
+    (0x0800_0CEA, 0), // SetSelectedTile: += 17
+    (0x0800_1D4E, 1), // list search: i <= 16
+    (0x0800_626E, 1), // RIGHT: slot > 16
+    (0x0800_6272, 0), //        slot -= 17
+    (0x0800_62E6, 0), // LEFT:  slot += 17
+    (0x0800_6460, 1), // index > 16
+    (0x0800_6468, 0), // index -= 17
+    (0x0800_6562, 0), // index += 17
+    (0x0800_7798, 1), // ring rebuild: list > 16
+    (0x0800_779C, 4), //   pointer -= 17 * 4 (29 * 4 = 0x74 still fits)
+    (0x0800_779E, 0), //   list -= 17
 ];
+
+fn site_value(kind: u32, entries: u32) -> u8 {
+    match kind {
+        0 => entries as u8,
+        1 => entries as u8 - 1,
+        _ => (entries * 4) as u8,
+    }
+}
+
+/// The bar's length as the editor's code has it now (27 or 29).
+pub fn entries(core: &Core) -> u32 {
+    match core.raw_read_16(LENGTH_SITES[0].0, -1) as u8 as u32 {
+        n @ (ENTRIES_BASE | ENTRIES_ALL) => n,
+        _ => ENTRIES_BASE,
+    }
+}
 
 /// The inventions' bar entries: (terrain type, tile placed), in
 /// `design::INVENTIONS` order. The Black Crystal and Black Obelisk are a
@@ -79,17 +100,21 @@ pub fn invention_of(word: u16) -> Option<usize> {
 }
 
 /// Every frame: keep the ROM image patched (idempotent; applied from the
-/// first frame, so both netplay peers run the same code).
-pub fn patch_rom(core: &mut Core) {
+/// first frame, so both netplay peers run the same code), with the Crystal
+/// and Obelisk in the bar when `with_obelisk`.
+pub fn patch_rom(core: &mut Core, with_obelisk: bool) {
     for p in LIST_POINTERS {
         if core.raw_read_32(p, -1) == OLD_LIST {
             core.raw_write_32(p, -1, LIST);
         }
     }
-    for (at, from, to) in LENGTH_SITES {
+    let n = if with_obelisk { ENTRIES_ALL } else { ENTRIES_BASE };
+    for (at, kind) in LENGTH_SITES {
         let op = core.raw_read_16(at, -1);
-        if op as u8 == from {
-            core.raw_write_16(at, -1, (op & 0xFF00) | to as u16);
+        let known = [site_value(kind, OLD_ENTRIES), site_value(kind, ENTRIES_BASE), site_value(kind, ENTRIES_ALL)];
+        let want = site_value(kind, n);
+        if op as u8 != want && known.contains(&(op as u8)) {
+            core.raw_write_16(at, -1, (op & 0xFF00) | want as u16);
         }
     }
 }
@@ -121,7 +146,8 @@ pub fn list_built(core: &mut Core) {
         .iter()
         .position(|&(w, _)| w & 0x1F == SILO)
         .map_or(list.len(), |i| i + 1);
-    for (k, e) in ENTRIES_ADDED.iter().enumerate() {
+    let added = entries(core) - OLD_ENTRIES;
+    for (k, e) in ENTRIES_ADDED.iter().take(added as usize).enumerate() {
         list.insert(at + k, *e);
     }
     for (i, (w, t)) in list.iter().enumerate() {
@@ -180,9 +206,10 @@ pub fn icon_loaded(core: &mut Core) {
     let (kind, dest) = (cpu.gpr(4) as u32, cpu.gpr(5) as u32);
     // The Crystal and Obelisk: tangoAW2's own pictures, drawn in Black
     // Hole's invention palette, which is what the bar shows them with.
+    let art = crate::ds_art::art();
     let own: Option<&[u8]> = match pending {
-        PENDING_CRYSTAL => Some(&crate::obelisk_art::CRYSTAL),
-        PENDING_OBELISK => Some(&crate::obelisk_art::OBELISK_SMALL),
+        PENDING_CRYSTAL => Some(art.map_or(&[0u8; 256][..], |a| &a.crystal)),
+        PENDING_OBELISK => Some(art.map_or(&[0u8; 256][..], |a| &a.obelisk_small)),
         _ => None,
     };
     if let Some(picture) = own {

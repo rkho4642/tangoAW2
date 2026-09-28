@@ -89,7 +89,8 @@ pub fn check(local: &protocol::Settings, remote: &protocol::Settings, facts: Fac
         return Verdict::MissingPatch { name, version };
     }
 
-    if local.match_type != remote.match_type {
+    let flag = tango_net_protocol::control::SHARED_CONTENT;
+    if (local.match_type.0, local.match_type.1 & !flag) != (remote.match_type.0, remote.match_type.1 & !flag) {
         return Verdict::DifferentMatchTypes;
     }
 
@@ -177,5 +178,18 @@ mod tests {
         assert_eq!(check(&local, &remote, facts()), Verdict::DifferentMatchTypes);
         remote.game_info = None;
         assert_eq!(check(&local, &remote, facts()), Verdict::MissingGame);
+    }
+
+    #[test]
+    fn shared_content_flag_is_not_part_of_the_match_type() {
+        let flag = protocol::SHARED_CONTENT;
+        let mut local = settings();
+        let mut remote = settings();
+        local.match_type = (0, flag);
+        assert_eq!(check(&local, &remote, facts()), Verdict::Compatible);
+        remote.match_type = (0, flag);
+        assert_eq!(check(&local, &remote, facts()), Verdict::Compatible);
+        remote.match_type = (0, 1 | flag);
+        assert_eq!(check(&local, &remote, facts()), Verdict::DifferentMatchTypes);
     }
 }

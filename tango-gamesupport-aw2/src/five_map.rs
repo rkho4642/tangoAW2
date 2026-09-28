@@ -158,3 +158,22 @@ pub fn install(core: &mut Core) {
         core.raw_write_range(METATILES + tile * 8, -1, &quad);
     }
 }
+
+/// A Versus tab no map list shows: where a map goes to be hidden.
+const HIDDEN_TAB: u16 = 0x7F;
+
+/// Every frame: list the maps with a Black Crystal or Black Obelisk on
+/// their tabs only when `on` ([`crate::ds_art::features`]); otherwise they
+/// sit on a tab no list shows.
+pub fn show_obelisk_maps(core: &mut Core, on: bool) {
+    for (map, &id) in MAPS.iter().zip(IDS.iter()) {
+        if !map.obelisk {
+            continue;
+        }
+        let at = MAP_TABLE + 0x5C * id as u32 + 0x1A;
+        let tab = if on { map.tab } else { HIDDEN_TAB };
+        if core.raw_read_16(at, -1) != tab {
+            core.raw_write_16(at, -1, tab);
+        }
+    }
+}

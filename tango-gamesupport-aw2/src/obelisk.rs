@@ -12,12 +12,7 @@
 
 use mgba::core::Core;
 
-use crate::obelisk_art::{CRYSTAL, CRYSTAL_NAME, OBELISK, OBELISK_NAME, OBELISK_SMALL};
-
-/// The Obelisk's three sprites' tiles (see `install`).
-pub const OBELISK_MIDDLE: &[u8] = OBELISK.split_at(1024).0;
-pub const OBELISK_LEFT: &[u8] = OBELISK.split_at(1024).1.split_at(128).0;
-pub const OBELISK_RIGHT: &[u8] = OBELISK.split_at(1152).1;
+use crate::obelisk_art::{CRYSTAL_NAME, OBELISK_NAME};
 
 pub const CRYSTAL_TILE: u16 = 0x192;
 pub const OBELISK_TILE: u16 = 0x193;
@@ -49,12 +44,12 @@ pub const OBELISK_NAME_AT: u32 = DATA + 0x200;
 const CRYSTAL_PICTURE_AT: u32 = DATA + 0x300;
 const OBELISK_PICTURE_AT: u32 = DATA + 0x400;
 const DATA_SENTINEL: u32 = DATA + 0xFFC;
-const DATA_MAGIC: u32 = 0x324B_4C42; // "BLK2" (bump when the data changes)
+const DATA_MAGIC: u32 = 0x334B_4C42; // "BLK3" (bump when the data changes)
 
 /// OBJ tiles for the sprites in battle (no screen of the battle map writes
-/// 0x176..0x1A5): the Obelisk's 40 tiles, then the Crystal's 8.
+/// 0x176..0x1A5): the Obelisk's 36 tiles, then the Crystal's 8.
 const OBELISK_OBJ_TILE: u32 = 0x176;
-const CRYSTAL_OBJ_TILE: u32 = 0x19E;
+const CRYSTAL_OBJ_TILE: u32 = 0x19A;
 /// Which structure's name the terrain panel is showing (1 Crystal, 2 Obelisk).
 const PANEL: u32 = 0x0203_0207;
 
@@ -75,21 +70,24 @@ pub fn install(core: &mut Core) {
     }
     // Sprite definitions: count, then attr0/attr1/attr2 (tile relative to
     // 0x48, priority 3), drawn from the structure's top-left corner. The
-    // Obelisk is a 32x64 sprite over the middle of its 3x3 rect, rising a
-    // tile above it, and two 8x32 strips for the platform's sides; the
-    // Crystal a 16x32 one.
+    // Obelisk covers its 3x3 rect with four sprites (32x32, 16x32, 32x16,
+    // 16x16, as the Black Cannon), the Crystal is one 16x32 a tile above
+    // its cell. The same whichever art is loaded (`crate::ds_art`).
     let tile = |t: u32| 0x0C00 | (t - 0x48) as u16;
     let obelisk_def: &[u16] = &[
-        0x0003,
-        0x80F0,
-        0xC008,
+        0x0004,
+        0x0000,
+        0x8000,
         tile(OBELISK_OBJ_TILE),
-        0x8010,
-        0x4000,
+        0x8000,
+        0x8020,
+        tile(OBELISK_OBJ_TILE + 16),
+        0x4020,
+        0x8000,
+        tile(OBELISK_OBJ_TILE + 24),
+        0x0020,
+        0x4020,
         tile(OBELISK_OBJ_TILE + 32),
-        0x8010,
-        0x4028,
-        tile(OBELISK_OBJ_TILE + 36),
     ];
     let crystal_def: &[u16] = &[0x0001, 0x80F0, 0x8000, tile(CRYSTAL_OBJ_TILE)];
     for (at, def) in [(OBELISK_DEF, obelisk_def), (CRYSTAL_DEF, crystal_def)] {
@@ -99,8 +97,12 @@ pub fn install(core: &mut Core) {
     }
     core.raw_write_range(CRYSTAL_NAME_AT, -1, &CRYSTAL_NAME);
     core.raw_write_range(OBELISK_NAME_AT, -1, &OBELISK_NAME);
-    core.raw_write_range(CRYSTAL_PICTURE_AT, -1, &CRYSTAL);
-    core.raw_write_range(OBELISK_PICTURE_AT, -1, &OBELISK_SMALL);
+    // Their pictures: Dual Strike's, imported; without it they are shown
+    // only in someone else's replay, and then as nothing.
+    let blank = [0u8; 256];
+    let art = crate::ds_art::art();
+    core.raw_write_range(CRYSTAL_PICTURE_AT, -1, art.map_or(&blank[..], |a| &a.crystal));
+    core.raw_write_range(OBELISK_PICTURE_AT, -1, art.map_or(&blank[..], |a| &a.obelisk_small));
     core.raw_write_32(DATA_SENTINEL, -1, DATA_MAGIC);
 }
 
@@ -168,8 +170,10 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
 
 /// After the building sheet loads (0x0803F6A0): our sprites' tiles.
 fn load_tiles(core: &mut Core) {
-    core.raw_write_range(0x0601_0000 + OBELISK_OBJ_TILE * 32, -1, &OBELISK);
-    core.raw_write_range(0x0601_0000 + CRYSTAL_OBJ_TILE * 32, -1, &CRYSTAL);
+    let blank = [0u8; 36 * 32];
+    let art = crate::ds_art::art();
+    core.raw_write_range(0x0601_0000 + OBELISK_OBJ_TILE * 32, -1, art.map_or(&blank[..], |a| &a.obelisk));
+    core.raw_write_range(0x0601_0000 + CRYSTAL_OBJ_TILE * 32, -1, art.map_or(&blank[..256], |a| &a.crystal));
 }
 
 /// sub_0803F908(x, y, def, army, fog) puts a building's or invention's

@@ -20,6 +20,10 @@
 //!   peek ADDR LEN       print LEN bytes at ADDR on both peers
 //! KEYS is `+`-joined from A B SELECT START RIGHT LEFT UP DOWN R L.
 //!
+//! `TANGOAW2_DS_ROM=<file>` gives the peers the Dual Strike art, and
+//! `AW2_SHARED_ART=1` plays the match as the lobby makes it when both
+//! players have it (the Black Crystal and Black Obelisk maps then show).
+//!
 //! `AW2_TIMELINE=<file>` writes the resolved script: one line per tick with
 //! both seats' keys (hex), and `# shot TICK NAME` lines, for replaying the
 //! same match over a real connection (tango-session's aw2_direct_netplay).
@@ -92,7 +96,10 @@ fn main() {
     let out = std::path::PathBuf::from(&args[4]);
     std::fs::create_dir_all(&out).ok();
     let rtc = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
-    let match_type = (0u8, 0u8);
+    // `AW2_SHARED_ART=1`: the match as the lobby makes it when both players
+    // have imported the Dual Strike art (`ds_art::SHARED_ART`).
+    let shared_art = std::env::var_os("AW2_SHARED_ART").is_some();
+    let match_type = (0u8, if shared_art { tango_gamesupport_aw2::ds_art::SHARED_ART } else { 0 });
 
     let game = &tango_gamesupport_aw2::AW2;
     let start = |local_player| {
