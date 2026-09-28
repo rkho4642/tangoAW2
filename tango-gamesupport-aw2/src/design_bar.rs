@@ -291,6 +291,14 @@ pub fn icon_palette(core: &mut Core) {
     if !crate::design::in_map_editor(core) {
         return;
     }
+    // Black Hole's properties (owner 5, classes 0xA6..0xAE): Black Hole's
+    // palette, as its buildings (crate::design5).
+    let raw = core.gba().cpu().gpr(3) as u32;
+    if matches!(raw, 0xA6 | 0xA8 | 0xAA | 0xAB | 0xAE) {
+        let palette = crate::invention_art::black_hole_palette() as i32;
+        core.gba_mut().cpu_mut().set_gpr(0, palette);
+        return;
+    }
     // The Crystal's and Obelisk's words carry OURS.
     let item = core.gba().cpu().gpr(3) as u32 & !(OURS as u32);
     if item > 0x1F || !is_invention_type(item as u8) {
@@ -299,7 +307,7 @@ pub fn icon_palette(core: &mut Core) {
     let palette = if item == VOLCANO_TYPE {
         MOUNTAIN_PALETTE
     } else {
-        crate::invention_art::black_hole_palette(core) as i32
+        crate::invention_art::black_hole_palette() as i32
     };
     core.gba_mut().cpu_mut().set_gpr(0, palette);
 }

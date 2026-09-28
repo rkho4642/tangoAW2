@@ -1,11 +1,8 @@
 //! The Design Room, extended (offline only): Black Hole as an army colour
 //! and Black Hole's inventions as placeable structures.
 //!
-//! Advance Wars 2 has four army slots; Black Hole is always one of them
-//! shown in colour 5 (the campaign does the same). Here Black Hole shares
-//! Yellow Comet's slot, 4: a design map has one or the other. The choice is
-//! the map-wide marker [`MARKER`] (4 = slot 4 is Black Hole), a spare byte
-//! the game saves with each design map and restores on load.
+//! Black Hole is a fifth army next to the game's four, with its own HQ,
+//! bases and units ([`crate::design5`]).
 //!
 //! Inventions are ordinary terrain tiles (their battle sprites come from
 //! scanning the map when a battle loads), so placing one is writing its
@@ -32,20 +29,13 @@ const E_BAR: u32 = EDITOR + 0x07; // 0 terrain bar, else units
 const E_CURSOR_X: u32 = EDITOR + 0x08;
 const E_CURSOR_Y: u32 = EDITOR + 0x0A;
 const E_TERRAIN: u32 = EDITOR + 0x2A; // class | owner << 5
-const E_TERRAIN_SLOT: u32 = EDITOR + 0x2E; // 0..=4
-/// First visible entry of each bar; the highlighted one sits 4 (terrain)
-/// or 3 (units) further on, wrapping around the list.
+/// First visible entry of the terrain bar; the highlighted one sits 4
+/// further on, wrapping around the list. The bar's length: 17 in the game,
+/// 27 or 29 with the inventions ([`crate::design_bar::entries`]).
 const E_TERRAIN_WINDOW: u32 = EDITOR + 0x36;
-const E_UNIT_WINDOW: u32 = EDITOR + 0x38;
-// The terrain bar's length: 17 in the game, 27 or 29 with the inventions
-// ([`crate::design_bar::entries`]).
-const UNIT_ENTRIES: u32 = 20;
-/// The unit bar's "Del" (eraser) entry.
-const UNIT_DELETE_INDEX: u32 = 2;
 /// The open bar's entries: (word, tile) pairs; word is the terrain class
 /// byte (terrain bar) or the unit word (unit bar).
 const BAR_LIST: u32 = crate::design_bar::LIST;
-const E_UNIT_SLOT: u32 = EDITOR + 0x2F; // 1..=4
 
 /// The editor's map: size, camera (pixels), tile IDs, class plane, unit
 /// plane, and the row-offset table.
@@ -61,31 +51,6 @@ const ROWS: u32 = MAP + 0x417A;
 /// Tile ID -> class byte (class | owner << 5), in ROM.
 const CLASS_TABLE: u32 = 0x080C_1BC4;
 
-/// Per-slot army colours of the map being edited; index 0 is unused by the
-/// game, saved and restored with the map, and is tangoAW2's Black Hole
-/// marker.
-pub const MARKER: u32 = 0x0300_3FF3;
-const BLACK_HOLE_SLOT: u8 = 4;
-
-/// Editor player blocks (slot n at + 0x3C * n), colour at + 0x1A.
-const EDITOR_PLAYERS: u32 = 0x0202_3284;
-
-/// Slot 4's own CO while it is shown as Black Hole (0 = not swapped).
-const SAVED_CO: u32 = 0x0203_FFFD;
-
-/// The game draws units and HQs in the style of the army's CO's country
-/// (`0x08042DE0`: CO at player + 0x1D -> country); the editor gives slot 4
-/// Kanbei, so Yellow Comet's designs. While slot 4 is Black Hole it gets
-/// Flak, so Black Hole's own units and HQ.
-const CO: u32 = 0x1D;
-const BLACK_HOLE_CO: u8 = 11;
-fn is_black_hole_co(co: u8) -> bool {
-    (10..=14).contains(&co)
-}
-/// HQ sprite tops, 0x100 bytes per country (1 Orange Star .. 5 Black Hole),
-/// copied into OBJ VRAM when a map loads.
-const HQ_SPRITES: u32 = 0x080D_16C4;
-
 const PLAIN_TILE: u16 = 0x001;
 const UNDERLAY: u16 = 0x1A4;
 const VOLCANO_RIM: u16 = 0x1A5;
@@ -97,7 +62,6 @@ const MAX_INVENTIONS: usize = 15;
 const KEY_A: u32 = 1;
 const KEY_SELECT: u32 = 1 << 2;
 const KEY_UP: u32 = 1 << 6;
-const KEY_DOWN: u32 = 1 << 7;
 
 /// One placeable invention: its label, the tile carrying its class (the
 /// anchor), and its footprint rows starting at (anchor.x + dx, anchor.y + dy).
@@ -332,24 +296,15 @@ fn highlighted_terrain_word(core: &Core) -> u16 {
 /// Obelisk with the Black Cannon.
 const PICKED: u32 = 0x0203_FF7C;
 
-fn highlighted_unit_index(core: &Core) -> u32 {
-    (core.raw_read_8(E_UNIT_WINDOW, -1) as u32 + 3) % UNIT_ENTRIES
-}
-
-fn is_property_class(class: u8) -> bool {
-    matches!(class, 0x06 | 0x08 | 0x0A | 0x0B | 0x0E)
-}
-
-/// One Design Room frame: the Black Hole colour step, the invention picker
-/// on the Silo entry, placing inventions, and keeping the editor's slot 4
-/// drawn as Black Hole. Returns the joypad word the editor should see.
+/// One Design Room frame: SELECT as "next army" in the bars, placing
+/// inventions, and Black Hole as army 5 ([`crate::design5::editor_tick`]).
+/// Returns the joypad word the editor should see.
 pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     let mut keys = keys;
     let mut pressed = keys & !prev;
     let bar_open = core.raw_read_8(E_STATE, -1) == 2;
     // In a tool bar SELECT only repeated L/R (switch bars); tangoAW2 makes
-    // it "next army" like UP, as on Versus' Teams screen: Yellow Comet ->
-    // Black Hole included.
+    // it "next army" like UP, as on Versus' Teams screen.
     if bar_open && pressed & KEY_SELECT != 0 {
         keys = (keys & !KEY_SELECT) | KEY_UP;
         pressed = (pressed & !KEY_SELECT) | KEY_UP;
@@ -370,48 +325,13 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
             class
         }
     };
-    let class = word as u8 & 0x1F;
     if bar_open && terrain_bar && pressed & KEY_A != 0 {
         core.raw_write_16(PICKED, -1, word);
     }
-    let unit_is_delete = bar_open && !terrain_bar && highlighted_unit_index(core) == UNIT_DELETE_INDEX;
-    let marker = core.raw_read_8(MARKER, -1);
-
-    if bar_open {
-        {
-            // The colour arrows: Yellow Comet and Black Hole share slot 4.
-            let (slot_addr, coloured) = if terrain_bar {
-                (E_TERRAIN_SLOT, is_property_class(class))
-            } else {
-                (E_UNIT_SLOT, !unit_is_delete)
-            };
-            let slot = core.raw_read_8(slot_addr, -1);
-            if coloured && slot == BLACK_HOLE_SLOT {
-                if pressed & KEY_UP != 0 && marker != BLACK_HOLE_SLOT {
-                    // Yellow Comet -> Black Hole.
-                    core.raw_write_8(MARKER, -1, BLACK_HOLE_SLOT);
-                    keys &= !KEY_UP;
-                } else if pressed & KEY_DOWN != 0 && marker == BLACK_HOLE_SLOT {
-                    // Black Hole -> Yellow Comet.
-                    core.raw_write_8(MARKER, -1, 0);
-                    keys &= !KEY_DOWN;
-                }
-            } else if coloured {
-                // Arriving at slot 4 from either side shows the army next
-                // in line: going forward (UP/SELECT) Yellow Comet comes
-                // before Black Hole, going back (DOWN) Black Hole comes
-                // first. So one button walks all six: ... Green Earth,
-                // Yellow Comet, Black Hole, Neutral ...
-                let below = BLACK_HOLE_SLOT - 1;
-                let above = if terrain_bar { 0 } else { 1 };
-                if pressed & KEY_UP != 0 && slot == below {
-                    core.raw_write_8(MARKER, -1, 0);
-                } else if pressed & KEY_DOWN != 0 && slot == above {
-                    core.raw_write_8(MARKER, -1, BLACK_HOLE_SLOT);
-                }
-            }
-        }
-    } else if pressed & KEY_A != 0 && terrain_bar {
+    // In the bars UP/DOWN (and SELECT) step through the armies: neutral,
+    // Orange Star, Blue Moon, Green Earth, Yellow Comet and Black Hole
+    // (crate::design5 gives the bars a fifth army).
+    if !bar_open && pressed & KEY_A != 0 && terrain_bar {
         // An invention picked from the terrain bar: A on the map places its
         // whole footprint (the game alone would place just one tile).
         if let Some(i) = crate::design_bar::invention_of(word) {
@@ -423,121 +343,8 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     clear_orphans(core);
     let volcano_on_map = placed(core).iter().any(|&(i, _, _)| i == VOLCANO_INDEX);
     crate::invention_art::tick(core, volcano_on_map);
-    show_slot4_as(
-        core,
-        if core.raw_read_8(MARKER, -1) == BLACK_HOLE_SLOT {
-            5
-        } else {
-            4
-        },
-    );
-    if core.raw_read_8(MARKER, -1) == BLACK_HOLE_SLOT {
-        core.raw_write_8(EDITOR_PLAYERS + 0x3C * BLACK_HOLE_SLOT as u32 + 0x1A, -1, 5);
-        // Slot 4's rows belong to slot 4 alone in the editor, so they can
-        // be held to Black Hole's even while the game animates a slot change.
-        crate::pvp::force_slot_palettes(core, BLACK_HOLE_SLOT as u32 - 1, 5);
-        // The army list's emblem for slot 4: Black Hole's, drawn into
-        // Yellow Comet's emblem tiles.
-        crate::pvp::draw_emblem_as(core, 4, 5);
-    } else if core.raw_read_8(MARKER, -1) != 0 {
-        // Only 0 and 4 are ours; anything else is not a marker.
-        core.raw_write_8(MARKER, -1, 0);
-    } else {
-        // Back to Yellow Comet: put its colour and palettes back (the game
-        // only reloads them when the slot changes).
-        let colour = EDITOR_PLAYERS + 0x3C * BLACK_HOLE_SLOT as u32 + 0x1A;
-        if core.raw_read_8(colour, -1) == 5 {
-            core.raw_write_8(colour, -1, BLACK_HOLE_SLOT);
-        }
-        crate::pvp::swap_slot_palettes(core, BLACK_HOLE_SLOT as u32 - 1, 5, 4);
-        crate::pvp::draw_emblem_as(core, 4, 4);
-    }
+    crate::design5::editor_tick(core);
     keys
-}
-
-/// The tool bar's item ring: 11 entries of 0x1C bytes, flags first; bit 0
-/// = shown, bit 3 = reload the entry's sprite graphics this frame.
-const DESIGN_RING: u32 = 0x0200_B0D0;
-
-/// Draws slot 4 in `country`'s own designs (4 Yellow Comet, 5 Black Hole):
-/// its CO, and the HQ sprite already in OBJ VRAM. When it switches, the
-/// tool bar reloads its sprites, which were drawn for the old CO.
-fn show_slot4_as(core: &mut Core, country: u8) {
-    let before = core.raw_read_8(SAVED_CO, -1);
-    let co = EDITOR_PLAYERS + 0x3C * BLACK_HOLE_SLOT as u32 + CO;
-    let saved = core.raw_read_8(SAVED_CO, -1);
-    if country == 5 {
-        let now = core.raw_read_8(co, -1);
-        if !is_black_hole_co(now) {
-            core.raw_write_8(SAVED_CO, -1, now.wrapping_add(1));
-            core.raw_write_8(co, -1, BLACK_HOLE_CO);
-        }
-    } else if saved != 0 {
-        core.raw_write_8(co, -1, saved - 1);
-        core.raw_write_8(SAVED_CO, -1, 0);
-    }
-    if core.raw_read_8(SAVED_CO, -1) != before {
-        for i in 0..11 {
-            let flags = DESIGN_RING + 0x1C * i;
-            let f = core.raw_read_32(flags, -1);
-            if f & 1 != 0 {
-                core.raw_write_32(flags, -1, f | 8);
-            }
-        }
-        core.raw_write_8(REDRAW, -1, REDRAW_PENDING);
-    }
-    let (from, to) = if country == 5 { (4, 5) } else { (5, 4) };
-    let mut want = [0u8; 0x100];
-    let mut have = [0u8; 0x100];
-    core.raw_read_range(HQ_SPRITES + 0x100 * (from - 1), -1, &mut have);
-    core.raw_read_range(HQ_SPRITES + 0x100 * (to - 1), -1, &mut want);
-    let mut vram = vec![0u8; 0x8000];
-    core.raw_read_range(0x0601_0000, -1, &mut vram);
-    let mut at = 0;
-    while at + 0x100 <= vram.len() {
-        if vram[at..at + 0x100] == have {
-            core.raw_write_range(0x0601_0000 + at as u32, -1, &want);
-        }
-        at += 0x20;
-    }
-}
-
-// ---------- Redrawing placed units ----------
-
-/// Placed units are background tiles picked by their army's CO country when
-/// they are drawn, so after the Black Hole switch they must be drawn again.
-/// The editor's per-frame input handler (`sub_08005F4C`, void, no
-/// arguments): at its entry nothing but LR is live, so a pending redraw
-/// detours through the game's visible-map unit redraw (`sub_08022580`) and
-/// comes back to it.
-pub const EDITOR_FRAME: u32 = 0x0800_5F4C;
-const UNIT_REDRAW: u32 = 0x0802_2580;
-/// 0 nothing to do, 1 pending, 2 in flight.
-const REDRAW: u32 = 0x0203_FFF4;
-const REDRAW_PENDING: u8 = 1;
-const REDRAW_IN_FLIGHT: u8 = 2;
-/// The handler's return address while the detour runs.
-const REDRAW_LR: u32 = 0x0203_FFEC;
-
-/// Trap at [`EDITOR_FRAME`].
-pub fn editor_frame(core: &mut Core) {
-    match core.raw_read_8(REDRAW, -1) {
-        REDRAW_PENDING if in_map_editor(core) => {
-            let lr = core.gba().cpu().gpr(14) as u32;
-            core.raw_write_32(REDRAW_LR, -1, lr);
-            core.raw_write_8(REDRAW, -1, REDRAW_IN_FLIGHT);
-            let cpu = core.gba_mut().cpu_mut();
-            cpu.set_gpr(14, (EDITOR_FRAME | 1) as i32);
-            cpu.set_thumb_pc(UNIT_REDRAW);
-        }
-        REDRAW_IN_FLIGHT => {
-            // Back from the redraw: the handler runs with its own caller.
-            let lr = core.raw_read_32(REDRAW_LR, -1);
-            core.raw_write_8(REDRAW, -1, 0);
-            core.gba_mut().cpu_mut().set_gpr(14, lr as i32);
-        }
-        _ => {}
-    }
 }
 
 // ---------- The inventions' own pictures ----------
@@ -568,6 +375,7 @@ pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
     } else {
         160
     };
+    let at = crate::design5::append_emblem(core, at, end);
     crate::invention_art::append(core, &list, volcano_on_map, bottom, at, end)
 }
 

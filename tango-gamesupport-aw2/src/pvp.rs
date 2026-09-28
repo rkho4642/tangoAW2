@@ -61,10 +61,10 @@ const TASK_TABLE: (u32, u32) = (0x0300_1500, 0x0300_1A00);
 /// and each group's graphics a ROM row of (base, palette, first id).
 const SPRITE_GROUPS: u32 = 0x0200_F920;
 const SPRITE_GROUP_SIZE: u32 = 0x88;
-const EMBLEM_GROUP: u32 = 1;
+pub(crate) const EMBLEM_GROUP: u32 = 1;
 const SPRITE_SIZES: u32 = 0x0848_B780;
 const SPRITE_ROWS: u32 = 0x0848_B738;
-const EMBLEM_BASE_ID: u32 = 0x3D;
+pub(crate) const EMBLEM_BASE_ID: u32 = 0x3D;
 const BLACK_HOLE: u8 = 5;
 
 /// The Versus map being played; design maps are 0xB4..=0xB7.
@@ -98,7 +98,7 @@ const DESIGN_PRESET_DONE: u32 = 0x0203_FFF5;
 /// itself gives them, and what the game loads palettes for.
 const ORIGINAL_COLOURS: u32 = 0x0203_FFF8;
 /// The design-map list's cache of each saved map (0x1C bytes per slot);
-/// + 0x14 holds the map's saved marker byte (see design::MARKER).
+/// + 0x14 holds the map's saved marker byte (5 marks a five-army map, see crate::five::DESIGN_FIVE).
 const DESIGN_CACHE: u32 = 0x0202_80C0;
 
 const KEY_SELECT: u32 = 1 << 2;
@@ -162,7 +162,7 @@ fn in_battle(core: &Core) -> bool {
     core.raw_read_32(BATTLE_SCENE, -1) != 0 || core.raw_read_32(MAIN_LOOP, -1) == CO_PAGE_LOOP
 }
 
-fn in_versus(core: &Core) -> bool {
+pub(crate) fn in_versus(core: &Core) -> bool {
     core.raw_read_8(GAME_MODE, -1) == VERSUS
 }
 
@@ -172,14 +172,14 @@ fn on_teams_screen(core: &Core) -> bool {
         .any(|a| core.raw_read_32(a, -1) == TEAMS_TASK)
 }
 
-fn sprite_tiles(core: &Core, id: u32) -> u32 {
+pub(crate) fn sprite_tiles(core: &Core, id: u32) -> u32 {
     let w = core.raw_read_8(SPRITE_SIZES + id * 4, -1) as u32;
     let h = core.raw_read_8(SPRITE_SIZES + id * 4 + 1, -1) as u32;
     w * h
 }
 
 /// Where sprite `id`'s graphics start in ROM (the game's own lookup).
-fn sprite_source(core: &Core, id: u32, group: u32) -> u32 {
+pub(crate) fn sprite_source(core: &Core, id: u32, group: u32) -> u32 {
     let row = SPRITE_ROWS + group * 12;
     let base = core.raw_read_32(row, -1);
     let first = core.raw_read_32(row + 8, -1) & 0xFFFF;
@@ -472,6 +472,8 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         crate::five_map::show_obelisk_maps(core, ds_features);
         crate::branding::tick(core);
         crate::design_bar::patch_rom(core, ds_features);
+        crate::design5::patch_rom(core);
+        crate::design5::sync(core);
 
         let prev = core.raw_read_16(PREV_KEYS, -1) as u32;
         core.raw_write_16(PREV_KEYS, -1, keys as u16);
@@ -482,6 +484,8 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         // The Design Room's Black Hole colour and inventions: offline only.
         if mode.is_none() && crate::design::in_editor(core) {
             keys = crate::design::editor_tick(core, keys, prev);
+        } else {
+            crate::invention_art::put_back(core);
         }
         if in_battle(core) {
             core.raw_write_8(DESIGN_PRESET_DONE, -1, 0);

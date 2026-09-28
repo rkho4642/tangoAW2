@@ -19,14 +19,35 @@ No game is included. You need your own copy of the cartridge dumped to a
 </tr>
 </table>
 
-## New in 0.2.1
+## New in 0.2.2
 
-- **Black Rampart**, a new 5P map in the campaign's style: Black Hole's
-  fortress at the top behind a pipe wall, with a Black Factory,
-  minicannons and a Deathray in the middle of the top edge that fires
-  down the whole map. See [Five armies](#five-armies-5p-maps).
-- **Black Monolith** (with the Dual Strike art) gets more cities for every
-  army, more neutral cities, neutral airports and roads.
+- **Five armies in the Design Room.** Black Hole is now its own army next
+  to Orange Star, Blue Moon, Green Earth and Yellow Comet, so you can put
+  all five HQs on one map and design your own 5P maps. The HQ panel shows
+  the five emblems as an X, Black Hole's in the middle. Five-army design
+  maps play offline and online. See [Design Room](#design-room-black-hole-and-its-inventions).
+- **Fixes:** Yellow Comet's buildings are yellow again on maps with a
+  Volcano (they took the Volcano's colours); Black Hole's buildings cast
+  a shadow in the Design Room like everyone else's.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/design-five-armies.png" width="360" alt="The Design Room with all five armies' HQs, bases and infantry, and the five emblems in an X"></td>
+<td><img src="docs/screenshots/design-five-battle.png" width="360" alt="That map in battle, all five armies"></td>
+</tr>
+<tr>
+<td align="center">All five armies in the Design Room</td>
+<td align="center">The same map in battle</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/battle-volcano-yellow-comet.png" width="360" alt="A Volcano next to Yellow Comet's yellow base in battle"></td>
+<td></td>
+</tr>
+<tr>
+<td align="center">A Volcano map: Yellow Comet stays yellow</td>
+<td></td>
+</tr>
+</table>
 
 Older changes are in each release's notes on the
 [Releases](https://github.com/rkoh46/tangoAW2/releases) page.
@@ -52,8 +73,8 @@ Older changes are in each release's notes on the
   included, online and offline. Units, buildings, HQs and banners take the
   picked army's colours; Campaign and War Room keep their story armies.
 - **Five armies on one map** (new). See [Five armies](#five-armies-5p-maps).
-- **Black Hole in the Design Room.** Build maps with a Black Hole army and
-  Black Hole's inventions (minicannons, laser, Black Cannons, Black
+- **Black Hole in the Design Room.** Build maps with all five armies,
+  Black Hole included, and Black Hole's inventions (minicannons, laser, Black Cannons, Black
   Factory, Volcano and Deathray), each picked from the terrain bar and
   shown as it looks in battle. See [Design Room](#design-room-black-hole-and-its-inventions).
 - **Play as Black Hole with its inventions.** The Black Factory deploys
@@ -128,6 +149,9 @@ Versus has a **5P Maps** tab (press **L** or **LEFT** on the map list's
 tab, it sits just before Classic) with six maps, seven with the
 [Dual Strike art](#black-crystal-and-black-obelisk). Its maps have all five armies:
 Orange Star, Blue Moon, Green Earth, Yellow Comet and **Black Hole**.
+To make your own, put all five HQs on a map in the
+[Design Room](#design-room-black-hole-and-its-inventions); it shows under
+**Design Maps**.
 
 <table>
 <tr>
@@ -235,14 +259,12 @@ keys are in brackets (change them in Settings).
 
 <table>
 <tr>
-<td><img src="docs/screenshots/design-yellow-comet.png" width="240" alt="Yellow Comet buildings in the terrain bar"></td>
-<td><img src="docs/screenshots/design-black-hole.png" width="240" alt="UP turns them into Black Hole"></td>
-<td><img src="docs/screenshots/design-back-to-yellow-comet.png" width="240" alt="DOWN turns them back into Yellow Comet"></td>
+<td><img src="docs/screenshots/design-five-armies.png" width="360" alt="All five armies on one design map, with the five emblems in an X and Play OK!"></td>
+<td><img src="docs/screenshots/design-five-teams.png" width="360" alt="The Teams screen of that map: five armies, Black Hole with Flak"></td>
 </tr>
 <tr>
-<td align="center">Yellow Comet</td>
-<td align="center">SELECT or UP: Black Hole</td>
-<td align="center">Back to Yellow Comet (DOWN, or SELECT round again)</td>
+<td align="center">Five armies on one map</td>
+<td align="center">Its Teams screen: all five</td>
 </tr>
 </table>
 
@@ -252,7 +274,8 @@ keys are in brackets (change them in Settings).
 2. Highlight a building (HQ, City, Base, Airport, Port) or a unit.
 3. Press **SELECT** (Space) or **UP** to change army: Orange Star, Blue
    Moon, Green Earth, Yellow Comet, **Black Hole**, Neutral, and round
-   again. You get Black Hole's real HQ, buildings and units.
+   again (**DOWN** goes the other way). You get Black Hole's real HQ,
+   buildings and units.
 4. Press **A** (Z) to pick it, then **A** on the map to place it.
 
 To switch between the terrain and unit bars, press **L** or **R**.
@@ -268,30 +291,16 @@ To switch between the terrain and unit bars, press **L** or **R**.
 </tr>
 </table>
 
-**Getting Yellow Comet back.** Keep pressing **SELECT**: it cycles
-through every army and comes back round to Yellow Comet, then Black Hole.
-**DOWN** goes the other way (Black Hole, then Yellow Comet).
-
-Black Hole and Yellow Comet share one army slot, so a map has one or the
-other, like the campaign. Switching changes every piece of that army
-already on the map.
+Black Hole is a fifth army: it sits next to the other four, so a map can
+have all five HQs (one per army). With Black Hole's HQ placed, the HQ
+panel shows the five emblems as an X, Black Hole's in the middle.
 
 <table>
 <tr>
 <td><img src="docs/screenshots/design-units-black-hole.png" width="360" alt="Black Hole units in the unit bar"></td>
-<td><img src="docs/screenshots/design-units-yellow-comet.png" width="360" alt="DOWN: Yellow Comet units, and the placed base turns yellow"></td>
 </tr>
 <tr>
 <td align="center">Black Hole units, next to a placed Black Hole base</td>
-<td align="center">Back to Yellow Comet: its units, and the placed pieces turn Yellow Comet</td>
-</tr>
-<tr>
-<td><img src="docs/screenshots/design-placed-black-hole.png" width="360" alt="A Black Hole infantry and base placed on the map"></td>
-<td><img src="docs/screenshots/design-placed-yellow-comet.png" width="360" alt="After DOWN the same pieces are Yellow Comet's"></td>
-</tr>
-<tr>
-<td align="center">Placed Black Hole pieces</td>
-<td align="center">Switch to Yellow Comet: the same pieces are redrawn as Yellow Comet's</td>
 </tr>
 </table>
 
@@ -386,14 +395,16 @@ looks in battle:
 ### Saving and playing the map
 
 Save with **SELECT → File → Save** (on the map, with no bar open), then
-play it from **Versus → New → Design Maps**. The army you made Black Hole
-starts as Black Hole on the Teams screen. Set it to **1P** (the row under
-the portraits) to command it yourself, or leave it on **CP**.
+play it from **Versus → New → Design Maps**. A map with Black Hole pieces
+plays with five armies, Black Hole fifth (with Flak). Set any army to
+**1P** (the row under the portraits) to command it yourself, or leave it
+on **CP**. Online, player 1 moves armies 1, 3 and 5, player 2 armies 2
+and 4, as on the [5P maps](#five-armies-5p-maps).
 
-Give it a Black Hole CO (Flak, Lash, Adder, Hawke or Sturm: press UP or
-DOWN on its portrait) to get Black Hole's HQ and units in battle. With
-any other CO, the army keeps Black Hole's colours but uses that CO's
-army's HQ and units, as in the original game.
+Black Hole's HQ and units come with a Black Hole CO (Flak, Lash, Adder,
+Hawke or Sturm: press UP or DOWN on its portrait). With any other CO the
+army keeps Black Hole's colours but uses that CO's army's HQ and units,
+as in the original game.
 
 <img src="docs/screenshots/battle-black-hole-hq.png" width="360" alt="In battle: Black Hole's HQ in the terrain panel, with its cannons on the map">
 
@@ -621,8 +632,8 @@ With the art imported, **Crystal** and **Obelisk** are in the terrain bar,
 after D.Ray. Pick one with **A** (Z) and press **A** on the map to place it; the
 Obelisk goes around the cursor. They count towards the map's 15
 inventions and save and play like any other invention. They heal the
-Black Hole army, so switch slot 4 to Black Hole (**UP** past Yellow
-Comet) for them to do anything.
+Black Hole army, so give the map a Black Hole army (its HQ) for them to
+do anything.
 
 <table>
 <tr>

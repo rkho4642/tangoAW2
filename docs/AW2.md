@@ -74,34 +74,27 @@ editor map is at `0x0201E450` (size, camera at `+4/+6`, tiles `+0xA22`,
 classes `+0x1432`, units `+0x12`, row offsets `+0x417A`); tile classes come
 from the ROM table `0x080C1BC4`.
 
-- Black Hole: the design map's spare colour byte `0x03003FF3[0]` (saved at
-  record `+0x4C4`, restored on load, cached at `0x020280D4 + 0x1C*k` for the
-  map list) is set to 4 when slot 4 is Black Hole. The editor's slot 4 is
-  then drawn with colour 5 (player colour byte, palette rows, and the army
-  list's emblem). In Versus the Teams screen starts that army as Black
-  Hole, and design-map battles swap palettes to the picked colours
-  (design maps load palettes from the map's own colours, `0x03003FF3`).
-- Inventions are terrain tiles with their campaign footprints (anchor tile
-  carries the class): minicannons `0x182..0x185`, laser `0x181`, Black
-  Cannon `0x187`/`0x18A` (3x3), Black Factory `0x18D` (3x4), Volcano
-  `0x1A7` (4x4), Deathray `0x190` (3x3); other cells are underlay `0x1A4`
-  (Volcano rim `0x1A5`). The battle registers them by scanning the map.
-  The Black Factory and the Volcano share graphics memory in battle, so
-  a map may hold one of them.
-- The game draws an army's units and HQ in the designs of its CO's army
-  (`0x08042DE0`: player + 0x1D CO -> country, table `0x085D3DD0`), in battle
-  and in the editor. The editor gives slot 4 Kanbei (Yellow Comet), so while
-  slot 4 is Black Hole tangoAW2 gives it Flak (its own CO is kept at
-  `0x0203FFFD`), copies Black Hole's HQ sprite top (`0x080D16C4 +
-  0x100*(country-1)`) over Yellow Comet's in OBJ VRAM, holds slot 4's
-  palette rows to Black Hole's, and sets bit 3 (reload graphics) on the
-  tool bar's ring entries (`gDesignRing`, `0x0200B0D0`, 11 x 0x1C, flags
-  first) so the bar redraws for the new CO. Back to Yellow Comet undoes it.
-  Units already placed are background tiles chosen when drawn, so the
-  switch also runs the game's visible-map unit redraw (`sub_08022580`)
-  through a detour at the entry of the editor's per-frame handler
-  (`sub_08005F4C`, void, only LR live; LR kept at `0x0203FFEC`, state at
-  `0x0203FFF4`).
+- Black Hole is a fifth army in the editor (`design5.rs`), with five's
+  player table (`0x02030000`, see Five armies) and its patches on while
+  the editor runs. On entry the editor's four player blocks are copied
+  there and player 5 is set up as colour 5 with Flak, so its units and HQ
+  have Black Hole's designs (`0x08042DE0`: CO -> country). The bars' army
+  cycle goes to 5 (`0x08006C10/32`, `0x08006CC0/E2`), properties of owner
+  5 take classes `0xA6..0xAE` (tiles `0x1B4..0x1B8`, `GetDefaultTileForTerrain`
+  at `0x080012DC`, owner table repointed to `0x08660000`), units take ids
+  `205..254` (`0x0800894E`, `0x08008B8A`), and saving writes army 5's
+  units as `0xE0 | type` (`0x0803D09C`), read back at `0x0803D28C`.
+  A map with army-5 content carries the five-army mark (5) in its spare
+  colour byte `0x03003FF3[0]` (saved at record `+0x4C4`); the save's army
+  count (`+0x4C3`) stays 4 for the Versus list and the property totals
+  are put right (`0x0803CF7A`). The HQ panel draws the four armies'
+  emblems as an X around Black Hole's (OBJ tiles 532..535, the lanes'
+  palette 4; the lanes are double-size affine sprites, drawn 8 pixels in).
+  A plain's look comes from the cell to its left (`sub_08001704`, jump
+  table for classes `0x03..0x8E`); owner-5 classes are looked up as owner
+  4's (`0x08001750`), so Black Hole's buildings cast the same shadow.
+  Maps saved by older versions with Black Hole in slot 4 (mark 4) still
+  start that army as Black Hole on the Teams screen.
 - In a tool bar SELECT only swapped bars, like L/R; tangoAW2 turns a SELECT
   press into UP (next army, Black Hole included).
 - Inventions in the terrain bar (`design_bar.rs`): the bar's list is built
@@ -147,19 +140,15 @@ from the ROM table `0x080C1BC4`.
   frame's list at `[0x03002F2C]` inside the area described at
   `0x03000268`). Everything does not fit in those tiles, but a map has
   either the Black Factory or the Volcano, so only that one is loaded. On a
-  Volcano map palette 2 holds the Volcano's colours
-  and the rest use slot 4's unit palette (12).
+  Volcano map the Volcano borrows palette 15 (used by the editor only on
+  its save and load screens; the game's own is put back off the map), so
+  palette 2 stays Black Hole's.
 - The aw2bhr decompilation (`src/design.c`) names most of the editor's
   drawing: `sub_08002844` (unit icon: `sub_080261A4(slot, kind)`, CO-country
   based) and `sub_0800272C` (terrain icon; HQs via `sub_0803F6BC(8, army)`).
 - Buttons tangoAW2 takes are hidden from the game for as long as they
   stay held (`0x0203FFF6`), so a held press never reaches the editor as a
   new one.
-
-- Yellow Comet and Black Hole share army slot 4; the map-wide marker
-  `0x03003FF3[0]` (4 = Black Hole) picks which. Going back to Yellow Comet
-  restores slot 4's colour byte and palettes, since the game only reloads
-  them when the slot changes.
 
 ## Inventions in battle (`tango-gamesupport-aw2/src/factory.rs`)
 
@@ -186,6 +175,12 @@ from the ROM table `0x080C1BC4`.
   a human Black Hole army's turn through the spawner once; `0x0203FFFC`
   marks the detour so the return passes. A trap handler runs before its
   instruction.
+- The battle loads the Volcano's colours (`0x080D3FC4`) into sprite
+  palette 12 (`0x0803FE0A`), the fourth army's buildings' palette: fine in
+  the campaign, but a Versus map with a Volcano and Yellow Comet drew
+  Yellow Comet's buildings in them. In Versus `volcano.rs` sends them to
+  palette 2 (unused by the battle map) and recolours the Volcano's sprite
+  at the sprite flush.
 - `aw2_script` can trace this kind of thing: `AW2_TRACE=<file>` traps
   listed addresses and logs registers, `stepuntil8 ADDR` single-steps
   until a byte changes and prints the last instructions, `steplog N`
@@ -233,8 +228,8 @@ original instruction against the ROM and writes `src/five_patches.rs`.
   (an unrolled 1..4 call gets a detour for 5), capture tiles (six owners per
   kind; Black Hole's property tiles `0x1B4..0x1B9`), owner bits, building
   sprites (army 5 on OBJ palette 13; fogged buildings use the neutral
-  palette), army 5's units on BG palette 1 (pipes' palette; 5P maps have no
-  pipes), the Black Hole HQ art in the building sheet's lab slot.
+  palette), army 5's units on BG palette 11 (the game's neutral-unit palette; no
+  neutral units exist, and 1 is the pipes'), the Black Hole HQ art in the building sheet's lab slot.
 - **Screens.** The Teams screen (five 48-px columns, `5P`, `E Team`), CO
   screen, Intel, results, capture-limit panel. The map menu hides Save (the
   suspend block holds four armies).
@@ -322,3 +317,7 @@ so real minicannons and Black Cannons run the game's code unchanged.
   features; ordinary Versus maps do not have them. Build them in the
   Design Room.
 - Campaign and War Room are single-player. Netplay is Versus only.
+- The game's mini maps (the map list's preview, the editor's overview)
+  have colours for four armies; Black Hole's buildings show there as
+  neutral grey. The editor's Intel screen counts the four armies and
+  neutral, not Black Hole.

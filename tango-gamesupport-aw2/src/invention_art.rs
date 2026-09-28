@@ -138,27 +138,46 @@ fn key(s: &Src) -> (usize, u32) {
 }
 
 /// Sprite tiles (1D) the editor never uses, found by watching its sprite
-/// lists through a whole editing session: 289..=535.
+/// lists through a whole editing session: 289..=535; the last four hold
+/// Black Hole's HQ emblem ([`crate::design5`]).
 const FIRST_TILE: u32 = 289;
-const LAST_TILE: u32 = 535;
+const LAST_TILE: u32 = 531;
 const OBJ_VRAM: u32 = 0x0601_0000;
 const PAL_BUFFER: u32 = 0x0300_20C0;
 const PAL_RAM: u32 = 0x0500_0000;
-/// The only sprite palette the editor never uses.
+/// The only sprite palette the editor never uses: Black Hole's colours.
 const FREE_PALETTE: u32 = 2;
-/// Slot 4's unit palette (Black Hole's while slot 4 is Black Hole).
-const SLOT4_UNIT_PALETTE: u32 = 12;
+/// A sprite palette the editor uses only on its save and load screens,
+/// never on the map or in the tool bars: the Volcano's colours while one
+/// is on the map, the game's own put back otherwise.
+const VOLCANO_SLOT: u32 = 15;
 const BLACK_HOLE_PALETTE: u32 = 0x080D_3E84;
 const VOLCANO_PALETTE: u32 = 0x080D_3EC4;
+/// The game's own palette 15 while the Volcano borrows it (flag != 0).
+const SAVED_SLOT: u32 = 0x0203_FF80;
+const SAVED_FLAG: u32 = 0x0203_FFA0;
+const E_STATE: u32 = 0x0200_B004;
 
-/// The sprite palette holding Black Hole's colours in the editor: the free
-/// one, or slot 4's unit palette on a Volcano map.
-pub fn black_hole_palette(core: &Core) -> u32 {
-    if crate::design::volcano_on_map(core) {
-        SLOT4_UNIT_PALETTE
-    } else {
-        FREE_PALETTE
+/// The sprite palette holding Black Hole's colours in the editor.
+pub fn black_hole_palette() -> u32 {
+    FREE_PALETTE
+}
+
+/// Off the map and the tool bars: the game's own palette 15 again.
+pub fn put_back(core: &mut Core) {
+    if core.raw_read_8(SAVED_FLAG, -1) == 0 {
+        return;
     }
+    let own = palette_bytes(core, SAVED_SLOT);
+    for base in [PAL_BUFFER, PAL_RAM] {
+        core.raw_write_range(base + 0x200 + VOLCANO_SLOT * 32, -1, &own);
+    }
+    core.raw_write_8(SAVED_FLAG, -1, 0);
+}
+
+/// Leaving the editor: whatever palette 15 held is the next screen's.
+pub fn forget_saved(core: &mut Core) {
+    core.raw_write_8(SAVED_FLAG, -1, 0);
 }
 
 /// Distinct sources, each loaded once: (source, tile count), in sprite
@@ -268,16 +287,24 @@ pub fn tick(core: &mut Core, volcano_on_map: bool) {
         }
         at += n;
     }
-    let pal = palette_bytes(
-        core,
-        if volcano_on_map {
-            VOLCANO_PALETTE
-        } else {
-            BLACK_HOLE_PALETTE
-        },
-    );
+    let pal = palette_bytes(core, BLACK_HOLE_PALETTE);
     for base in [PAL_BUFFER, PAL_RAM] {
         core.raw_write_range(base + 0x200 + FREE_PALETTE * 32, -1, &pal);
+    }
+    let slot = 0x200 + VOLCANO_SLOT * 32;
+    let saved = core.raw_read_8(SAVED_FLAG, -1) != 0;
+    if volcano_on_map && matches!(core.raw_read_8(E_STATE, -1), 1 | 2) {
+        if !saved {
+            let own = palette_bytes(core, PAL_BUFFER + slot);
+            core.raw_write_range(SAVED_SLOT, -1, &own);
+            core.raw_write_8(SAVED_FLAG, -1, 1);
+        }
+        let pal = palette_bytes(core, VOLCANO_PALETTE);
+        for base in [PAL_BUFFER, PAL_RAM] {
+            core.raw_write_range(base + slot, -1, &pal);
+        }
+    } else {
+        put_back(core);
     }
 }
 
@@ -297,14 +324,7 @@ pub struct Placed {
 pub fn append(core: &mut Core, list: &[Placed], volcano_on_map: bool, bottom: i32, mut at: u32, end: u32) -> u32 {
     for p in list {
         let (pieces, volcano) = art(p.i);
-        // The free palette holds the Volcano's colours on a Volcano map;
-        // the rest then use slot 4's unit palette (Black Hole's own while
-        // slot 4 is Black Hole).
-        let palette = if volcano || !volcano_on_map {
-            FREE_PALETTE
-        } else {
-            SLOT4_UNIT_PALETTE
-        };
+        let palette = if volcano { VOLCANO_SLOT } else { FREE_PALETTE };
         for piece in pieces {
             let (x, y) = (p.x + piece.dx, p.y + piece.dy);
             let (w, h) = dims(piece);

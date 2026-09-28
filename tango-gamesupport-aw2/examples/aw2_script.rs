@@ -21,8 +21,9 @@
 //!                        of the word at ADDR
 //!   goto AX AY X Y       walk a cursor whose position bytes are at AX/AY to
 //!                        (X, Y) with the arrows
-//!   stepuntil8 ADDR [N]  single-step until the byte changes (at most N
-//!                        instructions), then print the last 400 PCs
+//!   stepuntil8 ADDR [N] [KEYS]  single-step until the byte changes (at
+//!                        most N instructions, KEYS held), then print the
+//!                        last 400 PCs
 //!   steplog N            single-step N instructions, printing every
 //!                        function entry (Thumb `push {.., lr}`)
 //!   stepreads ADDR LEN N single-step N instructions, printing every Thumb
@@ -297,6 +298,9 @@ fn main() {
                 let addr = hex(parts[1]);
                 let max: u64 = parts.get(2).map(|n| n.parse().unwrap()).unwrap_or(20_000_000);
                 let core = link.core_mut(0);
+                if let Some(k) = parts.get(3) {
+                    core.set_keys(key_bits(k));
+                }
                 let before = core.raw_read_8(addr, -1);
                 let mut ring = std::collections::VecDeque::new();
                 let mut n = 0u64;

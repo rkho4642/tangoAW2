@@ -204,6 +204,7 @@ pub fn flush(core: &mut Core) {
     if !(start..=end).contains(&at) {
         return;
     }
+    crate::volcano::recolour(core, start, at);
     at = crate::design::flush_sprites(core, at, end);
     if let Some(l) = active(core) {
         for s in 0..l.sprites {

@@ -51,8 +51,9 @@ const DATA_MAGIC: u32 = 0x3541_5754; // "TWA5"
 /// The breakpoint the trapper writes over a trapped instruction.
 const TRAP: u16 = 0xBEEF;
 
-/// Army 5's own unit palette goes to BG palette 1.
-const UNIT_BANK: u16 = 1;
+/// Army 5's own unit palette goes to BG palette 11: the game's palette for
+/// neutral units, which never exist (1, used before, is the pipes').
+const UNIT_BANK: u16 = 11;
 const UNIT_PALETTES: u32 = 0x0810_E6E0;
 const BLACK_HOLE: u8 = 5;
 /// Army 5's HQ sprite: the lab's 8 tiles in the building sheet (the map has
@@ -218,9 +219,31 @@ pub fn players(core: &Core) -> u32 {
 const FIVE_ON: u32 = 0x0203_0206;
 
 pub fn active(core: &Core) -> bool {
+    let map = core.raw_read_8(MAP_SELECTED, -1);
     core.raw_read_8(FIVE_ON, -1) == 1
         && core.raw_read_8(GAME_MODE, -1) == VERSUS
-        && is_five_map(core.raw_read_8(MAP_SELECTED, -1))
+        && (is_five_map(map) || DESIGN_IDS.contains(&map))
+}
+
+/// The Design Room's three map slots (map ids 0xB4..0xB6).
+const DESIGN_IDS: std::ops::RangeInclusive<u8> = 0xB4..=0xB6;
+/// The design-map list's cache, one 0x1C-byte entry per slot, filled from
+/// each slot's saved record when the list is built (sub_0803D4A8): the
+/// saved army colours at +0x14..+0x18, whose first byte (the game's
+/// never-used colour of "slot 0") says a five-army map when it is
+/// [`DESIGN_FIVE`] (see `design::save_record`).
+const DESIGN_CACHE: u32 = 0x0202_80C0;
+const DESIGN_CACHE_ENTRY: u32 = 0x1C;
+const DESIGN_CACHE_MARK: u32 = 0x14;
+pub const DESIGN_FIVE: u8 = 5;
+
+/// Whether map `id` is a design map saved with five armies.
+pub fn is_five_design(core: &Core, id: u8) -> bool {
+    DESIGN_IDS.contains(&id)
+        && core.raw_read_8(
+            DESIGN_CACHE + DESIGN_CACHE_ENTRY * (id - 0xB4) as u32 + DESIGN_CACHE_MARK,
+            -1,
+        ) == DESIGN_FIVE
 }
 
 /// The map list stores the picked map (sub_0803BCD0(mapID)): start or end a
@@ -230,7 +253,7 @@ pub const MAP_PICKED: u32 = 0x0803_BCD0;
 
 pub fn map_picked(core: &mut Core) {
     let map = core.gba().cpu().gpr(0) as u8;
-    let five = is_five_map(map) && core.raw_read_8(GAME_MODE, -1) == VERSUS;
+    let five = (is_five_map(map) || is_five_design(core, map)) && core.raw_read_8(GAME_MODE, -1) == VERSUS;
     core.raw_write_8(FIVE_ON, -1, five as u8);
     if five {
         core.raw_write_range(TEAMS, -1, &[0u8; TEAMS_SIZE]);
@@ -270,13 +293,30 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
 
 /// Every frame, before it runs: put tangoAW2's tables in place and switch the
 /// patches to match the game being played.
+/// The patches are on in a five-army battle, and in the Design Room's
+/// editor, where Black Hole is a fifth army too ([`crate::design5`]).
+pub fn patches_on(core: &Core) -> bool {
+    active(core) || crate::design5::editor_active(core)
+}
+
+/// In the editor OBJ palette 13 is its own (panels): the building palette
+/// loader keeps loading four armies there, and army 5's buildings use OBJ 2.
+const EDITOR_KEEPS: [u32; 1] = [0x0803_F848];
+
 pub fn sync(core: &mut Core) {
     install_data(core);
-    let on = active(core);
+    let on = patches_on(core);
     let hooks_on = core.raw_read_16(HOOKS[0].0, -1) == TRAP;
     let halves_on = core.raw_read_16(HALVES[0].0, -1) == HALVES[0].2;
     if hooks_on != on || halves_on != on {
         apply(core, on);
+    }
+    let editor = crate::design5::editor_active(core);
+    for &(addr, old, new) in HALVES.iter().filter(|h| EDITOR_KEEPS.contains(&h.0)) {
+        let want = if on && !editor { new } else { old };
+        if core.raw_read_16(addr, -1) != want {
+            core.raw_write_16(addr, -1, want);
+        }
     }
 }
 

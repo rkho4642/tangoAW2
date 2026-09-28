@@ -12,6 +12,7 @@ pub mod ui {
 
 pub mod branding;
 pub mod design;
+pub mod design5;
 pub mod design_bar;
 pub mod ds_art;
 pub mod factory;
@@ -24,6 +25,7 @@ pub mod invention_art;
 pub mod obelisk;
 mod obelisk_art;
 pub mod pvp;
+mod volcano;
 
 use std::sync::LazyLock;
 use tango_gamesupport::{Family, Game, Region, SaveTemplates};

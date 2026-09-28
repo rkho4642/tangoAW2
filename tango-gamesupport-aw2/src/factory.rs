@@ -83,9 +83,13 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (AI_TABLE_STORED, Box::new(after_ai_table_stored)),
         (TURN_START, Box::new(at_turn_start)),
         (crate::branding::SPRITE_FLUSH, Box::new(crate::branding::flush)),
+        (crate::volcano::STRUCTURES, Box::new(crate::volcano::structures)),
+        (
+            crate::volcano::VOLCANO_PALETTE,
+            Box::new(crate::volcano::volcano_palette),
+        ),
         (crate::five::MAP_PICKED, Box::new(crate::five::map_picked)),
         (crate::five::RESUME, Box::new(crate::five::before_resume)),
-        (crate::design::EDITOR_FRAME, Box::new(crate::design::editor_frame)),
         (crate::design_bar::LIST_BUILT, Box::new(crate::design_bar::list_built)),
         (crate::design_bar::ICON_LOADER, Box::new(crate::design_bar::icon_loader)),
         (crate::design_bar::ICON_LOADED, Box::new(crate::design_bar::icon_loaded)),
@@ -97,5 +101,6 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     ];
     traps.extend(crate::five::traps());
     traps.extend(crate::obelisk::traps());
+    traps.extend(crate::design5::traps());
     traps
 }
