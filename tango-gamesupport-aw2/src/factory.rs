@@ -83,6 +83,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (AI_TABLE_STORED, Box::new(after_ai_table_stored)),
         (TURN_START, Box::new(at_turn_start)),
         (crate::branding::SPRITE_FLUSH, Box::new(crate::branding::flush)),
+        (crate::design::EDITOR_FRAME, Box::new(crate::design::editor_frame)),
         (crate::design_bar::LIST_BUILT, Box::new(crate::design_bar::list_built)),
         (crate::design_bar::ICON_LOADER, Box::new(crate::design_bar::icon_loader)),
         (crate::design_bar::ICON_LOADED, Box::new(crate::design_bar::icon_loaded)),

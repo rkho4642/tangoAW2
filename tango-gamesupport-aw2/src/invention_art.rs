@@ -265,7 +265,7 @@ pub struct Placed {
 
 /// Appends the placed inventions' sprites to the frame's sprite list (at
 /// the VBlank flush), between `at` and `end`; returns the new `at`.
-pub fn append(core: &mut Core, list: &[Placed], volcano_on_map: bool, mut at: u32, end: u32) -> u32 {
+pub fn append(core: &mut Core, list: &[Placed], volcano_on_map: bool, bottom: i32, mut at: u32, end: u32) -> u32 {
     for p in list {
         let (pieces, volcano) = art(p.i);
         // The free palette holds the Volcano's colours on a Volcano map;
@@ -279,7 +279,9 @@ pub fn append(core: &mut Core, list: &[Placed], volcano_on_map: bool, mut at: u3
         for piece in pieces {
             let (x, y) = (p.x + piece.dx, p.y + piece.dy);
             let (w, h) = dims(piece);
-            if x + w <= 0 || x >= 240 || y + h <= 0 || y >= 160 {
+            // Nothing below `bottom` (the top of an open tool bar, which
+            // the sprites would otherwise draw over).
+            if x + w <= 0 || x >= 240 || y + h <= 0 || y >= 160 || y + h > bottom {
                 continue;
             }
             if at + 8 > end {

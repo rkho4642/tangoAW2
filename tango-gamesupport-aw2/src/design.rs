@@ -451,6 +451,7 @@ fn show_slot4_as(core: &mut Core, country: u8) {
                 core.raw_write_32(flags, -1, f | 8);
             }
         }
+        core.raw_write_8(REDRAW, -1, REDRAW_PENDING);
     }
     let (from, to) = if country == 5 { (4, 5) } else { (5, 4) };
     let mut want = [0u8; 0x100];
@@ -465,6 +466,44 @@ fn show_slot4_as(core: &mut Core, country: u8) {
             core.raw_write_range(0x0601_0000 + at as u32, -1, &want);
         }
         at += 0x20;
+    }
+}
+
+// ---------- Redrawing placed units ----------
+
+/// Placed units are background tiles picked by their army's CO country when
+/// they are drawn, so after the Black Hole switch they must be drawn again.
+/// The editor's per-frame input handler (`sub_08005F4C`, void, no
+/// arguments): at its entry nothing but LR is live, so a pending redraw
+/// detours through the game's visible-map unit redraw (`sub_08022580`) and
+/// comes back to it.
+pub const EDITOR_FRAME: u32 = 0x0800_5F4C;
+const UNIT_REDRAW: u32 = 0x0802_2580;
+/// 0 nothing to do, 1 pending, 2 in flight.
+const REDRAW: u32 = 0x0203_FFF4;
+const REDRAW_PENDING: u8 = 1;
+const REDRAW_IN_FLIGHT: u8 = 2;
+/// The handler's return address while the detour runs.
+const REDRAW_LR: u32 = 0x0203_FFEC;
+
+/// Trap at [`EDITOR_FRAME`].
+pub fn editor_frame(core: &mut Core) {
+    match core.raw_read_8(REDRAW, -1) {
+        REDRAW_PENDING if in_map_editor(core) => {
+            let lr = core.gba().cpu().gpr(14) as u32;
+            core.raw_write_32(REDRAW_LR, -1, lr);
+            core.raw_write_8(REDRAW, -1, REDRAW_IN_FLIGHT);
+            let cpu = core.gba_mut().cpu_mut();
+            cpu.set_gpr(14, (EDITOR_FRAME | 1) as i32);
+            cpu.set_thumb_pc(UNIT_REDRAW);
+        }
+        REDRAW_IN_FLIGHT => {
+            // Back from the redraw: the handler runs with its own caller.
+            let lr = core.raw_read_32(REDRAW_LR, -1);
+            core.raw_write_8(REDRAW, -1, 0);
+            core.gba_mut().cpu_mut().set_gpr(14, lr as i32);
+        }
+        _ => {}
     }
 }
 
@@ -490,10 +529,18 @@ pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
             priority: 3,
         });
     }
-    crate::invention_art::append(core, &list, volcano_on_map, at, end)
+    // While a tool bar is open it covers the bottom of the screen.
+    let bottom = if core.raw_read_8(E_STATE, -1) == 2 {
+        BAR_TOP
+    } else {
+        160
+    };
+    crate::invention_art::append(core, &list, volcano_on_map, bottom, at, end)
 }
 
 const VOLCANO_INDEX: usize = 8;
+/// The top of an open tool bar, on screen.
+const BAR_TOP: i32 = 120;
 
 /// Whether the map being edited has a Volcano (its picture then takes the
 /// free sprite palette).
