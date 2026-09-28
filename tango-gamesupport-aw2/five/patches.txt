@@ -482,3 +482,91 @@ word 0807B0CC RES_LSTEP
 word 0807B208 RES_WSTEP
 word 0807B214 RES_LBASE
 word 0807B218 RES_LSTEP
+
+# ---- the Versus Teams screen with five armies. Its record moves from the
+# scratch buffer at 0x02017C50 to free RAM, with its per-army arrays (4 each,
+# each followed by another field) moved to a tail with room for five:
+# controller +0x90, colour +0x98, team +0xA0, CO cursor +0xA8, CO id +0xB0,
+# portrait objects +0xB8, team-letter objects +0xCC. Five 48-px columns; the
+# TEAMS/RULES header moves to OBJ tile 0x040 (portrait 5 takes 0x220..); the
+# pulsing colour moves to OBJ palette 14 (portrait 5 uses palette 4) ----
+word 08580934 TEAMS_RECORD
+word 08066F84 TEAMS_HELP
+pre 080657A8 teams_init | movs r4, #0
+pre 08065ACC teams_emblem | movs r2, #0xaa
+pre 08064DEE label_5p | cmp r0, #2
+pre 08064E08 label_5p_tiles
+pre 08064C1E team_e
+pre 0803C264 teams_commit | ldr r0, [r7]
+half 0803C04A 0x220D 0x2298   # movs r2,#0xd -> #0x98 (unk0d base, sb)
+half 0803C052 0x3409 0x3490   # adds r4,#9 -> #0x90 (unk09)
+half 0803C062 0x3611 0x36A0   # adds r6,#0x11 -> #0xA0 (unk11)
+half 0803C096 0x3420 0x34B0   # adds r4,#0x20 -> #0xB0 (unk20)
+half 0803C11A 0x301C 0x30A8   # adds r0,#0x1c -> #0xA8 (unk1c)
+half 0803C228 0x3020 0x30B0   # adds r0,#0x20 -> #0xB0 (unk20)
+half 0803C238 0x3009 0x3090   # adds r0,#9 -> #0x90 (unk09)
+half 0803C248 0x300D 0x3098   # adds r0,#0xd -> #0x98 (unk0d)
+half 0803C254 0x3011 0x30A0   # adds r0,#0x11 -> #0xA0 (unk11)
+half 08064B1A 0x228C 0x2210   # movs r2,#0x8c -> #0x10 (header tile base 0x230 -> 0x040)
+half 08064BDC 0x3144 0x31CC   # adds r1,#0x44 -> #0xCC (unk44)
+half 08064BFC 0x3111 0x31A0   # adds r1,#0x11 -> #0xA0 (unk11)
+half 08064D5C 0x3144 0x31CC   # adds r1,#0x44 -> #0xCC (unk44)
+half 08064DE8 0x3009 0x3090   # adds r0,#9 -> #0x90 (unk09)
+half 08064DFA 0x3108 0x3100   # adds r1,#8 -> #0 (controller label at x+32, inside the 48 px column)
+half 08064E28 0x300D 0x3098   # adds r0,#0xd -> #0x98 (unk0d)
+half 0806503C 0x3108 0x3100   # adds r1,#8 -> #0 (team letters at column x, spawned from the CO screen)
+half 0806520A 0x2032 0x2030   # movs r0,#0x32 -> #0x30 (column width 48)
+half 08065222 0x3032 0x3030   # adds r0,#0x32 -> #0x30
+half 08065246 0x228C 0x2210   # movs r2,#0x8c -> #0x10 (header tile base 0x230 -> 0x040)
+half 08065284 0x3034 0x30B8   # adds r0,#0x34 -> #0xB8 (unk34)
+half 080652B4 0x301C 0x30A8   # adds r0,#0x1c -> #0xA8 (unk1c)
+half 0806531C 0x228C 0x2210   # movs r2,#0x8c -> #0x10 (header tile base 0x230 -> 0x040)
+half 0806535A 0x3034 0x30B8   # adds r0,#0x34 -> #0xB8 (unk34)
+half 0806538E 0x301C 0x30A8   # adds r0,#0x1c -> #0xA8 (unk1c)
+half 080653C0 0x3108 0x3100   # adds r1,#8 -> #0 (team letters at column x, spawned coming back from Rules)
+half 0806541C 0x228C 0x2210   # movs r2,#0x8c -> #0x10 (header tile base 0x230 -> 0x040)
+half 0806545E 0x3034 0x30B8   # adds r0,#0x34 -> #0xB8 (unk34)
+half 0806548E 0x301C 0x30A8   # adds r0,#0x1c -> #0xA8 (unk1c)
+half 0806554A 0x3034 0x30B8   # adds r0,#0x34 -> #0xB8 (unk34)
+half 080657B0 0x3220 0x32B0   # adds r2,#0x20 -> #0xB0 (unk20)
+half 080657B6 0x301C 0x30A8   # adds r0,#0x1c -> #0xA8 (unk1c)
+half 080657C6 0x3009 0x3090   # adds r0,#9 -> #0x90 (unk09)
+half 080657E0 0x381B 0x306C   # subs r0,#0x1b (0x24->0x09) -> adds r0,#0x6c (0x24->0x90) unk09
+half 0806593C 0x3220 0x32B0   # adds r2,#0x20 -> #0xB0 (unk20)
+half 08065942 0x301C 0x30A8   # adds r0,#0x1c -> #0xA8 (unk1c)
+half 08065952 0x2C03 0x2C04   # cmp r4,#3 -> #4 (unk20[i]=unk18[unk1c[i]] for i<=4)
+half 08065D4A 0x3009 0x3090   # adds r0,#9 -> #0x90 (unk09)
+half 08065D70 0x7A48 0x3190   # ldrb r0,[r1,#9] -> adds r1,#0x90
+half 08065D72 0x2801 0x7808   # cmp r0,#1 -> ldrb r0,[r1,#0]
+half 08065D74 0xD007 0x2801   # beq -> cmp r0,#1
+half 08065D76 0x3109 0xD006   # adds r1,#9 -> beq 0x08065D86
+half 08065D90 0x2C00 0x3290   # cmp r4,#0 -> adds r2,#0x90
+half 08065D92 0xD102 0x2001   # bne -> movs r0,#1
+half 08065D94 0x2001 0x2C00   # movs r0,#1 -> cmp r4,#0
+half 08065D96 0x7290 0xD101   # strb r0,[r2,#0xa] -> bne 0x08065D9C
+half 08065D98 0xE001 0x7050   # b -> strb r0,[r2,#1]  (unk09[1])
+half 08065D9A 0x2001 0xE000   # movs r0,#1 -> b 0x08065D9E
+half 08065D9C 0x7250 0x7010   # strb r0,[r2,#9] -> strb r0,[r2,#0]  (unk09[0])
+half 08065DCC 0x301C 0x30A8   # adds r0,#0x1c -> #0xA8 (unk1c)
+half 08065E3C 0x301C 0x30A8   # adds r0,#0x1c -> #0xA8 (unk1c)
+half 08065F1C 0x3234 0x32B8   # adds r2,#0x34 -> #0xB8 (unk34)
+half 0806608A 0x3144 0x31CC   # adds r1,#0x44 -> #0xCC (unk44)
+half 080660E0 0x3011 0x30A0   # adds r0,#0x11 -> #0xA0 (unk11)
+half 08066112 0x3411 0x34A0   # adds r4,#0x11 -> #0xA0 (unk11)
+half 08066114 0x7C41 0x7821   # ldrb r1,[r0,#0x11] -> ldrb r1,[r4,#0] (r4=rec+0xA0)
+half 08066130 0x3411 0x34A0   # adds r4,#0x11 -> #0xA0 (unk11)
+half 0806614C 0x3011 0x30A0   # adds r0,#0x11 -> #0xA0 (unk11)
+half 0806617C 0x3411 0x34A0   # adds r4,#0x11 -> #0xA0 (unk11)
+half 0806619C 0x3111 0x31A0   # adds r1,#0x11 -> #0xA0 (unk11)
+half 0806619E 0x7C44 0x780C   # ldrb r4,[r0,#0x11] -> ldrb r4,[r1,#0] (r1=rec+0xA0)
+half 080661BA 0x3411 0x34A0   # adds r4,#0x11 -> #0xA0 (unk11)
+half 080661D6 0x3011 0x30A0   # adds r0,#0x11 -> #0xA0 (unk11)
+half 08066606 0x3034 0x30B8   # adds r0,#0x34 -> #0xB8 (unk34)
+half 0806669E 0x3044 0x30CC   # adds r0,#0x44 -> #0xCC (unk44)
+half 080666AE 0x3011 0x30A0   # adds r0,#0x11 -> #0xA0 (unk11)
+half 08066EDA 0x22A4 0x22F4   # movs r2,#0xa4 -> #0xf4 (gPal+0x290 -> +0x3d0)
+half 0806D420 0x3011 0x30A0   # adds r0,#0x11 -> #0xA0 (unk11)
+half 0806D572 0x3034 0x30B8   # adds r0,#0x34 -> #0xB8 (unk34)
+half 0806D5A2 0x3020 0x30B0   # adds r0,#0x20 -> #0xB0 (unk20)
+half 0806D5C8 0x3009 0x3090   # adds r0,#9 -> #0x90 (unk09)
+half 0806D652 0x3034 0x30B8   # adds r0,#0x34 -> #0xB8 (unk34)

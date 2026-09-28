@@ -15,6 +15,7 @@ pub mod design;
 pub mod design_bar;
 pub mod factory;
 pub mod five;
+mod five_art;
 mod five_map;
 mod five_map_data;
 mod five_patches;

@@ -65,10 +65,39 @@ const SHEETS: [(u32, u32); 2] = [(0x080C_FFC4, 0x080D_16C4), (0x080D_0B44, 0x080
 /// The lab tiles' originals, kept while the sheet holds army 5's HQ.
 const SHEET_BACKUP: u32 = ROM_DATA + 0x2000;
 
-/// Settings for army 5 (the Teams screen has four slots).
+/// Army 5's picks on the Teams screen, kept for the battle.
 const ARMY5_CONTROL: u32 = 0x0203_0200; // 1 human, 2 computer
-const ARMY5_CO: u32 = 0x0203_0201;
+const ARMY5_CO: u32 = 0x0203_0201; // CO id + 1 (0: not picked yet)
+const ARMY5_TEAM: u32 = 0x0203_0202; // team + 1
+const LABEL_PENDING: u32 = 0x0203_0204;
 const FLAK: u8 = 11;
+const KANBEI: u8 = 6;
+
+/// The Teams screen's record, moved here with room for five armies.
+const TEAMS: u32 = 0x0203_0300;
+const TEAMS_SIZE: usize = 0xE0;
+const TEAMS_ARMIES: u32 = 0x08;
+const TEAMS_CONTROLLER: u32 = 0x90;
+const TEAMS_COLOUR: u32 = 0x98;
+const TEAMS_TEAM: u32 = 0xA0;
+const TEAMS_CO_CURSOR: u32 = 0xA8;
+const TEAMS_CO: u32 = 0xB0;
+const TEAMS_CO_LIST: u32 = 0x18;
+/// Help texts per cursor stop (CO, controller) x 5 armies.
+const TEAMS_HELP: u32 = 0x0862_1000;
+const CHOOSE_CO: u16 = 0x9DC;
+const CHOOSE_PLAYER: u16 = 0x9DD;
+/// The Black Hole emblem (sprite 0x42's 4 tiles), put at OBJ tile 0x8C and
+/// registered in the Teams screen's emblem group.
+const EMBLEM_ART: u32 = 0x080F_8B84;
+const EMBLEM_TILE: u32 = 0x8C;
+const EMBLEM_GROUP: u32 = 0x0200_F9A8;
+/// tangoAW2's "E Team" and "5P" pictures, at OBJ tiles 0x70 and 0x88.
+const E_TEAM_TILE: u32 = 0x70;
+const FIVE_P_TILE: u32 = 0x88;
+/// Tiles of the sprites they are drawn in the shape of: "4P" and "D Team".
+const FOUR_P_SPRITE_TILE: u32 = 0x2B4;
+const D_TEAM_SPRITE_TILE: u32 = 0x35A;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Op {
@@ -100,6 +129,12 @@ pub enum Routine {
     PropertyCensus,
     UnitPalette,
     SetupArmy5,
+    TeamsInit,
+    TeamsEmblem,
+    Label5p,
+    Label5pTiles,
+    TeamE,
+    TeamsCommit,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -123,6 +158,8 @@ pub enum Table {
     ResWstep,
     ResLbase,
     ResLstep,
+    TeamsRecord,
+    TeamsHelp,
 }
 
 impl Table {
@@ -141,6 +178,8 @@ impl Table {
             Table::ResWstep => RES_WSTEP,
             Table::ResLbase => RES_LBASE,
             Table::ResLstep => RES_LSTEP,
+            Table::TeamsRecord => TEAMS,
+            Table::TeamsHelp => TEAMS_HELP,
         }
     }
 }
@@ -210,6 +249,7 @@ fn apply(core: &mut Core, on: bool) {
         core.raw_write_range(at, -1, &buf);
     }
     if on {
+        core.raw_write_range(TEAMS, -1, &[0u8; TEAMS_SIZE]);
         // Start from the players the game had, so screens before the battle
         // read what they expect.
         let mut buf = vec![0u8; 5 * PLAYER_SIZE as usize];
@@ -262,6 +302,10 @@ fn install_data(core: &mut Core) {
     }
     for (i, v) in [0u16, 0x24, 0x20, 0x20].iter().enumerate() {
         core.raw_write_16(RES_LSTEP + 2 * i as u32, -1, *v);
+    }
+    for i in 0..10u32 {
+        let id = if i % 2 == 0 { CHOOSE_CO } else { CHOOSE_PLAYER };
+        core.raw_write_16(TEAMS_HELP + 2 * i, -1, id);
     }
     crate::five_map::install(core);
     core.raw_write_32(DATA_SENTINEL, -1, DATA_MAGIC);
@@ -364,6 +408,68 @@ fn routine(core: &mut Core, r: Routine) -> Option<u32> {
             setup_army5(core);
             None
         }
+        Routine::TeamsInit => {
+            teams_init(core);
+            None
+        }
+        Routine::TeamsEmblem => {
+            let mut art = [0u8; 0x80];
+            core.raw_read_range(EMBLEM_ART, -1, &mut art);
+            core.raw_write_range(0x0601_0000 + EMBLEM_TILE * 32, -1, &art);
+            core.raw_write_range(0x0601_0000 + E_TEAM_TILE * 32, -1, &crate::five_art::E_TEAM);
+            core.raw_write_range(0x0601_0000 + FIVE_P_TILE * 32, -1, &crate::five_art::FIVE_P);
+            let count = core.raw_read_8(EMBLEM_GROUP + 5, -1) as u32;
+            if count == 4 {
+                core.raw_write_16(EMBLEM_GROUP + 8 + 4 * count, -1, EMBLEM_TILE as u16);
+                core.raw_write_16(EMBLEM_GROUP + 8 + 4 * count + 2, -1, 0x42);
+                core.raw_write_8(EMBLEM_GROUP + 5, -1, 5);
+            }
+            None
+        }
+        Routine::Label5p => {
+            // sub_08064DDC(x, y, army): the label is 1P..4P by army, or CP.
+            // Army 5 played by a person gets "5P", drawn in 4P's shape.
+            let cpu = core.gba().cpu();
+            let (controller, army) = (cpu.gpr(0), cpu.gpr(2));
+            if controller != 2 && army == 4 {
+                core.raw_write_8(LABEL_PENDING, -1, 1);
+                let cpu = core.gba_mut().cpu_mut();
+                cpu.set_gpr(2, 3);
+                cpu.set_thumb_pc(0x0806_4DF4);
+            } else {
+                core.raw_write_8(LABEL_PENDING, -1, 0);
+            }
+            None
+        }
+        Routine::Label5pTiles => {
+            if core.raw_read_8(LABEL_PENDING, -1) != 0 {
+                core.raw_write_8(LABEL_PENDING, -1, 0);
+                let offset = FIVE_P_TILE.wrapping_sub(FOUR_P_SPRITE_TILE);
+                core.gba_mut().cpu_mut().set_gpr(3, offset as i32);
+            }
+            None
+        }
+        Routine::TeamE => {
+            // Team letters are sprites 0xBD..0xC0 (A..D); 0xC1 is a Rules
+            // sprite. Team E is drawn in D's shape from tangoAW2's tiles.
+            if core.gba().cpu().gpr(0) == 0xC1 {
+                let offset = E_TEAM_TILE.wrapping_sub(D_TEAM_SPRITE_TILE);
+                let cpu = core.gba_mut().cpu_mut();
+                cpu.set_gpr(0, 0xC0);
+                cpu.set_gpr(3, offset as i32);
+            }
+            None
+        }
+        Routine::TeamsCommit => {
+            let rec = TEAMS;
+            let control = core.raw_read_8(rec + TEAMS_CONTROLLER + 4, -1);
+            let co = core.raw_read_8(rec + TEAMS_CO + 4, -1);
+            let team = core.raw_read_8(rec + TEAMS_TEAM + 4, -1);
+            core.raw_write_8(ARMY5_CONTROL, -1, control);
+            core.raw_write_8(ARMY5_CO, -1, co.wrapping_add(1));
+            core.raw_write_8(ARMY5_TEAM, -1, team.wrapping_add(1));
+            None
+        }
     }
 }
 
@@ -438,17 +544,65 @@ fn setup_army5(core: &mut Core) {
         _ => 2,
     };
     let co = match core.raw_read_8(ARMY5_CO, -1) {
-        c @ 10..=14 => c,
-        _ => FLAK,
+        0 => FLAK,
+        c => c - 1,
+    };
+    let team = match core.raw_read_8(ARMY5_TEAM, -1) {
+        0 => 4,
+        t => t - 1,
     };
     core.raw_write_8(p + 0x1B, -1, control);
     core.raw_write_8(p + 0x1A, -1, BLACK_HOLE);
     core.raw_write_8(p + 0x1D, -1, co);
-    core.raw_write_8(p + 0x2A, -1, 4);
+    core.raw_write_8(p + 0x2A, -1, team);
     core.raw_write_8(p + 0x2B, -1, 0x10);
     core.raw_write_8(p + 0x2C, -1, 0);
     // The armies on the map: the header says 4 for the Teams screen, and
     // sub_08026924 (just done) needed that; the CO and Intel screens count
     // armies with it.
     core.raw_write_8(ARMIES_ON_MAP, -1, 5);
+}
+
+/// sub_0806574C, before its per-army loop (the record is filled for the
+/// four slots of the map header): add army 5, Black Hole, with the team and
+/// CO it had last time (Flak the first time). The loop then sets its
+/// controller (computer) and CO id from the cursor.
+fn teams_init(core: &mut Core) {
+    let rec = TEAMS;
+    core.raw_write_8(rec + TEAMS_ARMIES, -1, 5);
+    core.raw_write_8(rec + TEAMS_COLOUR + 4, -1, BLACK_HOLE);
+    let team = match core.raw_read_8(ARMY5_TEAM, -1) {
+        0 => 4,
+        t => t - 1,
+    };
+    core.raw_write_8(rec + TEAMS_TEAM + 4, -1, team);
+    let want = match core.raw_read_8(ARMY5_CO, -1) {
+        0 => FLAK,
+        c => c - 1,
+    };
+    let list = core.raw_read_32(rec + TEAMS_CO_LIST, -1);
+    let mut cursor = 0u8;
+    for i in 0..32u32 {
+        let co = core.raw_read_8(list + i, -1);
+        if co == 0xFF {
+            break;
+        }
+        if co == want {
+            cursor = i as u8;
+            break;
+        }
+    }
+    core.raw_write_8(rec + TEAMS_CO_CURSOR + 4, -1, cursor);
+    // Black Hole's COs belong to army 5 here: an earlier army sitting on
+    // one (the Versus default gives Yellow Comet Flak) gets its own army's
+    // first CO instead (Kanbei for Yellow Comet).
+    for (slot, own) in [(0u32, 1u8), (1, 2), (2, 3), (3, KANBEI)] {
+        let at = rec + TEAMS_CO_CURSOR + slot;
+        let co = core.raw_read_8(list + core.raw_read_8(at, -1) as u32, -1);
+        if (10..=14).contains(&co) {
+            if let Some(i) = (0..32u32).find(|&i| core.raw_read_8(list + i, -1) == own) {
+                core.raw_write_8(at, -1, i as u8);
+            }
+        }
+    }
 }

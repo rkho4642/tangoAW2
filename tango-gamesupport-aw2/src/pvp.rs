@@ -511,7 +511,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         // keeps the picked colours. Built-in maps build the armies from it
         // already; design maps take theirs from the map's save instead, so
         // hold the battle's armies to the pick.
-        if in_versus(core) && in_battle(core) {
+        if in_versus(core) && in_battle(core) && !crate::five::active(core) {
             let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
             for slot in 0..armies {
                 let colour = core.raw_read_8(TEAMS_COLOUR + slot, -1);

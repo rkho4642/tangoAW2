@@ -70,6 +70,8 @@ def main():
     for n, line in enumerate(open(os.path.join(HERE, 'patches.txt')), 1):
         if line.lstrip().startswith('#'):
             continue
+        if ' # ' in line:
+            line = line.split(' # ', 1)[0]
         if '|' in line:
             spec, want = (s.strip() for s in line.split('|', 1))
         else:
