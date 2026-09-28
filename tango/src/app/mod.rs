@@ -62,6 +62,10 @@ pub struct App {
     /// Owns the active runtime and its presentation, including post-match results.
     session: session::State,
 
+    /// The player's background image (Settings), loaded once; `None`
+    /// shows the drawn backdrop.
+    background: Option<iced::widget::image::Handle>,
+
     /// Discord rich-presence client (background tokio task auto-
     /// reconnects). Activity is pushed once per second via the
     /// `DiscordTick` subscription, plus on session start/end.
@@ -217,7 +221,9 @@ impl App {
             play.adopt_link_code(code.clone());
         }
 
+        let background = crate::ui::backdrop::load(config.background_image.as_deref());
         let mut app = Self {
+            background,
             config,
             config_writer: config::Writer::new(),
             tab: Tab::Play,

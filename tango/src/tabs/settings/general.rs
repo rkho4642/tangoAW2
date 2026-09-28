@@ -10,6 +10,7 @@ fn theme_choice(lang: &LanguageIdentifier, mode: config::ThemeMode) -> Choice<co
     Choice::new(
         mode,
         match mode {
+            config::ThemeMode::AdvanceWars => t!(lang, "settings-theme-advance-wars"),
             config::ThemeMode::Dark => t!(lang, "settings-theme-dark"),
             config::ThemeMode::Light => t!(lang, "settings-theme-light"),
         },
@@ -70,6 +71,7 @@ pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a con
                 }),
                 option_row::<Message>(t!(lang, "settings-theme"), {
                     let options = vec![
+                        theme_choice(lang, config::ThemeMode::AdvanceWars),
                         theme_choice(lang, config::ThemeMode::Dark),
                         theme_choice(lang, config::ThemeMode::Light),
                     ];
@@ -78,6 +80,37 @@ pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a con
                         Message::ThemeChanged(c.value)
                     })
                 }),
+                option_row::<Message>(
+                    t!(lang, "settings-background-image"),
+                    row![
+                        text(match &config.background_image {
+                            Some(p) => p
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_default(),
+                            None => t!(lang, "settings-background-image-none"),
+                        })
+                        .size(TEXT_CAPTION)
+                        .style(widgets::muted_text_style),
+                        button(text(t!(lang, "settings-background-image-choose")))
+                            .on_press(Message::OpenBackgroundImagePicker)
+                            .padding(STANDARD_PADDING)
+                            .style(widgets::neutral),
+                    ]
+                    .push_maybe(config.background_image.is_some().then(|| {
+                        button(text(t!(lang, "settings-background-image-clear")))
+                            .on_press(Message::ClearBackgroundImage)
+                            .padding(STANDARD_PADDING)
+                            .style(widgets::neutral)
+                    }))
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                ),
+            ]
+            .into_iter()
+            // The Advance Wars look always wears the game's red, so the
+            // accent only applies to the Dark and Light themes.
+            .chain((config.theme != config::ThemeMode::AdvanceWars).then(|| {
                 option_row::<Message>(t!(lang, "settings-accent"), {
                     let options = vec![
                         accent_choice(lang, config::AccentColor::Green),
@@ -91,8 +124,9 @@ pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a con
                     widgets::picker(options, selected, |c: Choice<config::AccentColor>| {
                         Message::AccentChanged(c.value)
                     })
-                }),
-            ],
+                })
+            }))
+            .collect(),
         ),
         settings_group(
             t!(lang, "settings-group-storage"),

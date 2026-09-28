@@ -174,9 +174,15 @@ impl App {
                 self.restore_selection();
                 self.refresh_loaded();
                 // Test aid: `TANGOAW2_AUTOSTART=offline` presses Play
-                // offline as soon as the library is ready.
-                if std::env::var("TANGOAW2_AUTOSTART").as_deref() == Ok("offline") {
-                    return iced::Task::done(Message::Play(crate::tabs::play::Message::PlayOfflinePressed));
+                // offline as soon as the library is ready; `settings` or
+                // `replays` opens that tab (for screenshots).
+                match std::env::var("TANGOAW2_AUTOSTART").as_deref() {
+                    Ok("offline") => {
+                        return iced::Task::done(Message::Play(crate::tabs::play::Message::PlayOfflinePressed))
+                    }
+                    Ok("settings") => return iced::Task::done(Message::TabSelected(super::Tab::Settings)),
+                    Ok("replays") => return iced::Task::done(Message::TabSelected(super::Tab::Replays)),
+                    _ => {}
                 }
                 iced::Task::none()
             }

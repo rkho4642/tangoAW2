@@ -93,6 +93,24 @@ pub fn theme_for(config: &config::Config) -> Theme {
     // the green chrome. Light is a warm cream + slate set tuned to feel like
     // the same UI under daylight, not a separate identity.
     match config.theme {
+        // The game's own menu colors: cream boxes, dark ink, the red
+        // frame as the primary. A light theme as far as the shared
+        // styles go; the field backdrop, bars and boxes dress up for it
+        // by name (`tango_ui::style::is_advance_wars`).
+        config::ThemeMode::AdvanceWars => {
+            use tango_ui::style::aw;
+            Theme::custom(
+                tango_ui::style::ADVANCE_WARS_THEME.to_string(),
+                iced::theme::Palette {
+                    background: aw::CREAM,
+                    text: aw::INK,
+                    primary: aw::RED,
+                    success: iced::Color::from_rgb8(0x3c, 0x8a, 0x3c),
+                    warning: iced::Color::from_rgb8(0xb7, 0x7e, 0x33),
+                    danger: aw::RED_DARK,
+                },
+            )
+        }
         config::ThemeMode::Light => Theme::custom(
             "Tango Light".to_string(),
             iced::theme::Palette {

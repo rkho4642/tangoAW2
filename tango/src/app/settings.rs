@@ -32,6 +32,20 @@ impl App {
                     |path| Message::Settings(tabs::settings::Message::DataFolderPicked(path)),
                 );
             }
+            // "Choose…" on the background image row: a native image
+            // picker, answered as BackgroundImagePicked.
+            Some(E::PickBackgroundImage) => {
+                return iced::Task::perform(
+                    async move {
+                        rfd::AsyncFileDialog::new()
+                            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp", "gif"])
+                            .pick_file()
+                            .await
+                            .map(|h| h.path().to_path_buf())
+                    },
+                    |path| Message::Settings(tabs::settings::Message::BackgroundImagePicked(path)),
+                );
+            }
         };
         use tabs::settings::ConfigChange as C;
         match change {
@@ -40,6 +54,10 @@ impl App {
             C::StreamerMode(b) => self.config.streamer_mode = b,
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
             C::RelayMode(m) => self.config.relay_mode = m,
+            C::BackgroundImage(path) => {
+                self.background = crate::ui::backdrop::load(path.as_deref());
+                self.config.background_image = path;
+            }
             C::DataPath(path) => {
                 self.config.data_path = path;
                 // Make sure the standard subfolders exist in the new location

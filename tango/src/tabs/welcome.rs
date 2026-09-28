@@ -154,7 +154,7 @@ pub fn view<'a>(
     }
     nickname_block = nickname_block.push(Space::new().height(8)).push(continue_btn);
 
-    container(
+    let card = container(
         column![
             row![
                 text(t!(lang, "welcome-title")).size(TEXT_DISPLAY),
@@ -175,6 +175,15 @@ pub fn view<'a>(
         .padding(24)
         .max_width(560),
     )
-    .center(Fill)
-    .into()
+    // In the Advance Wars look the steps sit in a menu box, so they
+    // read against the field backdrop.
+    .max_width(560)
+    .style(|theme: &iced::Theme| {
+        if tango_ui::style::is_advance_wars(theme) {
+            tango_ui::widgets::aw_box()
+        } else {
+            iced::widget::container::Style::default()
+        }
+    });
+    container(card).center(Fill).into()
 }

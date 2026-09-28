@@ -733,7 +733,13 @@ impl State {
             let mut btn = button(label)
                 .padding(BOTTOM_CTA_PAD)
                 .height(Length::Fixed(crate::ui::style::BAR_CONTROL_HEIGHT))
-                .style(|theme: &iced::Theme, status| ready_button_style(theme, status, ReadyPalette::Idle));
+                .style(|theme: &iced::Theme, status| {
+                    if tango_ui::style::is_advance_wars(theme) {
+                        widgets::aw_cream_button(status)
+                    } else {
+                        ready_button_style(theme, status, ReadyPalette::Idle)
+                    }
+                });
             if playable && patch_ready {
                 btn = btn.on_press(Message::PlayOfflinePressed);
             }
@@ -850,6 +856,7 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
             // chunky neutral buttons in the lobby strip.
             crate::ui::widgets::neutral(theme, status)
         }
+        ReadyPalette::Idle if tango_ui::style::is_advance_wars(theme) => widgets::aw_fight_button(status),
         ReadyPalette::Idle => {
             // Disabled state defers to the standard neutral
             // button so it reads as a plainly-greyed-out button

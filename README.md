@@ -56,6 +56,10 @@ Both press Ready; the game starts from power-on for both. Go to
 
 ## What else it adds
 
+- **An Advance Wars look:** the game's cream-and-red menu boxes over a
+  sepia battlefield. Pick your own **background image** in Settings →
+  General (it stays on your computer), or switch to the Dark or Light
+  theme.
 - **Everything unlocked:** all COs including Sturm, CO colour edits,
   Battle Maps, Hard Campaign and the Sound Room.
 - **Black Hole as a Versus army:** on the Teams screen press **SELECT**

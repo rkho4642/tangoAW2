@@ -369,11 +369,85 @@ pub fn pill_tab<'a, M: Clone + 'a>(
         content = content.push(lbl);
     }
     let padding = if large { [8.0, 18.0] } else { [6.0, 14.0] };
-    button(content)
-        .padding(padding)
-        .style(pill_tab_style(active))
-        .on_press(msg)
-        .into()
+    let style: Box<dyn Fn(&Theme, button::Status) -> button::Style> = if large {
+        Box::new(nav_tab_style(active))
+    } else {
+        Box::new(pill_tab_style(active))
+    };
+    button(content).padding(padding).style(style).on_press(msg).into()
+}
+
+/// The top bar's tabs. In the Advance Wars look the active tab is a
+/// cream menu box with blue text and the others are light text on the
+/// dark bar; otherwise the ordinary [`pill_tab_style`].
+pub fn nav_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let pill = pill_tab_style(active);
+    move |theme: &Theme, status: button::Status| {
+        if !crate::style::is_advance_wars(theme) {
+            return pill(theme, status);
+        }
+        use crate::style::aw;
+        let hover = matches!(status, button::Status::Hovered);
+        if active {
+            button::Style {
+                background: Some(iced::Background::Color(aw::CREAM)),
+                text_color: aw::BLUE,
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 3.0,
+                    color: aw::RED,
+                },
+                ..Default::default()
+            }
+        } else {
+            button::Style {
+                background: hover.then_some(iced::Background::Color(iced::Color {
+                    a: 0.10,
+                    ..aw::PLATE_TEXT
+                })),
+                text_color: if hover { aw::GOLD } else { aw::PLATE_TEXT },
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }
+    }
+}
+
+/// A secondary action in the Advance Wars look: a cream menu box with
+/// blue text, framed in red.
+pub fn aw_cream_button(status: button::Status) -> button::Style {
+    use crate::style::aw;
+    let (bg, text) = match status {
+        button::Status::Hovered => (mix(aw::CREAM, iced::Color::WHITE, 0.5), aw::BLUE),
+        button::Status::Pressed => (aw::CREAM_STRIPE, aw::BLUE),
+        button::Status::Disabled => (aw::CREAM_STRIPE, mix(aw::BLUE, aw::CREAM, 0.55)),
+        button::Status::Active => (aw::CREAM, aw::BLUE),
+    };
+    button::Style {
+        background: Some(iced::Background::Color(bg)),
+        text_color: text,
+        border: iced::Border {
+            radius: 5.0.into(),
+            width: 3.0,
+            color: if matches!(status, button::Status::Disabled) {
+                mix(aw::RED, aw::CREAM, 0.5)
+            } else {
+                aw::RED
+            },
+        },
+        shadow: iced::Shadow {
+            color: iced::Color {
+                a: 0.35,
+                ..iced::Color::BLACK
+            },
+            offset: iced::Vector::new(0.0, 2.0),
+            blur_radius: 0.0,
+        },
+        snap: false,
+    }
 }
 
 /// Float a 7 px glowing status pip over a pill tab's top-right corner without
@@ -491,6 +565,9 @@ pub fn pill_tab_style(active: bool) -> impl Fn(&Theme, button::Status) -> button
 /// `.padding(PANE_PADDING)` at the call site for consistent
 /// breathing room across the app.
 pub fn pane(theme: &Theme) -> iced::widget::container::Style {
+    if crate::style::is_advance_wars(theme) {
+        return aw_box();
+    }
     let p = theme.extended_palette();
     let plate = plate_color(theme);
     iced::widget::container::Style {
@@ -1030,5 +1107,70 @@ pub fn chunky_pick_list(
             width,
             color: border_color,
         },
+    }
+}
+
+/// An Advance Wars menu box: cream, framed in the game's red, with a
+/// hard drop shadow. The Advance Wars look's panes and panels.
+pub fn aw_box() -> iced::widget::container::Style {
+    use crate::style::aw;
+    iced::widget::container::Style {
+        background: Some(iced::Background::Gradient(iced::Gradient::Linear(
+            iced::gradient::Linear::new(0.0)
+                .add_stop(0.0, aw::CREAM)
+                .add_stop(1.0, aw::CREAM_STRIPE),
+        ))),
+        text_color: Some(aw::INK),
+        border: iced::Border {
+            radius: 6.0.into(),
+            width: 3.0,
+            color: aw::RED,
+        },
+        shadow: iced::Shadow {
+            color: iced::Color {
+                a: 0.35,
+                ..iced::Color::BLACK
+            },
+            offset: iced::Vector::new(0.0, 3.0),
+            blur_radius: 0.0,
+        },
+        snap: false,
+    }
+}
+
+/// The main call to action in the Advance Wars look (Fight, Ready): the
+/// game's red, white-rimmed, with a dark red outline.
+pub fn aw_fight_button(status: button::Status) -> button::Style {
+    use crate::style::aw;
+    let (top, bottom) = match status {
+        button::Status::Hovered => (
+            iced::Color::from_rgb8(0xf0, 0x6a, 0x50),
+            iced::Color::from_rgb8(0xc8, 0x40, 0x2c),
+        ),
+        button::Status::Pressed => (aw::RED_DARK, aw::RED),
+        button::Status::Disabled => (mix(aw::RED, aw::CREAM, 0.55), mix(aw::RED_DARK, aw::CREAM, 0.55)),
+        button::Status::Active => (
+            iced::Color::from_rgb8(0xe0, 0x55, 0x3d),
+            iced::Color::from_rgb8(0xb8, 0x32, 0x1f),
+        ),
+    };
+    button::Style {
+        background: Some(iced::Background::Gradient(iced::Gradient::Linear(
+            iced::gradient::Linear::new(0.0)
+                .add_stop(0.0, top)
+                .add_stop(1.0, bottom),
+        ))),
+        text_color: iced::Color::WHITE,
+        border: iced::Border {
+            radius: 5.0.into(),
+            width: 3.0,
+            color: iced::Color::WHITE,
+        },
+        shadow: iced::Shadow {
+            color: aw::RED_DARK,
+            offset: iced::Vector::new(0.0, 0.0),
+            blur_radius: 3.0,
+        },
+        snap: false,
     }
 }

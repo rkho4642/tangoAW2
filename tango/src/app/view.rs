@@ -40,7 +40,7 @@ impl App {
             )
             .map(Message::Welcome);
             return anim::slide_in_opt(
-                iced::widget::stack![widgets::map_backdrop(), welcome]
+                iced::widget::stack![crate::ui::backdrop::view(self.background.as_ref()), welcome]
                     .width(Fill)
                     .height(Fill),
                 enter,
@@ -207,10 +207,11 @@ impl App {
         if let Some(results) = self.session.results.as_ref() {
             let results_view =
                 session::view::results_view(lang, results).map(|m| Message::Session(session::Message::Results(m)));
-            let composed: Element<'_, Message> = iced::widget::stack![widgets::map_backdrop(), results_view]
-                .width(Fill)
-                .height(Fill)
-                .into();
+            let composed: Element<'_, Message> =
+                iced::widget::stack![crate::ui::backdrop::view(self.background.as_ref()), results_view]
+                    .width(Fill)
+                    .height(Fill)
+                    .into();
             let composed = match (enter, self.screen_enter_scope) {
                 (Some(p), EnterScope::Root { dy }) => anim::slide_in(composed, p, iced::Vector::new(0.0, dy)),
                 _ => composed,
@@ -292,10 +293,11 @@ impl App {
         if let (Some(p), EnterScope::Body { dx }) = (enter, self.screen_enter_scope) {
             body_content = anim::slide_in(body_content, p, iced::Vector::new(dx, 0.0));
         }
-        let body_surface: Element<'_, Message> = iced::widget::stack![widgets::map_backdrop(), body_content]
-            .width(Fill)
-            .height(Fill)
-            .into();
+        let body_surface: Element<'_, Message> =
+            iced::widget::stack![crate::ui::backdrop::view(self.background.as_ref()), body_content]
+                .width(Fill)
+                .height(Fill)
+                .into();
         // While a lobby is live and the user is on another tab, the
         // Play tab's nav pill carries a small attention dot so the
         // open lobby isn't forgotten behind a tab switch.

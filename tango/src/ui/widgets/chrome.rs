@@ -52,6 +52,26 @@ pub fn rotate_hue(c: iced::Color, deg: f32) -> iced::Color {
 /// a separate row underneath; this style intentionally has no
 /// bottom border so the two layers don't fight.
 pub fn hud_bar(theme: &Theme) -> iced::widget::container::Style {
+    if tango_ui::style::is_advance_wars(theme) {
+        use tango_ui::style::aw;
+        return iced::widget::container::Style {
+            background: Some(iced::Background::Gradient(iced::Gradient::Linear(
+                iced::gradient::Linear::new(0.0)
+                    .add_stop(0.0, aw::PLATE_TOP)
+                    .add_stop(1.0, aw::PLATE_BOTTOM),
+            ))),
+            text_color: Some(aw::PLATE_TEXT),
+            shadow: iced::Shadow {
+                color: iced::Color {
+                    a: 0.45,
+                    ..iced::Color::BLACK
+                },
+                offset: iced::Vector::new(0.0, 4.0),
+                blur_radius: 12.0,
+            },
+            ..Default::default()
+        };
+    }
     let p = theme.extended_palette();
     let bg = theme.palette().background;
     let text = theme.palette().text;
@@ -157,9 +177,14 @@ pub fn map_backdrop<'a, M: 'a>() -> Element<'a, M> {
             if state.key.replace(key) != key {
                 state.cache.clear();
             }
+            let field = tango_ui::style::is_advance_wars(theme);
             let geom = state.cache.draw(renderer, bounds.size(), |frame| {
                 let w = frame.width();
                 let h = frame.height();
+                if field {
+                    field_scene(frame);
+                    return;
+                }
                 // Map-table navy on dark; a pale blue-grey chart
                 // paper on light.
                 let navy = iced::Color::from_rgb8(0x10, 0x1c, 0x33);
@@ -215,6 +240,114 @@ pub fn map_backdrop<'a, M: 'a>() -> Element<'a, M> {
     Canvas::new(Backdrop).width(Length::Fill).height(Length::Fill).into()
 }
 
+/// The Advance Wars backdrop: a sepia field under a hazy sky, two
+/// ranges of hills, and a faint map grid over it all, like a battle
+/// map laid over the land it charts. Drawn, so it scales to any window.
+fn field_scene(frame: &mut iced::widget::canvas::Frame) {
+    use iced::widget::canvas::{gradient, Path, Stroke, Style};
+    use iced::Point;
+    let (w, h) = (frame.width(), frame.height());
+    let rgb = iced::Color::from_rgb8;
+    frame.fill_rectangle(
+        Point::ORIGIN,
+        frame.size(),
+        gradient::Linear::new(Point::ORIGIN, Point::new(0.0, h))
+            .add_stop(0.0, rgb(0xd6, 0xcb, 0xb0))
+            .add_stop(0.38, rgb(0xb9, 0xac, 0x8d))
+            .add_stop(0.62, rgb(0x9c, 0x8f, 0x72))
+            .add_stop(1.0, rgb(0x7d, 0x70, 0x5a)),
+    );
+    // A range as (x, y) fractions of the window, closed along the bottom.
+    let range = |frame: &mut iced::widget::canvas::Frame, points: &[(f32, f32)], color: iced::Color| {
+        let path = Path::new(|b| {
+            b.move_to(Point::new(0.0, h));
+            for &(x, y) in points {
+                b.line_to(Point::new(x * w, y * h));
+            }
+            b.line_to(Point::new(w, h));
+            b.close();
+        });
+        frame.fill(&path, color);
+    };
+    range(
+        frame,
+        &[
+            (0.0, 0.46),
+            (0.13, 0.38),
+            (0.22, 0.42),
+            (0.34, 0.28),
+            (0.49, 0.40),
+            (0.58, 0.35),
+            (0.73, 0.43),
+            (0.85, 0.33),
+            (1.0, 0.42),
+        ],
+        iced::Color {
+            a: 0.55,
+            ..rgb(0x8a, 0x7d, 0x63)
+        },
+    );
+    range(
+        frame,
+        &[
+            (0.0, 0.53),
+            (0.09, 0.49),
+            (0.27, 0.35),
+            (0.42, 0.50),
+            (0.54, 0.44),
+            (0.67, 0.53),
+            (0.79, 0.46),
+            (1.0, 0.54),
+        ],
+        iced::Color {
+            a: 0.75,
+            ..rgb(0x6f, 0x63, 0x4d)
+        },
+    );
+    // The plain.
+    let plain = Path::new(|b| {
+        b.move_to(Point::new(0.0, 0.65 * h));
+        b.bezier_curve_to(
+            Point::new(0.2 * w, 0.61 * h),
+            Point::new(0.45 * w, 0.67 * h),
+            Point::new(0.65 * w, 0.63 * h),
+        );
+        b.bezier_curve_to(
+            Point::new(0.8 * w, 0.61 * h),
+            Point::new(0.92 * w, 0.65 * h),
+            Point::new(w, 0.64 * h),
+        );
+        b.line_to(Point::new(w, h));
+        b.line_to(Point::new(0.0, h));
+        b.close();
+    });
+    frame.fill(&plain, rgb(0x7b, 0x6e, 0x56));
+    // The map grid, every fourth line a sector line.
+    let ink = rgb(0x2a, 0x24, 0x18);
+    let line = |frame: &mut iced::widget::canvas::Frame, from: Point, to: Point, major: bool| {
+        frame.stroke(
+            &Path::line(from, to),
+            Stroke {
+                style: Style::Solid(iced::Color {
+                    a: if major { 0.13 } else { 0.06 },
+                    ..ink
+                }),
+                width: 1.0,
+                ..Stroke::default()
+            },
+        );
+    };
+    const CELL: f32 = 32.0;
+    for i in 1..=(w / CELL).ceil() as i32 {
+        let x = (i as f32 * CELL).floor() + 0.5;
+        line(frame, Point::new(x, 0.0), Point::new(x, h), i % 4 == 0);
+    }
+    for i in 1..=(h / CELL).ceil() as i32 {
+        let y = (i as f32 * CELL).floor() + 0.5;
+        line(frame, Point::new(0.0, y), Point::new(w, y), i % 4 == 0);
+    }
+}
+
 /// The top accent strip, rendered under the HUD bar. 3-px tall,
 /// normally a left→right primary→cooler gradient so the rule has
 /// motion — not a single flat color stripe across the window.
@@ -249,6 +382,9 @@ fn hud_scanline<'a, M: 'a>(override_bg: Option<iced::Background>) -> Element<'a,
     .height(Length::Fixed(3.0))
     .style(move |theme: &Theme| {
         let background = override_bg.unwrap_or_else(|| {
+            if tango_ui::style::is_advance_wars(theme) {
+                return iced::Background::Color(tango_ui::style::aw::RED);
+            }
             let primary = theme.palette().primary;
             // Shift the right edge a quarter-turn around the hue
             // wheel (green→teal, blue→violet, red→orange…) so the
@@ -285,6 +421,9 @@ fn hud_scanline<'a, M: 'a>(override_bg: Option<iced::Background>) -> Element<'a,
 /// accent-cast plate, glowing accent frame, tech-radius corners —
 /// the PET menu's framed panels, not CSS rectangles.
 pub fn panel(theme: &Theme) -> iced::widget::container::Style {
+    if tango_ui::style::is_advance_wars(theme) {
+        return tango_ui::widgets::aw_box();
+    }
     let p = theme.extended_palette();
     let bg = theme.palette().background;
     let text = theme.palette().text;

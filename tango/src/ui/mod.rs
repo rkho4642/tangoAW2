@@ -13,6 +13,7 @@
 pub use tango_ui::copy_feedback;
 
 pub mod anim;
+pub mod backdrop;
 pub mod style;
 pub mod theme;
 pub mod widgets;

@@ -98,8 +98,11 @@ fn de_opponent_view<'de, D: serde::Deserializer<'de>>(d: D) -> Result<OpponentVi
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum ThemeMode {
-    Light,
+    /// tangoAW2's own look: a sepia field under the game's cream-and-red
+    /// menu boxes (see `ui::theme`).
     #[default]
+    AdvanceWars,
+    Light,
     Dark,
 }
 
@@ -185,6 +188,7 @@ impl RelayMode {
 impl std::fmt::Display for ThemeMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
+            ThemeMode::AdvanceWars => "Advance Wars",
             ThemeMode::Light => "Light",
             ThemeMode::Dark => "Dark",
         })
@@ -202,6 +206,15 @@ pub struct Config {
     pub language: unic_langid::LanguageIdentifier,
     pub streamer_mode: bool,
     pub theme: ThemeMode,
+    /// Set once the Advance Wars look has been applied to this config.
+    /// Configs from before it existed carry `Dark` (the old default);
+    /// the first load switches them over once, and a later pick sticks.
+    #[serde(default)]
+    pub advance_wars_skin: bool,
+    /// An image of the player's own shown behind the tabs instead of
+    /// the drawn backdrop. Read from disk, never copied or shared.
+    #[serde(default)]
+    pub background_image: Option<std::path::PathBuf>,
     pub accent: AccentColor,
     /// GPU upscale effect applied to the emulator frame while it's
     /// drawn (the native frame is uploaded once and magnified in the
@@ -348,6 +361,8 @@ impl Default for Config {
             language: default_language(),
             streamer_mode: false,
             theme: ThemeMode::default(),
+            advance_wars_skin: true,
+            background_image: None,
             accent: AccentColor::default(),
             video_filter: String::new(),
             fractional_scaling: false,
@@ -403,6 +418,10 @@ impl Config {
         // Host locations aren't persisted (see `cache_dir`), so bind
         // them on every load rather than only on a fresh default.
         config.library.cache_dir = cache_dir();
+        if !config.advance_wars_skin {
+            config.advance_wars_skin = true;
+            config.theme = ThemeMode::AdvanceWars;
+        }
         config
     }
 
@@ -540,6 +559,8 @@ mod tests {
             "language": "ja-JP",
             "streamer_mode": true,
             "theme": "Light",
+            "advance_wars_skin": true,
+            "background_image": "/home/someone/Pictures/field.png",
             "accent": "Pink",
             "data_path": "/home/someone/Tango",
             "matchmaking_endpoint": "wss://example.invalid/mm",

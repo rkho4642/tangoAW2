@@ -150,6 +150,13 @@ pub enum Message {
     /// Folder picker resolved: `Some(path)` if the user chose one, `None` if
     /// they dismissed it.
     DataFolderPicked(Option<std::path::PathBuf>),
+    /// "Choose…" on the background image row: opens an image picker,
+    /// answered as `BackgroundImagePicked`.
+    OpenBackgroundImagePicker,
+    /// The image picker resolved: `Some(path)` if one was chosen.
+    BackgroundImagePicked(Option<std::path::PathBuf>),
+    /// Back to the drawn backdrop.
+    ClearBackgroundImage,
     VideoFilterChanged(String),
     ToggleFractionalScaling(bool),
     /// New DS screen arrangement picked. Applied at draw time, so an
@@ -213,6 +220,7 @@ pub enum ConfigChange {
     /// New root data folder picked. The App points `config.data_path` at it,
     /// creates the standard subfolders, and re-scans.
     DataPath(std::path::PathBuf),
+    BackgroundImage(Option<std::path::PathBuf>),
     VideoFilter(String),
     FractionalScaling(bool),
     DsScreenStacking(config::DsScreenStacking),
@@ -241,6 +249,9 @@ pub enum Effect {
     /// Ask for a new data folder with the native folder picker; the
     /// answer comes back as [`Message::DataFolderPicked`].
     PickDataFolder,
+    /// Open a native image picker for the backdrop; the answer comes
+    /// back as [`Message::BackgroundImagePicked`].
+    PickBackgroundImage,
     /// Install the downloaded update, which exits the process on success.
     InstallUpdate,
 }
@@ -253,6 +264,7 @@ impl State {
         match msg {
             Message::OpenUrl(url) => Some(Effect::OpenUrl(url)),
             Message::OpenDataFolderPicker => Some(Effect::PickDataFolder),
+            Message::OpenBackgroundImagePicker => Some(Effect::PickBackgroundImage),
             Message::UpdateNow => Some(Effect::InstallUpdate),
             msg => self.change(msg).map(Effect::Change),
         }
@@ -288,10 +300,16 @@ impl State {
             Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
             Message::RelayModeChanged(m) => Some(ConfigChange::RelayMode(m)),
             // Effects, taken by `update` before this.
-            Message::OpenDataFolderPicker | Message::UpdateNow | Message::OpenUrl(_) => None,
+            Message::OpenDataFolderPicker
+            | Message::OpenBackgroundImagePicker
+            | Message::UpdateNow
+            | Message::OpenUrl(_) => None,
             Message::DataFolderPicked(Some(path)) => Some(ConfigChange::DataPath(path)),
             // Dialog dismissed — nothing to change.
             Message::DataFolderPicked(None) => None,
+            Message::BackgroundImagePicked(Some(path)) => Some(ConfigChange::BackgroundImage(Some(path))),
+            Message::BackgroundImagePicked(None) => None,
+            Message::ClearBackgroundImage => Some(ConfigChange::BackgroundImage(None)),
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
             Message::ToggleFractionalScaling(b) => Some(ConfigChange::FractionalScaling(b)),
             Message::DsScreenStackingChanged(s) => Some(ConfigChange::DsScreenStacking(s)),
