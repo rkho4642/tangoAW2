@@ -97,6 +97,11 @@ from the ROM table `0x080C1BC4`.
   palette rows to Black Hole's, and sets bit 3 (reload graphics) on the
   tool bar's ring entries (`gDesignRing`, `0x0200B0D0`, 11 x 0x1C, flags
   first) so the bar redraws for the new CO. Back to Yellow Comet undoes it.
+  Units already placed are background tiles chosen when drawn, so the
+  switch also runs the game's visible-map unit redraw (`sub_08022580`)
+  through a detour at the entry of the editor's per-frame handler
+  (`sub_08005F4C`, void, only LR live; LR kept at `0x0203FFEC`, state at
+  `0x0203FFF4`).
 - In a tool bar SELECT only swapped bars, like L/R; tangoAW2 turns a SELECT
   press into UP (next army, Black Hole included).
 - Inventions in the terrain bar (`design_bar.rs`): the bar's list is built

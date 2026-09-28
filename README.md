@@ -167,8 +167,8 @@ already on the map.
 <td><img src="docs/screenshots/design-units-yellow-comet.png" width="360" alt="DOWN: Yellow Comet units, and the placed base turns yellow"></td>
 </tr>
 <tr>
-<td align="center">Black Hole units</td>
-<td align="center">Back to Yellow Comet: its units</td>
+<td align="center">Black Hole units, next to a placed Black Hole base</td>
+<td align="center">Back to Yellow Comet: its units, and the placed pieces turn Yellow Comet</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/design-placed-black-hole.png" width="360" alt="A Black Hole infantry and base placed on the map"></td>
@@ -176,7 +176,7 @@ already on the map.
 </tr>
 <tr>
 <td align="center">Placed Black Hole pieces</td>
-<td align="center">Switch to Yellow Comet: the same pieces follow</td>
+<td align="center">Switch to Yellow Comet: the same pieces are redrawn as Yellow Comet's</td>
 </tr>
 </table>
 
@@ -201,28 +201,69 @@ was on when you placed it.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/design-invention-bar.png" width="360" alt="The terrain bar with the inventions: Cannons, Laser, Factory, Volcano"></td>
-<td><img src="docs/screenshots/design-invention-selected.png" width="360" alt="The Laser picked, shown in the Feature panel"></td>
+<td><img src="docs/screenshots/design-invention-bar.png" width="360" alt="The terrain bar with the inventions after the Silo, each with its icon"></td>
+<td><img src="docs/screenshots/design-invention-selected.png" width="360" alt="The Laser highlighted in the terrain bar"></td>
 </tr>
 <tr>
 <td align="center">The inventions in the terrain bar</td>
+<td align="center">Laser highlighted</td>
+</tr>
+</table>
+
+Each invention appears on the map the moment you place it, drawn as it
+looks in battle:
+
+<table>
+<tr>
+<td><img src="docs/screenshots/design-laser-before.png" width="360" alt="Laser picked, cursor on an empty tile"></td>
+<td><img src="docs/screenshots/design-laser-after.png" width="360" alt="The Laser placed on the map"></td>
+</tr>
+<tr>
 <td align="center">Laser picked</td>
+<td align="center">A on the map: the Laser is there</td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/design-inventions-editor.png" width="360" alt="Minicannons, laser, Black Cannons and the Deathray on a design map in the editor"></td>
-<td><img src="docs/screenshots/design-factory-placed.png" width="360" alt="A Black Factory just placed"></td>
+<td><img src="docs/screenshots/design-cannon-before.png" width="360" alt="Black Cannon picked, cursor on an empty tile"></td>
+<td><img src="docs/screenshots/design-cannon-after.png" width="360" alt="The Black Cannon placed on the map"></td>
 </tr>
 <tr>
-<td align="center">Placed inventions in the editor</td>
-<td align="center">A Black Factory placed</td>
+<td align="center">Black Cannon picked</td>
+<td align="center">A on the map: the Black Cannon is there</td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/design-volcano-editor.png" width="360" alt="A Volcano in the editor"></td>
-<td></td>
+<td><img src="docs/screenshots/design-factory-before.png" width="360" alt="Black Factory picked, cursor on an empty tile"></td>
+<td><img src="docs/screenshots/design-factory-placed.png" width="360" alt="The Black Factory placed on the map"></td>
 </tr>
 <tr>
-<td align="center">The Volcano</td>
-<td></td>
+<td align="center">Black Factory picked</td>
+<td align="center">A on the map: the Black Factory is there</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/design-volcano-before.png" width="360" alt="Volcano picked, cursor on an empty tile"></td>
+<td><img src="docs/screenshots/design-volcano-editor.png" width="360" alt="The Volcano placed on the map"></td>
+</tr>
+<tr>
+<td align="center">Volcano picked</td>
+<td align="center">A on the map: the Volcano is there</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/design-deathray-before.png" width="360" alt="Deathray picked, cursor on an empty tile"></td>
+<td><img src="docs/screenshots/design-deathray-after.png" width="360" alt="The Deathray placed on the map"></td>
+</tr>
+<tr>
+<td align="center">Deathray picked</td>
+<td align="center">A on the map: the Deathray is there</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td><img src="docs/screenshots/design-inventions-editor.png" width="360" alt="Minicannons, laser, Black Cannons and the Deathray on one map in the editor"></td>
+<td><img src="docs/screenshots/design-volcano-and-deathray.png" width="360" alt="The Volcano next to the Deathray in the editor"></td>
+</tr>
+<tr>
+<td align="center">A map with every kind of cannon and the Deathray</td>
+<td align="center">The Volcano and the Deathray</td>
 </tr>
 </table>
 
@@ -238,7 +279,7 @@ DOWN on its portrait) to get Black Hole's HQ and units in battle. With
 any other CO, the army keeps Black Hole's colours but uses that CO's
 army's HQ and units, as in the original game.
 
-<img src="docs/screenshots/battle-flak-black-hole-hq.png" width="360" alt="In battle with Flak: Black Hole's HQ in the terrain panel and a Black Hole Mech">
+<img src="docs/screenshots/battle-black-hole-hq.png" width="360" alt="In battle: Black Hole's HQ in the terrain panel, with its cannons on the map">
 
 Design maps live in your save. An online match runs on player 1's save,
 and tangoAW2 picks player 1 when the match starts, so your design maps
