@@ -69,7 +69,7 @@ Mode 8 with sub-mode 5 (`0x03003FC1`) is the map editor; its state block
 is at `0x0200B000` (tool bar open at `+0x04 == 2`, bar type `+0x07`,
 cursor `+0x08/+0x0A`, terrain tool `+0x2A`, colour slots `+0x2E/+0x2F`,
 first visible bar entry `+0x36/+0x38`, bar entries at `0x0200B224`, moved
-by tangoAW2 to `0x0203FF80`, see below). The
+by tangoAW2 to `0x0203FF00`, see below). The
 editor map is at `0x0201E450` (size, camera at `+4/+6`, tiles `+0xA22`,
 classes `+0x1432`, units `+0x12`, row offsets `+0x417A`); tile classes come
 from the ROM table `0x080C1BC4`.
@@ -110,12 +110,20 @@ from the ROM table `0x080C1BC4`.
   and the HBlank buffer follows at `0x0200B274`. tangoAW2 repoints the nine
   literal-pool words for the list (`0x08001CFC`, `0x08001D58`,
   `0x08001D88`, `0x080062B8`, `0x08006340`, `0x08007750`, `0x08007844`,
-  `0x080078D0`, `0x08007918`) to `0x0203FF80`, patches the terrain list's
-  length 17/16/0x44 to 27/26/0x6C where the editor wraps it (`0x08000CEA`,
+  `0x080078D0`, `0x08007918`) to `0x0203FF00`, patches the terrain list's
+  length 17/16/0x44 to 27/26/0x6C, or 29/28/0x74 with the Crystal and
+  Obelisk, where the editor wraps it (`0x08000CEA`,
   `0x08001D4E`, `0x0800626E/72`, `0x080062E6`, `0x08006460/68`,
   `0x08006562`, `0x08007798/9C/9E`), all in the ROM image in memory, and a
   trap at the builder's exit (`0x080079B2`) inserts the ten inventions
-  (types `0x15..0x1E` with their anchor tiles) after the Silo. Icons: the
+  (types `0x15..0x1E` with their anchor tiles) and the Black Crystal and
+  Black Obelisk (words `0x115` and `0x11A`: a minicannon's and a Black
+  Cannon's type plus bit 8, which the editor's own code masks off) after
+  the Silo. The editor keeps only the picked class (`+0x2A`), so the word
+  picked last is kept at `0x0203FF7C` to tell a Crystal from a minicannon.
+  The bar's icon call (`0x080027A6`) still has the whole word in r6 and its
+  name call returns at `0x08002998` with it in r3; traps there give the two
+  their own picture and name. Icons: the
   bar's sprite loader `sub_0803F6BC` already loads a type's terrain-panel
   picture (`0x08104464 + 0x100*(type-1)`) for types it has no case for;
   traps at its entry and exit (`0x0803F7FE`, r4 kind, r5 dest) remap the
@@ -132,11 +140,14 @@ from the ROM table `0x080C1BC4`.
   Cannons LZ77 at `0x080D24E0` (down, tiles 36..71) and `0x080D2AE8` (up,
   0..35; the Deathray uses it too), 48x48 from four sprites; Black Factory
   `0x080D22C4` (48x64, three sprites); Volcano `0x080D3268` (one 64x64,
-  palette `0x080D3EC4`). In the editor tangoAW2 loads them into OBJ tiles
-  289..512 and palette 2 (never used by the editor) and appends each placed
+  palette `0x080D3EC4`); the Crystal and Obelisk are tangoAW2's own art.
+  In the editor tangoAW2 loads them into OBJ tiles 289..535 (the editor
+  uses 536 up) and palette 2 (never used by the editor) and appends each placed
   invention's sprites at the game's VBlank sprite flush (`0x0801BBC4`; the
   frame's list at `[0x03002F2C]` inside the area described at
-  `0x03000268`). On a Volcano map palette 2 holds the Volcano's colours
+  `0x03000268`). Everything does not fit in those tiles, but a map has
+  either the Black Factory or the Volcano, so only that one is loaded. On a
+  Volcano map palette 2 holds the Volcano's colours
   and the rest use slot 4's unit palette (12).
 - The aw2bhr decompilation (`src/design.c`) names most of the editor's
   drawing: `sub_08002844` (unit icon: `sub_080261A4(slot, kind)`, CO-country
@@ -199,6 +210,100 @@ from the ROM table `0x080C1BC4`.
   tiles 928.. (title) and 992.. (menu), its colours in OBJ palette 15, its
   64x32 sprites appended at the VBlank sprite flush like the Design Room's
   inventions.
+
+## Five armies (`five.rs`, `five_map.rs`, `five/`)
+
+Advance Wars 2 has room for four armies. For the 5P maps tangoAW2 adds a
+fifth, Black Hole, by patching the ROM image in memory while a 5P map is
+played (and restoring it otherwise, so every other game runs the game's own
+code). The patch list is `five/patches.txt`; `five/gen.py` checks every
+original instruction against the ROM and writes `src/five_patches.rs`.
+
+- **Unit ids.** One byte, army = `id >> 6` (64 per army, 50 used). For five
+  armies army a owns ids `(a-1)*51 + 1..50`; about 150 places that encode
+  or decode the army (shifts, masks, `(p - gUnits)` pointer chains, 64-id
+  walks, the AI's `(t*128 + u)*4` pointers, the army-base table
+  `0x084995FE`) are patched. Hooks are emulator breakpoints whose handler
+  sets the register and skips the instruction.
+- **Moved to free RAM with a fifth slot.** The player table (pointer word
+  `0x08499598` -> `0x02030000`), the AI's threat maps (`0x02029ED8` ->
+  `0x02031000`), the Teams screen's record (`0x08580934` -> `0x02030300`,
+  its per-army arrays at +0x90..).
+- **Loops and tables.** About 80 army-count bounds, the turn wrap, vision
+  (an unrolled 1..4 call gets a detour for 5), capture tiles (six owners per
+  kind; Black Hole's property tiles `0x1B4..0x1B9`), owner bits, building
+  sprites (army 5 on OBJ palette 13; fogged buildings use the neutral
+  palette), army 5's units on BG palette 1 (pipes' palette; 5P maps have no
+  pipes), the Black Hole HQ art in the building sheet's lab slot.
+- **Screens.** The Teams screen (five 48-px columns, `5P`, `E Team`), CO
+  screen, Intel, results, capture-limit panel. The map menu hides Save (the
+  suspend block holds four armies).
+- **Maps.** Map-table entry 0 and ids `0xB8..0xBF` (design ids only
+  multi-cartridge link uses; the game's design range is narrowed to
+  `0xB4..0xB7` and the rest made ordinary by edits and a helper in dead
+  code). Each map's header carries its own tab and armies, so the same
+  ids also hold the 2-, 3- and 4-army obelisk maps; the 5-army ones are in
+  category 9, the 5P tab. `five/design_maps.py` draws them,
+  `five/map.py` builds them (sea edges from the Design Room's table
+  `0x08485DC4`). The AI keeps a row pointer per map row in a 40-entry stack
+  array, so maps are at most 40 rows.
+- **Switching.** A RAM flag set when a 5P map is picked (trap on
+  `sub_0803BCD0`) decides; each frame the ROM is switched to match, so
+  rollback (which restores RAM, not ROM) stays deterministic. Resuming a
+  suspended game switches the patches off first.
+
+## Black Crystal and Black Obelisk (`obelisk.rs`, `five/obelisk_art.py`)
+
+Dual Strike's healing structures, built on two of the game's inventions so
+the game registers, targets and destroys them: the Crystal is a
+minicannon (class `0x15`, invention kind 4) and the Obelisk a Black Cannon
+(class `0x1A`, kind 3, 3x3 over `0x1A4` underlay). Each has its own map
+tile, `0x192` and `0x193` (unused by the game; tangoAW2 sets their classes
+in the ROM table `0x080C1BC4` and its RAM copy `0x020233B0`, and their
+metatiles to plain grass), and every trap tells them apart by that tile,
+so real minicannons and Black Cannons run the game's code unchanged.
+
+- **Sprites.** `sub_0803F908(x, y, def, army, fog)` places a building's or
+  invention's sprite; called from `0x0803FB92` (minicannons) or
+  `0x0803FD08` (Black Cannons, defs `0x0849FA08`/`0x0849FA22`) on our
+  tiles it gets tangoAW2's definitions at `0x08640000` (ROM image free
+  space): the Obelisk is a 32x64 sprite over the middle of its 3x3 rect and
+  two 8x32 strips for its platform's sides, the Crystal one 16x32. Their 48
+  tiles go to OBJ tiles `0x176..0x1A5` after the building sheet loads
+  (`0x0803F6A0`); nothing in battle uses those.
+- **Art: from the player's Dual Strike ROM** (`ds_art.rs`). tangoAW2 ships
+  none of it. The library scan offers every file in the ROMs folder; a
+  Dual Strike (USA, AWRE) ROM gives `bmap/015` of its file system (LZ77;
+  4bpp bitmaps, rows of pixels: the Crystal 16x32 at 0x1600, the Obelisk
+  64x64 at 0x3F00 with its footprint at x 8..56, y 0..48) and sub-palette
+  12 of `bmap/00e` (Dual Strike's Black Hole palette, each colour mapped to
+  the nearest of AW2's `0x080D3E84`). The scan saves the result next to
+  the ROMs (`Dual Strike Black Obelisk art.tangoaw2`, 1672 bytes) and
+  loads that on later scans, so the `.nds` is needed once.
+- **Hidden without the art.** `ds_art::features(mode)`: played alone, when
+  this player has the art; for a netplay match or its replay, as the
+  match says: each player sets bit 7 of their match subtype when they
+  have it (`SHARED_CONTENT`, tango-net-protocol), the lobby ignores the
+  bit when comparing match types, and the terms keep it only when both
+  set it, so both peers and every replay agree. Off, the four maps sit on
+  a tab no list shows (`five_map::show_obelisk_maps`) and the Design
+  Room's bar is 27 entries long instead of 29 (`design_bar::patch_rom`).
+  A console without the art in a match that has it (someone else's
+  replay) draws the structures as nothing; the sprite layout is the same
+  either way, so nothing in RAM differs.
+- **No firing.** The turn-start loop over the invention list
+  (`0x02028360`, 16 entries of 8 bytes: x, y, kind in bits 6..9 of the
+  halfword at +2, HP at +4) is trapped per entry at `0x0803ED7A` (r2) and
+  skips ours (`0x0803EEAC`); the range display (`sub_0803E9F8`, entry r5)
+  skips to `0x0803EAC4`.
+- **Healing.** A trap at `sub_0803EAD0` (turn start, before inventions
+  act): if the army moving now has colour 5 (Black Hole), each of its
+  units within 2 of a live Crystal or 4 of a live Obelisk's footprint gets
+  +20 or +40 (of 100) HP, capped at 100, and full ammo and fuel from the
+  unit table `0x085D5ABC` (+0x0B, +0x10). Only that army's own unit ids are
+  walked, so enemies and allies are never healed.
+- **Panel.** The terrain panel (`sub_0802A8DC`, cell in r8/r5) gets the
+  name picture at `0x0802A914` and the picture at `0x0802A982`.
 
 ## Known limits
 
