@@ -295,9 +295,9 @@ imm 0805D466 0xff | cmp r0, #0x40
 imm 0805D548 0xff | cmp r0, #0x40
 imm 0805D572 0xff | cmp r0, #0x40
 
-# ---- no suspend saves in a 5-army game (the save holds four armies) ----
+# ---- no suspend saves in a 5-army game (the save holds four armies);
+# resuming an ordinary suspended game switches the patches off first ----
 fn 08016D30 no_save | push {r4, r5, r6, r7, lr}
-fn 08016DB8 no_load | push {lr}
 # The map menu's Save item (menu table entry 0849AB64: hide test, then
 # on-select 0802CFC0, text 0x90B) hides in link games; hide it here too.
 fn 0802C644 hide_save | ldr r0, [pc, #0xc]
@@ -320,6 +320,12 @@ word 0803FB10 BASE_SPRITES
 word 0803FB44 HQ_SPRITES
 imm 0803F952 0x80 | movs r3, #0xd0
 imm 0803F848 4    | movs r5, #3
+# the colour animation of the armies' building/unit palettes counts the
+# armies from gPlaySt (four); count army 5 too
+pre 0803F8CE unit_anim_count | lsls r0, r0, #0x18
+# the capture-limit / turn-limit panel lists armies 4..1; list 5..1
+imm 0802B50C 5 | movs r1, #4
+imm 0802B614 5 | movs r1, #4
 # Black Hole's unit palette on BG palette 1 (only pipes use it; this map has
 # none), after each of the game's palette loads
 pre 080234B8 unit_palette | pop {r4, r5, r6}

@@ -43,7 +43,8 @@ const MAP_ID: u32 = 0x0300_3FC2;
 const DESIGN_MAPS: std::ops::RangeInclusive<u8> = 0xB4..=0xB7;
 
 fn on_design_map(core: &Core) -> bool {
-    DESIGN_MAPS.contains(&core.raw_read_8(MAP_ID, -1))
+    let id = core.raw_read_8(MAP_ID, -1);
+    DESIGN_MAPS.contains(&id) || crate::five::is_five_map(id)
 }
 
 fn after_ai_table_stored(core: &mut Core) {
@@ -82,6 +83,8 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (AI_TABLE_STORED, Box::new(after_ai_table_stored)),
         (TURN_START, Box::new(at_turn_start)),
         (crate::branding::SPRITE_FLUSH, Box::new(crate::branding::flush)),
+        (crate::five::MAP_PICKED, Box::new(crate::five::map_picked)),
+        (crate::five::RESUME, Box::new(crate::five::before_resume)),
         (crate::design::EDITOR_FRAME, Box::new(crate::design::editor_frame)),
         (crate::design_bar::LIST_BUILT, Box::new(crate::design_bar::list_built)),
         (crate::design_bar::ICON_LOADER, Box::new(crate::design_bar::icon_loader)),

@@ -15,9 +15,14 @@ use mgba::core::Core;
 
 use crate::five_patches::{HALVES, HOOKS, WORDS};
 
-/// The Versus map id the 5-army map uses: entry 0 of the map table, a dummy
-/// the game never lists.
-pub const MAP_ID: u8 = 0;
+/// The Versus map ids of the 5-army maps (five/maps.txt, in order): entry 0
+/// of the map table, a dummy the game never lists, and 0xBC..0xBF, design-map
+/// ids used only by multi-cartridge link play (made ordinary maps by five_map).
+pub const MAP_IDS: [u8; 5] = [0, 0xBC, 0xBD, 0xBE, 0xBF];
+
+pub fn is_five_map(id: u8) -> bool {
+    MAP_IDS.contains(&id)
+}
 const GAME_MODE: u32 = 0x0300_3FC1;
 const MAP_SELECTED: u32 = 0x0300_3FC2;
 const VERSUS: u8 = 3;
@@ -126,7 +131,6 @@ pub enum Routine {
     SameTeamProperty,
     UnsupportedRedeal,
     NoSave,
-    NoLoad,
     HideSave,
     CaptureTile,
     HqToCity,
@@ -140,6 +144,7 @@ pub enum Routine {
     TeamE,
     TeamsCommit,
     VisionArmy5,
+    UnitAnimCount,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -211,8 +216,47 @@ pub fn players(core: &Core) -> u32 {
     }
 }
 
+/// Set when Five Seas is picked on the map list (and cleared when another
+/// map is, or a suspended game is resumed). It lives in emulated RAM, so a
+/// rollback restores it with everything else, and the patches in ROM (which
+/// a rollback does not restore) are switched from it every frame.
+const FIVE_ON: u32 = 0x0203_0206;
+
 pub fn active(core: &Core) -> bool {
-    core.raw_read_8(GAME_MODE, -1) == VERSUS && core.raw_read_8(MAP_SELECTED, -1) == MAP_ID
+    core.raw_read_8(FIVE_ON, -1) == 1
+        && core.raw_read_8(GAME_MODE, -1) == VERSUS
+        && is_five_map(core.raw_read_8(MAP_SELECTED, -1))
+}
+
+/// The map list stores the picked map (sub_0803BCD0(mapID)): start or end a
+/// 5-army game. Its RAM is set up here, at an emulated event, not when the
+/// patches are switched.
+pub const MAP_PICKED: u32 = 0x0803_BCD0;
+
+pub fn map_picked(core: &mut Core) {
+    let map = core.gba().cpu().gpr(0) as u8;
+    let five = is_five_map(map) && core.raw_read_8(GAME_MODE, -1) == VERSUS;
+    core.raw_write_8(FIVE_ON, -1, five as u8);
+    if five {
+        core.raw_write_range(TEAMS, -1, &[0u8; TEAMS_SIZE]);
+        // Start from the players the game had, so screens before the battle
+        // read what they expect.
+        let mut buf = vec![0u8; 5 * PLAYER_SIZE as usize];
+        core.raw_read_range(OLD_PLAYERS, -1, &mut buf);
+        core.raw_write_range(PLAYERS, -1, &buf);
+    }
+}
+
+/// Resuming a suspended game (sub_08017658): those are always ordinary
+/// games (a 5-army game cannot be saved), and loading needs the game's own
+/// code, so switch the patches off now, before it runs.
+pub const RESUME: u32 = 0x0801_7658;
+
+pub fn before_resume(core: &mut Core) {
+    core.raw_write_8(FIVE_ON, -1, 0);
+    if core.raw_read_16(HALVES[0].0, -1) == HALVES[0].2 || core.raw_read_16(HOOKS[0].0, -1) == TRAP {
+        apply(core, false);
+    }
 }
 
 /// Every hook address, for the trapper (installed once; `sync` switches them).
@@ -252,14 +296,6 @@ fn apply(core: &mut Core, on: bool) {
         let src = if on { art + (BLACK_HOLE as u32 - 1) * 0x100 } else { SHEET_BACKUP + 0x100 * i as u32 };
         core.raw_read_range(src, -1, &mut buf);
         core.raw_write_range(at, -1, &buf);
-    }
-    if on {
-        core.raw_write_range(TEAMS, -1, &[0u8; TEAMS_SIZE]);
-        // Start from the players the game had, so screens before the battle
-        // read what they expect.
-        let mut buf = vec![0u8; 5 * PLAYER_SIZE as usize];
-        core.raw_read_range(OLD_PLAYERS, -1, &mut buf);
-        core.raw_write_range(PLAYERS, -1, &buf);
     }
 }
 
@@ -393,7 +429,7 @@ fn routine(core: &mut Core, r: Routine) -> Option<u32> {
             let t = (r1 & 0xFF) >> 5;
             Some((t != 0 && team(core, army(r0)) == team(core, t)) as u32)
         }
-        Routine::UnsupportedRedeal | Routine::NoSave | Routine::NoLoad => None,
+        Routine::UnsupportedRedeal | Routine::NoSave => None,
         // The map menu's Save item hides when its test returns nonzero.
         Routine::HideSave => Some(1),
         Routine::CaptureTile => Some(capture_tile(core, r0 as i16, r1 as i16, r2 as u8, false)),
@@ -482,6 +518,14 @@ fn routine(core: &mut Core, r: Routine) -> Option<u32> {
             }
             None
         }
+        Routine::UnitAnimCount => {
+            if core.raw_read_8(player(5) + 0x1B, -1) != 0 {
+                let cpu = core.gba_mut().cpu_mut();
+                let n = cpu.gpr(0);
+                cpu.set_gpr(0, n + 1);
+            }
+            None
+        }
         Routine::TeamsCommit => {
             let rec = TEAMS;
             let control = core.raw_read_8(rec + TEAMS_CONTROLLER + 4, -1);
@@ -555,6 +599,12 @@ fn property_census(core: &mut Core) {
         core.raw_write_8(COUNTS + i as u32, -1, n.min(255) as u8);
     }
     core.raw_write_8(COUNTS + 5, -1, total.min(255) as u8);
+    // ...and the two results it stored already: *b = all properties (r8),
+    // *a = the smallest capture limit worth offering (sb).
+    let cpu = core.gba().cpu();
+    let (a_ptr, b_ptr) = (cpu.gpr(9) as u32, cpu.gpr(8) as u32);
+    core.raw_write_8(b_ptr, -1, total.min(255) as u8);
+    core.raw_write_8(a_ptr, -1, best.min(255) as u8);
 }
 
 /// Entry of sub_08026B28 (team masks), after the players were reset and
