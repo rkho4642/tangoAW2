@@ -1,6 +1,6 @@
 //! The 5-army Versus map ("Five Seas"): its tiles, units and name in the ROM
-//! image's free space, listed on the Versus 4P tab through map-table entry 0
-//! (a dummy the game never lists). Also Black Hole's own property tiles
+//! image's free space, listed on a new Versus tab, "5P Maps", through
+//! map-table entry 0 (a dummy the game never lists). Also Black Hole's own property tiles
 //! (0x1B4..0x1B9), which army 5 owns: they look like the other property
 //! tiles (the buildings are sprites drawn over plain grass).
 
@@ -22,26 +22,53 @@ const NEUTRAL_HQ_TILE: u32 = 0x1C0;
 /// Army 5's HQ, base, city, airport, port and lab.
 const ARMY5_TILES: [(u32, u8); 6] = [(0x1B4, 0xA8), (0x1B5, 0xAE), (0x1B6, 0xA6), (0x1B7, 0xAA), (0x1B8, 0xAB), (0x1B9, 0xB4)];
 
-/// The map name lookup (sub_08024944(mapID) -> string).
-pub const MAP_NAME: u32 = 0x0802_4944;
+/// The map list's tabs run 2..8 (Classic .. Design Maps); these raise the
+/// last one to 9, the 5P tab: (address, original, patched).
+const TAB_BOUNDS: [(u32, u16, u16); 6] = [
+    (0x0808_5AFA, 0x3008, 0x3009), // init: clear the cursor memory of tabs 0..9
+    (0x0808_5C52, 0x2008, 0x2009), // setup: skipping empty tabs wraps to 9
+    (0x0808_64A4, 0x2008, 0x2009), // L/Left wraps 2 -> 9
+    (0x0808_64D6, 0x2008, 0x2009),
+    (0x0808_65A4, 0x2808, 0x2809), // R/Right reaches 9, then wraps to 2
+    (0x0808_65D6, 0x2808, 0x2809),
+];
+pub const CATEGORY: u16 = 9;
+/// Tab titles, a text id per tab.
+const TAB_TITLES: u32 = 0x0849_9CE4;
+/// The text table has no room to grow, but ids are 16 bits and the table is
+/// read without a bound: ids 0x3D72 and 0x3D73 read their string pointers
+/// from 0x08620000 and 0x08620004, in the ROM image's free space.
+const TEXT_TABLE: u32 = 0x0861_0A38;
+const TAB_TEXT: u16 = 0x3D72;
+const NAME_TEXT_ID: u16 = 0x3D73;
+const TAB_NAME: u32 = 0x0862_0010;
+pub const TAB_NAME_TEXT: &str = "5P Maps";
 
 pub fn install(core: &mut Core) {
     assert!(TILES as usize + TILES_LZ77.len() <= UNIT_LIST as usize);
     core.raw_write_range(TILES, -1, TILES_LZ77);
     core.raw_write_range(UNIT_LIST, -1, UNITS);
-    let mut name = NAME_TEXT.as_bytes().to_vec();
-    name.push(0);
-    core.raw_write_range(NAME, -1, &name);
+    for (id, at, text) in [(TAB_TEXT, TAB_NAME, TAB_NAME_TEXT), (NAME_TEXT_ID, NAME, NAME_TEXT)] {
+        let mut bytes = text.as_bytes().to_vec();
+        bytes.push(0);
+        core.raw_write_range(at, -1, &bytes);
+        core.raw_write_32(TEXT_TABLE + 4 * id as u32, -1, at);
+    }
+    core.raw_write_16(TAB_TITLES + 2 * CATEGORY as u32, -1, TAB_TEXT);
+    for (addr, old, new) in TAB_BOUNDS {
+        if core.raw_read_16(addr, -1) == old {
+            core.raw_write_16(addr, -1, new);
+        }
+    }
 
     let mut h = [0u8; 0x5C];
     let w32 = |h: &mut [u8], at: usize, v: u32| h[at..at + 4].copy_from_slice(&v.to_le_bytes());
     let w16 = |h: &mut [u8], at: usize, v: u16| h[at..at + 2].copy_from_slice(&v.to_le_bytes());
     w32(&mut h, 0x00, TILES);
-    let name_index = core.raw_read_16(MAP_TABLE + 0x5C + 0x14, -1);
-    w16(&mut h, 0x14, name_index); // the lookup is trapped for this map
+    w16(&mut h, 0x14, NAME_TEXT_ID);
     h[0x16] = 2; // pre-deployed art
     h[0x18] = 4; // armies on the Teams screen (army 5 is tangoAW2's)
-    w16(&mut h, 0x1A, 6); // the 4P tab
+    w16(&mut h, 0x1A, CATEGORY); // the 5P tab
     w16(&mut h, 0x1C, 1);
     w16(&mut h, 0x1E, 1);
     w16(&mut h, 0x20, 0x16);
@@ -61,16 +88,4 @@ pub fn install(core: &mut Core) {
         core.raw_write_8(TERRAIN_TABLE + tile, -1, terrain);
         core.raw_write_range(METATILES + tile * 8, -1, &quad);
     }
-}
-
-/// Trap at [`MAP_NAME`]: this map's name.
-pub fn map_name(core: &mut Core) {
-    let cpu = core.gba().cpu();
-    if cpu.gpr(0) as u32 & 0xFFFF != crate::five::MAP_ID as u32 {
-        return;
-    }
-    let lr = cpu.gpr(14) as u32;
-    let cpu = core.gba_mut().cpu_mut();
-    cpu.set_gpr(0, NAME as i32);
-    cpu.set_thumb_pc(lr & !1);
 }

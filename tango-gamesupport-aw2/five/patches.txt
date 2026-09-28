@@ -297,12 +297,14 @@ fn 080240B4 capture_tile | push {r4, r5, r6, r7, lr}
 fn 0802419C hq_to_city   | push {r4, r5, r6, r7, lr}
 pre 08021996 property_census | pop {r3, r4, r5}
 
-# ---- building sprites: army 5 on OBJ palette 13, fog grey moves to 14 ----
+# ---- building sprites: army 5 on OBJ palette 13; the fog grey moves to 5
+# (a HUD sprite uses 14; 5 is only rewritten off the map, and this loader
+# runs again whenever the map comes back) ----
 word 0803FAF8 BASE_SPRITES
 word 0803FB10 BASE_SPRITES
 word 0803FB44 HQ_SPRITES
-imm 0803F952 0xe0 | movs r3, #0xd0
-imm 0803F836 0x16 | adds r1, #0x15
+imm 0803F952 0x50 | movs r3, #0xd0
+imm 0803F836 0x0d | adds r1, #0x15
 imm 0803F848 4    | movs r5, #3
 # Black Hole's unit palette on BG palette 1 (only pipes use it; this map has
 # none), after each of the game's palette loads
