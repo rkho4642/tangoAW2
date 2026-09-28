@@ -56,8 +56,6 @@ pub enum Message {
     /// `lobby.latency_counter` median). Routes to the shared `config.frame_delay`
     /// (same store the Settings-tab slider writes), not lobby-local state.
     SetFrameDelay(u32),
-    /// Lobby UI: user toggled the blind-setup checkbox.
-    SetBlindSetup(bool),
     /// Lobby UI: user pressed Ready. App loads the local
     /// save's raw SRAM, builds a NegotiatedState, and
     /// commits the local save.
@@ -163,9 +161,6 @@ pub enum Effect {
     Disconnect,
     /// Lobby match-type picker moved. App records it and resends Settings.
     SetMatchType((u8, u8)),
-    /// Lobby "blind my setup" toggled. App records it, persists the
-    /// choice, and resends Settings.
-    SetBlindSetup(bool),
     /// Lobby Un-ready — drop our commitment and tell the peer.
     Unready,
     /// Lobby frame-delay slider moved. App persists `config.frame_delay`; it's
@@ -344,7 +339,6 @@ impl State {
             Message::Disconnect => Some(Effect::Disconnect),
             Message::SetMatchType(mt) => Some(Effect::SetMatchType(mt)),
             Message::SetFrameDelay(d) => Some(Effect::SetFrameDelay(d)),
-            Message::SetBlindSetup(v) => Some(Effect::SetBlindSetup(v)),
             Message::Ready => Some(Effect::ReadyWithSave),
             Message::Unready => Some(Effect::Unready),
             Message::SaveEditor(msg) => {
@@ -425,7 +419,6 @@ impl State {
         loaded: Option<&'a selection::LoadedSave>,
         streamer_mode: bool,
         config: &'a config::Config,
-        downloads: &'a crate::library::patch::Downloads,
         // The startup scan hasn't landed yet, so empty scanners mean
         // "not read yet" rather than "nothing installed".
         scanning: bool,
@@ -465,7 +458,7 @@ impl State {
         // the user. The scanning card holds the pane on its own.
         let mut inner = column![].spacing(style::PANE_GAP).padding(style::PANE_GAP).height(Fill);
         if !scanning {
-            inner = inner.push(self.selector_strip(lang, scanners, loadout, config, downloads, band.handoff_pending));
+            inner = inner.push(self.selector_strip(lang, scanners, loadout, config, band.handoff_pending));
         }
         let inner = inner.push(save_body);
 
@@ -519,7 +512,6 @@ impl State {
                 streamer_mode,
                 handoff_pending: band.handoff_pending,
                 frame_delay: config.frame_delay,
-                downloads,
             }
             .view()
         } else {
@@ -608,7 +600,6 @@ impl State {
         scanners: &'a Catalog,
         loadout: &'a Selection,
         config: &'a config::Config,
-        downloads: &'a crate::library::patch::Downloads,
         inert: bool,
     ) -> Element<'a, Message> {
         // Inert during the PvP handoff window — the loadout pickers
@@ -616,8 +607,7 @@ impl State {
         // contradict the committed state, without the strip changing
         // shape.
         let gate = move |m: loadout_strip::Message| if inert { Message::Noop } else { Message::Loadout(m) };
-        let game_row: Element<'a, Message> =
-            loadout_strip::game_row(loadout, lang, scanners, config, downloads).map(gate);
+        let game_row: Element<'a, Message> = loadout_strip::game_row(loadout, lang, scanners).map(gate);
         let save_picker: Element<'a, Message> =
             Element::from(loadout_strip::save_picker(loadout, lang, scanners, config).width(Length::Fill)).map(gate);
         let save_row = self.save_action_row(lang, scanners, loadout, save_picker);
@@ -646,8 +636,8 @@ impl State {
         // Play button is the singleplayer entry point — disabled
         // whenever a netplay attempt is anywhere in flight so it
         // can't fight with the lobby for the same save/emulator slot,
-        // and while the selected patch is still downloading, since the
-        // session would otherwise boot the game unpatched.
+        // and while the selected patch isn't on disk, since the session
+        // would otherwise boot the game unpatched.
         let play_button = Some(playable);
         loaded
             .editor
@@ -675,10 +665,9 @@ impl State {
     /// restored-generated codes are all scrapeable off a stream
     /// otherwise.
     ///
-    /// `patch_ready` is false while the selected patch is still being
-    /// downloaded: committing to a match then would negotiate a setup we
-    /// can't actually run, so the CTA waits alongside the download the
-    /// version slot is already reporting.
+    /// `patch_ready` is false while the selected patch isn't on disk:
+    /// committing to a match then would negotiate a setup we can't
+    /// actually run, so the CTA waits.
     fn bottom_strip<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,

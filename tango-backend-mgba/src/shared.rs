@@ -22,7 +22,7 @@ use mgba_rollback::{LinkOptions, Peripheral, SideOptions};
 use num_rational::Ratio;
 use tango_match::{HostInput, Side};
 
-use crate::link::{to_rgba, JOYFLAGS_MASK};
+use crate::gba::{to_rgba, JOYFLAGS_MASK};
 
 /// Game support for a shared-console title.
 pub trait SharedGame: Sync {
@@ -258,7 +258,7 @@ impl tango_match::Backend for SharedBackend {
     }
 
     fn screen_layout(&self, _mode: tango_match::SessionMode) -> tango_match::ScreenLayout {
-        crate::link::screen_layout()
+        crate::gba::screen_layout()
     }
 
     fn keys_mask(&self) -> u32 {
@@ -266,7 +266,7 @@ impl tango_match::Backend for SharedBackend {
     }
 
     fn tps(&self) -> Ratio<u32> {
-        crate::link::TPS
+        crate::gba::TPS
     }
 
     /// Both peers boot the same console from seat 0's ROM and save (the

@@ -123,28 +123,8 @@ tango-patch = { workspace = true, features = ["package", "index", "bundle"] }
 # tangoAW2 ships Advance Wars 2 only; `--features gamesupport-all` restores the rest.
 default = ["gamesupport-aw2"]
 gamesupport-aw2 = ["tango-library/gamesupport-aw2"]
-gamesupport-bcc = ["tango-library/gamesupport-bcc"]
-gamesupport-bn1 = ["tango-library/gamesupport-bn1"]
-gamesupport-bn2 = ["tango-library/gamesupport-bn2"]
-gamesupport-bn3 = ["tango-library/gamesupport-bn3"]
-gamesupport-bn4 = ["tango-library/gamesupport-bn4"]
-gamesupport-bn5 = ["tango-library/gamesupport-bn5"]
-gamesupport-bn5ds = ["tango-library/gamesupport-bn5ds"]
-gamesupport-bn6 = ["tango-library/gamesupport-bn6"]
-gamesupport-exe45 = ["tango-library/gamesupport-exe45"]
-gamesupport-exeoss = ["tango-library/gamesupport-exeoss"]
 gamesupport-all = [
     "gamesupport-aw2",
-    "gamesupport-bcc",
-    "gamesupport-bn1",
-    "gamesupport-bn2",
-    "gamesupport-bn3",
-    "gamesupport-bn4",
-    "gamesupport-bn5",
-    "gamesupport-bn5ds",
-    "gamesupport-bn6",
-    "gamesupport-exe45",
-    "gamesupport-exeoss",
 ]
 
 [lints]

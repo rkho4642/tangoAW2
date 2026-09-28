@@ -20,7 +20,7 @@ would not be a reality without the work of these people.
 
 ### Development
 
-- Emulation: [endrift](https://twitter.com/endrift) (mGBA), [Arisotura](https://github.com/Arisotura) (melonDS)
+- Emulation: [endrift](https://twitter.com/endrift) (mGBA)
 - Reverse engineering: [pnw_ssbmars](https://twitter.com/pnw_ssbmars), [XKirby](https://github.com/XKirby), [luckytyphlosion](https://github.com/luckytyphlosion), [LanHikari22](https://github.com/LanHikari22), [GreigaMaster](https://twitter.com/GreigaMaster), [Prof. 9](https://twitter.com/Prof9), [National Security Agency](https://www.nsa.gov) (Ghidra), [aldelaro5](https://twitter.com/aldelaro5) (Ghidra)
 - Saves: [ore4545](https://github.com/ore4545)
 - Porting: [ubergeek77](https://github.com/ubergeek77) (Linux), [Akatsuki](https://github.com/Akatsuki) (macOS)

@@ -70,8 +70,6 @@ pub enum Message {
     /// Reveal the replay file in the OS file manager, selected.
     RevealReplay(std::path::PathBuf),
     Watch(std::path::PathBuf),
-    /// Stop the patch download a Watch click started.
-    CancelPatchDownload(crate::library::patch::VersionKey),
     /// Export-panel interactions (form, render lifecycle, round
     /// mask), folded under one variant — see [`ExportMessage`] and
     /// [`ReplaysState::update_export`].
@@ -275,8 +273,6 @@ pub enum Effect {
     /// User clicked Watch on a replay; App spawns the playback
     /// session and stuffs it into `session.active`.
     Watch(std::path::PathBuf),
-    /// Stop the patch download a Watch click started.
-    CancelPatchDownload(crate::library::patch::VersionKey),
     /// Read what selecting a replay needs off the UI thread — its stats
     /// sidecar, and, unless `builds` is false because the cached ones
     /// still apply, both participants' builds — and post it back as
@@ -449,7 +445,6 @@ impl ReplaysState {
             }
             Message::RevealReplay(p) => Some(Effect::RevealPath(p)),
             Message::Watch(p) => Some(Effect::Watch(p)),
-            Message::CancelPatchDownload(key) => Some(Effect::CancelPatchDownload(key)),
             Message::SaveEditor(side, msg) => {
                 // Clipboard outcomes need the App's clipboard collaborator
                 // — bubble them up as Effects. Anything else gets folded
@@ -646,7 +641,6 @@ impl ReplaysState {
         scanners: &'a Catalog,
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
-        downloads: &'a crate::library::patch::Downloads,
         // The startup scan hasn't landed yet; until it does, an empty
         // list means "not read yet", not "no replays".
         scanning: bool,
@@ -716,7 +710,6 @@ impl ReplaysState {
                 scanners,
                 netplay_active,
                 config.streamer_mode,
-                downloads,
             );
             // Selection entrance: the detail panel rises up into
             // place.

@@ -55,35 +55,6 @@ pub enum Error {
     IncompatibleSave,
 }
 
-/// Which BNLC volume — Vol 1 (BN1-3) or Vol 2 (BN4-6). The enum also
-/// carries the corresponding Steam app id. Lives here (rather than in the
-/// app) so per-game [`BackgroundRef`]s can name their volume without a
-/// dependency on the GUI crate.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub enum Volume {
-    Vol1,
-    Vol2,
-}
-
-impl Volume {
-    pub fn steam_app_id(self) -> u32 {
-        match self {
-            Volume::Vol1 => 1798010,
-            Volume::Vol2 => 1798020,
-        }
-    }
-}
-
-/// Points at a background TGA inside a BNLC volume's shared `exe.dat`
-/// asset archive. The full path in the zip is `exe/data/bg/<tga>`.
-/// Resolved at runtime by the application; if BNLC isn't installed the
-/// caller falls back to no background.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct BackgroundRef {
-    pub volume: Volume,
-    pub tga: &'static str,
-}
-
 /// A parsed save, as [`Game::parse_save`] hands it out. Implemented
 /// only by the private gamesupport layer — the full view surface behind
 /// it is private knowledge; the app clones it, serializes it, and hands
@@ -186,9 +157,6 @@ pub struct Game {
     pub save_templates: Option<&'static SaveTemplates>,
     /// Logo for the game, decoded on first access.
     pub logo_image: Option<&'static LazyImage>,
-    /// Pointer to the BNLC-hosted background TGA — `None` for a game
-    /// with no BNLC release to borrow art from.
-    pub background: Option<BackgroundRef>,
 }
 
 impl Game {

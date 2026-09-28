@@ -87,9 +87,8 @@ pub(super) fn settings_input<'a>(
 
     let left_col = column![dpad];
 
-    // Face buttons: the DS diamond — X top, Y left, A right, B bottom —
-    // which keeps the GBA's pair where it always was (A on the right, B
-    // low) and adds the DS-only two in the spots the console puts them.
+    // Face buttons: the GBA's pair, A up on the right and B down on
+    // the left.
     use iced::alignment::{Horizontal as Ax, Vertical as Ay};
     let ab_d = 40.0;
     let face_key = |label: &'static str, k: input::MappedKey| {
@@ -101,27 +100,22 @@ pub(super) fn settings_input<'a>(
             999.0.into(),
         )
     };
-    // A square housing with one key pinned to the midpoint of each
-    // edge. Stacked full-size layers rather than rows so X and B tuck
-    // into the vertical space beside Y and A — adjacent keys sit
-    // ~51px apart center-to-center on the diagonal (an ~11px gap)
-    // instead of three full button-rows of height.
-    let diamond_box = 112.0;
+    // A housing with the two keys pinned to opposite corners, stacked
+    // as full-size layers so they sit on the console's diagonal.
+    let (face_w, face_h) = (96.0, 72.0);
     let place = |el, ax, ay| {
         container(el)
-            .width(Length::Fixed(diamond_box))
-            .height(Length::Fixed(diamond_box))
+            .width(Length::Fixed(face_w))
+            .height(Length::Fixed(face_h))
             .align_x(ax)
             .align_y(ay)
     };
-    let diamond = iced::widget::stack![
-        place(face_key("X", input::MappedKey::X), Ax::Center, Ay::Top),
-        place(face_key("Y", input::MappedKey::Y), Ax::Left, Ay::Center),
-        place(face_key("A", input::MappedKey::A), Ax::Right, Ay::Center),
-        place(face_key("B", input::MappedKey::B), Ax::Center, Ay::Bottom),
+    let face_pair = iced::widget::stack![
+        place(face_key("A", input::MappedKey::A), Ax::Right, Ay::Top),
+        place(face_key("B", input::MappedKey::B), Ax::Left, Ay::Bottom),
     ];
-    // Start/Select: small pills below the face diamond, plainly
-    // stacked — the DS face layout. Face labels stay literal like the
+    // Start/Select: small pills below the face buttons, plainly
+    // stacked. Face labels stay literal like the
     // silkscreen (localized names appear on the bezel caption when
     // selected).
     let pill = |label: &'static str, k: input::MappedKey| {
@@ -132,7 +126,7 @@ pub(super) fn settings_input<'a>(
         pill("SELECT", input::MappedKey::Select),
     ]
     .spacing(5);
-    let right_col = column![diamond, start_select]
+    let right_col = column![face_pair, start_select]
         .spacing(18)
         .align_x(iced::Alignment::Center);
 
@@ -245,10 +239,9 @@ pub(super) fn settings_input<'a>(
         })
         .style(gba_shell);
 
-    // Neither fast-forward nor the DS's mic is a key on the shell: one
-    // is the host's own knob and the other is a hole in the hinge. Both
-    // sit under the shell as pills sharing the key chrome, with Reset on
-    // the opposite edge.
+    // Fast-forward is the host's own knob, not a key on the shell: it
+    // sits under the shell as a pill sharing the key chrome, with Reset
+    // on the opposite edge.
     let wide_pill = |icon: Icon, label: String, k: input::MappedKey| {
         button(
             row![icon.widget().size(TEXT_BODY), text(label).size(TEXT_BODY)]
@@ -264,7 +257,6 @@ pub(super) fn settings_input<'a>(
         t!(lang, "input-key-speed-up"),
         input::MappedKey::SpeedUp,
     );
-    let mic = wide_pill(Icon::Wind, t!(lang, "input-key-mic"), input::MappedKey::Mic);
     let reset = widgets::labeled_icon_button(
         Icon::RefreshCw,
         t!(lang, "settings-input-reset"),
@@ -272,7 +264,7 @@ pub(super) fn settings_input<'a>(
         STANDARD_PADDING,
         widgets::neutral,
     );
-    let below = row![speed, mic, horizontal_space(), reset]
+    let below = row![speed, horizontal_space(), reset]
         .spacing(8)
         .width(Length::Fixed(GBA_SHELL_WIDTH))
         .align_y(iced::Alignment::Center);
@@ -294,13 +286,10 @@ fn mapped_key_label(lang: &LanguageIdentifier, k: input::MappedKey) -> String {
         input::MappedKey::Right => t!(lang, "input-key-right"),
         input::MappedKey::A => t!(lang, "input-key-a"),
         input::MappedKey::B => t!(lang, "input-key-b"),
-        input::MappedKey::X => t!(lang, "input-key-x"),
-        input::MappedKey::Y => t!(lang, "input-key-y"),
         input::MappedKey::L => t!(lang, "input-key-l"),
         input::MappedKey::R => t!(lang, "input-key-r"),
         input::MappedKey::Start => t!(lang, "input-key-start"),
         input::MappedKey::Select => t!(lang, "input-key-select"),
-        input::MappedKey::Mic => t!(lang, "input-key-mic"),
         input::MappedKey::SpeedUp => t!(lang, "input-key-speed-up"),
     }
 }

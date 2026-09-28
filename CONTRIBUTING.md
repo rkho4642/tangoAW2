@@ -57,14 +57,14 @@ For wider native coverage, including the upstream games the workspace
 still carries, use:
 
 ```sh
-cargo test --locked --workspace --exclude tango-lite-web --all-features --lib
+cargo test --locked --workspace --all-features --lib
 cargo test --locked --bin tango --all-features
 ```
 
 The `checks` workflow runs formatting, workspace conventions, an unused
 dependency audit (`cargo machete`), and the portable/native test suites for pull requests and pushes to `main`.
 The `ci` workflow builds platform checks on `main` to warm release caches.
-`release` packages native tags; `web` builds and deploys the browser app.
+`release` packages native tags.
 
 ## Ownership and boundaries
 
@@ -77,9 +77,9 @@ connects families to editors through its optional `ui` feature. Its weak
 feature forwarding enables editors only for games already selected.
 
 `tango-match` defines backend-independent simulation contracts.
-`tango-session` exposes drivers advanced by the host; desktop threads
-and browser event loops supply the pacing. Session code uses
-`tango-platform` for waits that must also work in a browser. Transport lives in `tango-net`; the lobby
+`tango-session` exposes drivers advanced by the host; the app's threads
+supply the pacing. Session code uses `tango-platform` for waits.
+Transport lives in `tango-net`; the lobby
 must not depend on library catalogs, sessions, or game backends. Offline
 sessions must build with `--no-default-features` without transport code.
 Hosts supply recording and stats sinks; session code must not write files.
@@ -89,8 +89,7 @@ The engine interfaces report tick and audio sample rates as
 use `num_traits::ToPrimitive` when pacing or resampling needs a float.
 
 `tango-library` accesses storage and HTTP through its `Storage` and
-`Http` traits. Their native adapters are behind `native`; the browser
-supplies an IndexedDB-backed memory image and fetch. Shared code must
+`Http` traits. Their native adapters are behind `native`. Shared code must
 not bypass these adapters with direct filesystem or networking calls.
 
 Within the larger modules:
@@ -113,27 +112,24 @@ Within the larger modules:
   `replay.rs` holds the playback session; `replay/workers.rs` its three
   loops and `replay/speed.rs` its speed dial.
 - `tango-library::loadout` holds the `Selection` policy; its `Resolver`
-  (`loadout/resolve.rs`) prepares and validates exact launch inputs for
-  both hosts. `tango-gamesupport-common-dataview::model` owns
+  (`loadout/resolve.rs`) prepares and validates exact launch inputs. `tango-gamesupport-common-dataview::model` owns
   save edits and snapshots; UI code formats its validation findings.
 - `tango-lobby/src/state.rs` is the lobby state machine; the ready
   handshake (`handshake.rs`), the handoff into a match
   (`state/handoff.rs`), and the reconcile policy (`reconcile.rs`) extend
   it.
-- `tango/src/app/downloads.rs` owns download attempts and cancellation;
-  `replay_controller.rs` owns deferred playback and analysis jobs.
-- `tango-lite-web/src/host.rs` composes explicit state handles. Core
-  browser operations take a handle instead of using global state.
+- `tango/src/app/replay_controller.rs` owns deferred playback and
+  analysis jobs.
 - `tango-library::rom::load` prepares a clean or patched ROM;
   `tango-library::replays::open` decodes a recording and applies its
   recorded versions, checking simulation compatibility, for playback,
-  analysis, and export in both frontends.
+  analysis, and export.
 - `tango-match/src/screens.rs` is the multi-screen geometry the hosts
   and the video exporter present frames through; `seek.rs` holds the
   seek controller and the chase that serves it.
-- `tango-library/src/patch/mod.rs` exposes the patch API and ROM patching.
-  `catalog.rs` merges and scans metadata; `download.rs` fetches and
-  validates packages. The public `patch::*` entry points remain stable.
+- `tango-library/src/patch/mod.rs` is Tango's ROM patch API. tangoAW2
+  applies its changes in memory and never uses a patch, but the wire
+  format and replays keep an (always empty) patch field.
 - `tango-gamesupport-common-ui/src/editor/view/mod.rs` composes the editor
   shell. `state.rs` owns preferences and edit transitions, `actions.rs`
   defines inputs and host effects, and `components.rs` contains reusable
@@ -146,13 +142,13 @@ Declare external dependencies used by multiple crates in the root
 with `dependency.workspace = true`, adding their own features and
 `optional = true` where needed. Preserve `default-features` settings:
 Cargo adds workspace features to member features, and changing defaults
-can accidentally pull native code into a browser build.
+can accidentally pull in native code a crate should not have.
 
-When adding a game, register its families in
-`tango-library/src/game.rs` and add the corresponding `gamesupport-*`
-feature to the library and both frontends. Include it in each
+tangoAW2 registers one game, Advance Wars 2 (`tango-gamesupport-aw2`),
+in `tango-library/src/game.rs`, behind the `gamesupport-aw2` feature of
+the library and the app. A game feature is included in each
 `gamesupport-all` list and add `tango-gamesupport-<game>?/ui` to the library's
-`ui` feature. Frontend game features forward only to the library; the
+`ui` feature. The app's game features forward only to the library; the
 desktop enables `tango-library/ui`. `tools/check_workspace.py` checks
 registration, feature forwarding, shared dependencies, workspace lints,
 and architectural dependency boundaries.

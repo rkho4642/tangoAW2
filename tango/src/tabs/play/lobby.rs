@@ -67,9 +67,6 @@ pub(super) struct Lobby<'a> {
     pub(super) streamer_mode: bool,
     pub(super) handoff_pending: bool,
     pub(super) frame_delay: u32,
-    /// In-flight patch downloads, so a `MissingPatch` verdict can say
-    /// how the fetch it triggered is actually going.
-    pub(super) downloads: &'a crate::library::patch::Downloads,
 }
 
 impl<'a> Lobby<'a> {
@@ -94,7 +91,7 @@ impl<'a> Lobby<'a> {
         matches!(self.phase, Phase::Failed { .. })
     }
 
-    /// Whether the *committed* match terms (match type, blind setup)
+    /// Whether the *committed* match terms (the match type)
     /// should refuse input without changing layout: the connection is
     /// dead ([`Self::failed`]), or the match is spinning up off the
     /// committed state (`handoff_pending`) — changing terms then would
@@ -338,49 +335,17 @@ impl<'a> Lobby<'a> {
             Status::WaitingForOpponent => in_flight(t!(lang, "play-status-waiting-opponent")),
             Status::Negotiating => in_flight(t!(lang, "play-status-negotiating")),
             Status::Handshake => in_flight(t!(lang, "lobby-handshake")),
-            Status::Verdict(netplay::compat::Verdict::MissingPatch { name, version }) => {
-                // The app starts this fetch itself, so the honest thing
-                // to show is the fetch: progress while it runs, and the
-                // failure with a retry when it doesn't -- not a
-                // "downloading…" line that outlives the download.
-                let key = (name.clone(), version.clone());
-                return match self.downloads.get(&key) {
-                    Some(download) if download.is_running() => {
-                        let caption = match download.percent() {
-                            Some(percent) => t!(lang, "lobby-compat-fetching-patch-progress", percent = percent as i64),
-                            None => t!(lang, "lobby-compat-fetching-patch"),
-                        };
-                        widgets::download_row(caption, download.fraction(), false, None, None)
-                    }
-                    Some(crate::library::patch::Download::Failed) => widgets::download_row(
-                        t!(lang, "lobby-compat-patch-failed"),
-                        None,
-                        true,
-                        Some((
-                            t!(lang, "patches-retry"),
-                            // Same handler the play strip's retry uses.
-                            Message::Loadout(super::loadout_strip::Message::RetryPatchDownload(key)),
-                        )),
-                        None,
-                    ),
-                    // Not started yet: the trigger fires on the next
-                    // lobby state change.
-                    _ => text(t!(lang, "lobby-compat-fetching-patch"))
-                        .size(TEXT_BODY)
-                        .style(pulsing_style)
-                        .into(),
-                };
-            }
             Status::Verdict(verdict) => {
                 use netplay::compat::Verdict;
                 let label = match verdict {
                     Verdict::Compatible => t!(lang, "lobby-compat-ok"),
                     Verdict::MissingGame => t!(lang, "lobby-compat-missing-game"),
                     Verdict::MissingRom => t!(lang, "lobby-compat-missing-rom"),
-                    // Handled above -- it reports as a download, not a
-                    // verdict, because it is one.
-                    Verdict::MissingPatch { .. } => t!(lang, "lobby-compat-fetching-patch"),
-                    Verdict::DifferentVersions => t!(lang, "lobby-compat-version-mismatch"),
+                    // Nothing fetches patches here, so a patch this side
+                    // lacks is a version mismatch like any other.
+                    Verdict::MissingPatch { .. } | Verdict::DifferentVersions => {
+                        t!(lang, "lobby-compat-version-mismatch")
+                    }
                     Verdict::SimVersionTooOld => t!(lang, "lobby-compat-sim-too-old"),
                     Verdict::SimVersionTooNew => t!(lang, "lobby-compat-sim-too-new"),
                     Verdict::DifferentMatchTypes => t!(lang, "lobby-compat-match-mismatch"),
@@ -452,11 +417,9 @@ impl<'a> Lobby<'a> {
     /// a single horizontal pass.)
     fn settings_cluster(&self) -> Element<'a, Message> {
         let lang = self.lang;
-        let inert = self.inert();
         // Caption on top, control centered in a fixed-height slot
-        // beneath — the slot is what keeps the short controls (the
-        // checkbox) on the same horizontal axis as the tall ones (the
-        // picker) instead of hugging their captions. The caption line
+        // beneath — the slot is what keeps the short controls on the
+        // same horizontal axis as the tall ones (the picker) instead of hugging their captions. The caption line
         // height is absolute so the column's total is exactly
         // COMMAND_BAR_CONTENT — the height the bar holds in every
         // state, failed included.
@@ -532,45 +495,14 @@ impl<'a> Lobby<'a> {
             .into(),
         );
 
-        // Blind-setup checkbox — the inversion of the legacy app's
-        // `play-details-reveal-setup`: setups are visible by default,
-        // checking this hides yours. Each side picks independently.
-        // This is only YOUR toggle; what each side has picked shows
-        // as the crossed-out eye on their matchup card (yours appears
-        // when you check this, which is what teaches the opponent's),
-        // so the cluster carries no peer state to reflow or decode.
-        // Part of the committed terms (it crosses the wire and voids
-        // commits), so it locks with the picker while `inert`. Unlike
-        // the picker, the checkbox does accept a `None` handler, so
-        // inert gets the real disabled rendering instead of the
-        // `gated` reroute.
-        let toggle = if inert {
-            None
-        } else {
-            Some(Message::SetBlindSetup as fn(bool) -> Message)
-        };
-        let blind_col = labeled(
-            t!(lang, "lobby-blind-mine"),
-            iced::widget::checkbox(self.state.blind_setup)
-                .on_toggle_maybe(toggle)
-                .size(TEXT_HEADING)
-                .style(widgets::chunky_checkbox)
-                .into(),
-        );
-
         // Top-align so the captions sit on one line like a table
         // header row, whatever each control's height is.
-        let mut cluster = row![]
+        row![]
             .push_maybe(match_col)
             .push(delay_col)
             .spacing(20)
-            .align_y(Alignment::Start);
-        // A blind setup hides a Battle Network folder; Advance Wars 2
-        // has no setup to hide, so tangoAW2 leaves the checkbox out.
-        if crate::flavor::BATTLE_NETWORK_EXTRAS {
-            cluster = cluster.push(blind_col);
-        }
-        cluster.into()
+            .align_y(Alignment::Start)
+            .into()
     }
 
     /// Match-type pick_list — options pulled from the current local
@@ -783,11 +715,9 @@ fn gated<T>(inert: bool, live: fn(T) -> Message) -> fn(T) -> Message {
 /// Compact "you / opponent" card — a 2-line waiting placeholder that
 /// grows to 3 lines once that side's settings land. `ready` lights the
 /// dot and tints the nickname when that side has committed. A red
-/// crossed-out eye rides the nickname row while that side is blinding
-/// their setup — the same indicator on both cards, so your own card
-/// (which gains it when you tick the blind checkbox) teaches what the
-/// opponent's means; `blind_tip` is the side-appropriate sentence for
-/// its tooltip.
+/// crossed-out eye rides the nickname row while that side's settings
+/// say its setup is blinded — the same indicator on both cards;
+/// `blind_tip` is the side-appropriate sentence for its tooltip.
 fn side_card(
     lang: &LanguageIdentifier,
     label: String,

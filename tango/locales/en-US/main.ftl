@@ -27,7 +27,6 @@ discord-presence-in-progress = Match in progress
 # Top-bar tabs
 tab-play = Play
 tab-replays = Replays
-tab-patches = Patches
 tab-settings = Settings
 
 # Play selectors
@@ -57,12 +56,6 @@ empty-no-roms-title = No game ROMs found
 empty-no-roms-body = Put your Advance Wars 2: Black Hole Rising (USA) .gba file into:
 empty-no-saves-title = No save files for this game
 empty-no-saves-body = Drop a .sav for this game into:
-play-patch-downloading = ↓ …
-play-patch-downloading-progress = ↓ { $percent }%
-play-patch-download-failed = ↓ failed
-play-no-patch = No patch
-play-patch-toggle = Use a patch…
-play-version-placeholder = —
 
 # Play bottom strip
 play-link-code = Link code (leave empty for a random one)
@@ -112,9 +105,6 @@ lobby-pick-game-first = Pick a game first
 lobby-compat-ok = Compatible — ready to play.
 lobby-compat-missing-game = One side hasn't picked a game.
 lobby-compat-missing-rom = The other player's game isn't installed here.
-lobby-compat-fetching-patch = Downloading the patch for this match…
-lobby-compat-fetching-patch-progress = Downloading the patch for this match… { $percent }%
-lobby-compat-patch-failed = Couldn't download the patch for this match
 lobby-compat-version-mismatch = Game versions don't match (different patch / ROM).
 lobby-compat-sim-too-old = This game's netplay changed since your opponent's version of tangoAW2 — they need to update.
 lobby-compat-sim-too-new = This game's netplay changed since your version of tangoAW2 — you need to update.
@@ -122,7 +112,6 @@ lobby-compat-match-mismatch = Match type doesn't match.
 lobby-ready = Ready
 lobby-unready = Unready
 lobby-match-starting = Starting…
-lobby-blind-mine = Blind setup
 lobby-blind-peer-on = Opponent is hiding their setup.
 lobby-blind-self-on = You are hiding your setup.
 session-opponent = Opponent setup
@@ -155,31 +144,8 @@ session-results-draws = { $count ->
 session-results-watch-replay = Watch replay
 session-results-done = Done
 
-# Save view sub-tabs
-
-# Navi pane
-navi-style = Style
-
-# Folder pane
 save-copy = Copy
 copied = Copied!
-
-# Navi pane
-navi-id = Navi ID
-navi-link-navi = Link Navi
-navi-buster = Buster
-navi-power-attack = Power Attack
-navi-style-unset = (no style)
-navicust-parts = Installed parts
-navicust-empty = (none installed)
-
-# Navicust editor
-
-# Patch card editor
-
-# Auto Battle Data pane
-
-# Auto Battle Data editor
 
 # Common
 save-empty = This save has no data for this view.
@@ -268,39 +234,7 @@ replays-incomplete = incomplete
 play-you = You
 
 # Patches
-patches-refresh = Refresh
-patches-refreshing = Refreshing…
-patches-refresh-failed = Refresh failed: { $error }
-patches-install = Install
-patches-uninstall = Remove
-patches-installed = Installed
-patches-cancel = Cancel download
-replays-patch-downloading = Downloading this replay's patch…
-replays-patch-downloading-progress = Downloading this replay's patch… { $percent }%
-replays-patch-download-failed = Couldn't download this replay's patch
-patches-downloading = Downloading…
-patches-downloading-progress = Downloading… { $percent }%
-patches-download-failed = Download failed
-patches-retry = Retry
-patches-reveal-package = Show package
 patches-open-folder = Open folder
-patches-favorite = Favorite
-patches-unfavorite = Unfavorite
-patches-search-placeholder = Search patches…
-patches-filter-all = All
-patches-filter-installed = Installed
-patches-filter-available = Available
-patches-select-prompt = Select a patch.
-patches-scanning = Scanning patches…
-patches-readme-placeholder = This patch has no README.
-patches-details-authors = Authors:
-patches-details-license = License:
-patches-details-source = Source:
-patches-details-games = Supported games:
-patches-netplay-compatibility = Netplay:
-patches-netplay-isolated = This version only
-patches-netplay-vanilla = Plays with the unpatched game
-patches-netplay-group = Plays with: { $group }
 
 # Settings panel
 settings-section-general = General
@@ -328,13 +262,10 @@ input-key-left = Left
 input-key-right = Right
 input-key-a = A
 input-key-b = B
-input-key-x = X
-input-key-y = Y
 input-key-l = L
 input-key-r = R
 input-key-start = Start
 input-key-select = Select
-input-key-mic = Blow into mic
 input-key-speed-up = Fast-forward
 input-gamepad-south = Button A
 input-gamepad-east = Button B
@@ -372,24 +303,21 @@ settings-theme = Theme
 settings-theme-dark = Dark
 settings-theme-light = Light
 settings-accent = Accent color
-settings-accent-tango-green = Green
-settings-accent-megaman-blue = Blue
-settings-accent-protoman-red = Red
-settings-accent-roll-pink = Pink
-settings-accent-gutsman-yellow = Yellow
-settings-accent-bass-purple = Purple
+settings-accent-green = Green
+settings-accent-blue = Blue
+settings-accent-red = Red
+settings-accent-pink = Pink
+settings-accent-yellow = Yellow
+settings-accent-purple = Purple
 settings-group-profile = Profile
 settings-group-interface = Interface
 settings-group-storage = Storage
-settings-group-patches = Patches
 settings-group-updates = Updates
 settings-group-window = Window
 settings-group-emulator = Emulator
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-data-folder = Data folder
 settings-data-folder-change = Change…
-settings-patch-repo = Patches repository
-settings-enable-patch-autoupdate = Check for new patches in the background
 settings-enable-updater = Automatically check for app updates
 settings-allow-prerelease-upgrades = Include prereleases when checking for app updates
 settings-netplay-frame-delay = Frame delay
@@ -397,21 +325,11 @@ settings-use-relay = Use relay server
 settings-use-relay-auto = Auto
 settings-use-relay-always = Always
 settings-use-relay-never = Never
-settings-show-opponent-setup = Show opponent's setup at match start
 settings-window-size = Window size
 settings-fullscreen = Fullscreen
 settings-ui-scale = UI scale
 settings-video-filter = Video filter
 settings-fractional-scaling = Fractional scaling
-settings-group-ds = Nintendo DS
-settings-ds-screen-stacking = Stacking
-settings-ds-screen-stacking-horizontal = Horizontal
-settings-ds-screen-stacking-vertical = Vertical
-settings-ds-screen-stacking-primary-only = Primary screen only
-settings-ds-primary-screen = Primary screen
-settings-ds-primary-screen-upper = Upper screen
-settings-ds-primary-screen-touch = Touch screen
-settings-hide-emulator-border = Hide emulator border
 updater-current-version = Current version: { $version }
 updater-latest-version = Latest version: { $version }
 updater-loading = checking…

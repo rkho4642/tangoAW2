@@ -45,38 +45,19 @@ pub fn load(
     }
 }
 
-/// Everything [`scan_roms`] reads: the configured roms dir plus any
-/// BNLC Steam per-game archives. Feeds the scanner's change-detection
-/// fingerprint so an unchanged-on-disk rescan can be skipped.
+/// Everything [`scan_roms`] reads: the configured roms dir. Feeds the
+/// scanner's change-detection fingerprint so an unchanged-on-disk rescan
+/// can be skipped.
 pub fn scan_roots(roms_path: &std::path::Path) -> Vec<std::path::PathBuf> {
-    // Only the BNLC arm below mutates this, and that arm is compiled out
-    // of a wasm build.
-    #[allow(unused_mut)]
-    let mut roots = vec![roms_path.to_path_buf()];
-    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-    for volume in [crate::bnlc::Volume::Vol1, crate::bnlc::Volume::Vol2] {
-        if let Some(b) = crate::bnlc::get(volume) {
-            roots.extend(b.rom_archives());
-        }
-    }
-    roots
+    vec![roms_path.to_path_buf()]
 }
 
-/// Discover ROMs from the library's roms directory, plus — natively —
-/// any Steam-installed BN Legacy Collection volumes.
+/// Discover ROMs from the library's roms directory.
 ///
 /// `listing` is the snapshot of [`scan_roots`] the caller already
 /// gathered; see [`Listing`] for why the enumeration happens there and
 /// not here.
 pub fn scan_roms(storage: &dyn Storage, listing: &Listing) -> std::collections::HashMap<GameRef, Vec<u8>> {
-    let mut roms = std::collections::HashMap::new();
-    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-    roms.extend(crate::bnlc::scan_steam_roms());
-    roms.extend(scan_stored_roms(storage, listing));
-    roms
-}
-
-fn scan_stored_roms(storage: &dyn Storage, listing: &Listing) -> std::collections::HashMap<GameRef, Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
     for entry in listing.entries() {
         let mut buf = match storage.read(&entry.path) {

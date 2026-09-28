@@ -5,21 +5,18 @@
 //! feature modules own their actions and effects; [`view`] renders the shell.
 //! The host wires these methods into `iced::application` in `main.rs`.
 
-use crate::library::{autoupdate, Catalog};
+use crate::library::Catalog;
 use crate::platform::audio;
 use crate::ui::anim;
 use crate::{config, discord, i18n, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
 use i18n::t;
-use tabs::patches::PatchesState;
 use tabs::replays::ReplaysState;
 
 mod desktop;
 mod dispatch;
-mod downloads;
 mod library;
 mod lobby;
 mod message;
-mod patches;
 mod play;
 mod replay;
 mod replay_controller;
@@ -58,7 +55,6 @@ pub struct App {
     play: tabs::play::State,
     replays: ReplaysState,
     replay_controller: replay_controller::Controller,
-    patches: PatchesState,
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
     netplay: netplay::State,
@@ -75,11 +71,6 @@ pub struct App {
     /// `make_single_player_activity` / `make_in_progress_activity`
     /// timestamps. Reset to `None` when the session ends.
     session_started_at: Option<std::time::SystemTime>,
-    /// Background loop that re-fetches the patch index every 15 min
-    /// (a conditional GET of metadata, not the packages) and refreshes
-    /// the patches scanner in place.
-    patch_autoupdater: autoupdate::Autoupdater,
-    downloads: downloads::Coordinator,
     /// Self-updater. Polls GitHub every 30 min, streams the
     /// platform installer into the cache dir, and on the
     /// `finish_update` call (or next launch) hands off to the
@@ -89,9 +80,7 @@ pub struct App {
     /// Number of in-flight `rescan_off_thread` tasks. Gates the
     /// automatic rescan trigger (tab entry) so it doesn't stack
     /// workers, and the welcome screen's rescan button. A counter
-    /// (not a bool) because rescans can overlap
-    /// (e.g. the patch autoupdater fires its own rescan separately
-    /// from an automatic one).
+    /// (not a bool) because rescans can overlap.
     rescans_in_flight: u32,
     /// False until the startup scan's first stage lands (roms, saves,
     /// patches — everything the play tab is built from). Deliberately
@@ -206,15 +195,6 @@ impl App {
             }
         };
 
-        let mut patch_autoupdater = autoupdate::Autoupdater::new(
-            config.patches_path(),
-            config.patch_repo.clone(),
-            scanners.patches.clone(),
-        );
-        if crate::flavor::PATCHES && config.enable_patch_autoupdate {
-            patch_autoupdater.start();
-        }
-
         // Self-updater. Cache dir must exist before the
         // download stream tries to write into it.
         let updater_cache = updater::updater_cache_dir(&config);
@@ -250,13 +230,10 @@ impl App {
             loadout: restored,
             play,
             replays: ReplaysState::default(),
-            patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
             discord: discord::Client::new(),
             session_started_at: None,
-            patch_autoupdater,
-            downloads: downloads::Coordinator::default(),
             replay_controller: replay_controller::Controller::default(),
             updater,
             rescans_in_flight: 0,
@@ -371,7 +348,10 @@ mod tests {
     #[test]
     fn clicking_play_forces_the_loaded_selection_to_be_rebuilt() {
         assert_eq!(Tab::Play.rescan_followup(), Some(RescanFollowup::ForceRebuildLoaded));
-        assert_eq!(Tab::Patches.rescan_followup(), Some(RescanFollowup::Refresh));
+        assert_eq!(
+            Tab::Replays.rescan_followup(),
+            Some(RescanFollowup::RefreshAndReplayStats)
+        );
         assert_eq!(Tab::Settings.rescan_followup(), None);
     }
 }

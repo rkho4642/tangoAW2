@@ -7,21 +7,19 @@ pub enum Tab {
     #[default]
     Play,
     Replays,
-    Patches,
     Settings,
 }
 
 impl Tab {
     /// What should happen after this tab's click-triggered disk scan.
-    /// Play is the explicit "reload my setup" gesture: unlike the other
-    /// scanner-backed tabs, it must discard the same-key loaded bundle so
+    /// Play is the explicit "reload my setup" gesture: unlike the
+    /// Replays tab, it must discard the same-key loaded bundle so
     /// staged save edits and already-decoded ROM/patch assets are rebuilt
     /// from the newly scanned disk state.
     pub(super) fn rescan_followup(self) -> Option<RescanFollowup> {
         match self {
             Self::Play => Some(RescanFollowup::ForceRebuildLoaded),
             Self::Replays => Some(RescanFollowup::RefreshAndReplayStats),
-            Self::Patches => Some(RescanFollowup::Refresh),
             Self::Settings => None,
         }
     }
@@ -32,7 +30,6 @@ impl Tab {
 /// methods of the app's feature modules.
 #[derive(Debug, Clone)]
 pub enum Message {
-    Download(super::downloads::Event),
     /// No-op message — used by overlay layers (e.g. the
     /// settings-modal panel itself) to swallow clicks without
     /// triggering any state change.
@@ -44,7 +41,6 @@ pub enum Message {
     AnimTick,
     TabSelected(Tab),
     Play(tabs::play::Message),
-    Patches(tabs::patches::Message),
     Replays(tabs::replays::Message),
     Settings(tabs::settings::Message),
     Welcome(tabs::welcome::Message),
@@ -102,15 +98,12 @@ pub enum RescanFollowup {
     /// The startup scan's first stage — roms, saves and patches, the
     /// only scanners the play tab reads. Resolves the saved selection
     /// now that there is something to resolve it against, and flips
-    /// `library_scanned`: the play and patches tabs say "scanning…"
+    /// `library_scanned`: the play tab says "scanning…"
     /// rather than "your library is empty" until it does.
     Boot,
     /// The startup scan's second stage — the replay index. Flips
     /// `replays_scanned` and warms the stats cache.
     BootReplays,
-    /// A patch a replay was waiting on just installed — start playback
-    /// now that the scan can see it.
-    RetryPendingWatch,
     /// Just re-validate `self.loaded` against the fresh scan.
     Refresh,
     /// Refresh + warm the replays-tab stats cache (used when a
@@ -124,7 +117,7 @@ pub enum RescanFollowup {
     /// Drop `self.loaded` first so `refresh_loaded` rebuilds it
     /// from scratch (bypassing the same-key dedupe). Used after a
     /// single-player session writes back to its SRAM, and when Play
-    /// is clicked to explicitly reload the selected save, ROM and
-    /// patch from the freshly scanned disk state.
+    /// is clicked to explicitly reload the selected save and ROM
+    /// from the freshly scanned disk state.
     ForceRebuildLoaded,
 }

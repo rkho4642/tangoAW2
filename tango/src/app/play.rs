@@ -10,45 +10,21 @@ impl App {
     /// Apply a loadout-strip message to the shared
     /// App-level selection and run the selection-change
     /// follow-ups. The caller batches a lobby settings-resend after
-    /// this, so a mid-lobby save/patch switch reaches the peer.
+    /// this, so a mid-lobby save switch reaches the peer.
     pub(super) fn update_loadout(&mut self, msg: loadout_strip::Message) -> iced::Task<Message> {
-        // Download controls act on the fetch, not the selection, so they
-        // carry their own key and skip the selection-changed follow-ups.
-        let download_key = match &msg {
-            loadout_strip::Message::RetryPatchDownload(key) | loadout_strip::Message::CancelPatchDownload(key) => {
-                Some(key.clone())
-            }
-            _ => None,
-        };
-        let Some(effect) = loadout_strip::update(&mut self.loadout, msg, &self.scanners, &self.config) else {
+        let Some(loadout_strip::Effect::SelectionChanged) =
+            loadout_strip::update(&mut self.loadout, msg, &self.scanners, &self.config)
+        else {
             return iced::Task::none();
         };
-        match effect {
-            loadout_strip::Effect::CancelDownload => {
-                let Some(key) = download_key else {
-                    return iced::Task::none();
-                };
-                return self.cancel_download(key);
-            }
-            loadout_strip::Effect::RetryDownload => {
-                let Some(key) = download_key else {
-                    return iced::Task::none();
-                };
-                return self.install_patch(key);
-            }
-            loadout_strip::Effect::SelectionChanged => {
-                self.refresh_loaded();
-                self.persist_selection();
-                // Game might have just changed — if so, the lobby
-                // picker should show this game's default match
-                // type (Triple where supported) instead of the
-                // last game's pick.
-                self.apply_default_match_type();
-                // The picker offers patches that aren't downloaded, so
-                // picking one is a request to fetch it.
-                self.fetch_selected_patch()
-            }
-        }
+        self.refresh_loaded();
+        self.persist_selection();
+        // Game might have just changed — if so, the lobby
+        // picker should show this game's default match
+        // type (Triple where supported) instead of the
+        // last game's pick.
+        self.apply_default_match_type();
+        iced::Task::none()
     }
 
     pub(super) fn update_play(&mut self, msg: tabs::play::Message) -> iced::Task<Message> {
@@ -87,10 +63,8 @@ impl App {
                 // appears, instead of flickering to Triple later
                 // when the first Lobby-phase resend runs.
                 self.apply_default_match_type();
-                // Seed the blind-setup checkbox from the user's last
-                // choice (cancel_and_renew reset it to false). Only
-                // here, not in the per-resend default pass, so a
-                // mid-lobby toggle still sticks.
+                // Seed the blind-setup flag the lobby sends from the
+                // stored choice (cancel_and_renew reset it to false).
                 self.netplay.lobby.blind_setup = self.config.last_blind_setup;
                 match copy_code {
                     // Fight auto-generated this code — put it straight on
@@ -116,14 +90,6 @@ impl App {
                     self.config.last_match_type_per_family.insert(family.to_string(), mt);
                     self.persist_config();
                 }
-                self.resend_settings_if_lobby()
-            }
-            E::SetBlindSetup(v) => {
-                self.netplay.set_blind_setup(v);
-                // Remember the choice so the next lobby (this session or
-                // a future launch) defaults to it.
-                self.config.last_blind_setup = v;
-                self.persist_config();
                 self.resend_settings_if_lobby()
             }
             E::Unready => {

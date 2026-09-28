@@ -46,17 +46,10 @@ pub struct Ctx<'a> {
     pub lang: &'a LanguageIdentifier,
     pub state: &'a State,
     pub fractional_scaling: bool,
-    pub hide_emulator_border: bool,
     pub show_replay_inputs: bool,
     /// How modes with two perspectives present the auxiliary surface.
     /// Read live from config so replay and training switch immediately.
     pub opponent_view: crate::config::OpponentView,
-    /// How a DS session's two screens stack in the pane. Read live
-    /// from config, so the switch re-lays out an active session.
-    pub ds_screen_stacking: crate::config::DsScreenStacking,
-    /// Which DS screen leads the arrangement — live from config, like
-    /// the stacking.
-    pub ds_primary_screen: crate::config::DsPrimaryScreen,
     /// Quality mode used by replay exports: `0` is raw output at native
     /// resolution; `1..=10` is lossy at that integer upscale. Owned by
     /// the replays tab, but surfaced in the replay clip strip too.
@@ -191,33 +184,20 @@ fn main_frame_alignment(view: crate::config::OpponentView) -> (iced::alignment::
         _ => (iced::alignment::Horizontal::Center, iced::alignment::Vertical::Center),
     }
 }
-/// Body: framebuffer + optional setup panes layered over the game's
-/// BNLC background art (cover-fit, crops as needed) or a pure-black
-/// backdrop when BNLC isn't installed. The backdrop spans the full
-/// body width so the setup panes float on top of the same bezel art.
+/// Body: framebuffer + optional setup panes layered over a pure-black
+/// backdrop. The backdrop spans the full body width so the setup panes
+/// float on top of it.
 /// `slots` are the PvP setup-drawer slots (`[left, right]`), each
 /// `Some(width)` while that drawer holds the row open — see the
 /// comment on `drawer_slot` below; always `[None, None]` outside PvP.
-fn emulator_body<'a>(ctx: Ctx<'a>, frame: Element<'a, Message>, slots: [Option<f32>; 2]) -> Element<'a, Message> {
+fn emulator_body<'a>(frame: Element<'a, Message>, slots: [Option<f32>; 2]) -> Element<'a, Message> {
     let frame_container = container(frame).center(Fill);
-    let bnlc_bg = if ctx.hide_emulator_border {
-        None
-    } else {
-        ctx.state.backdrop.clone()
-    };
-    let backdrop: Element<'a, Message> = match bnlc_bg {
-        Some(bg_handle) => iced::widget::image(bg_handle)
-            .width(Fill)
-            .height(Fill)
-            .content_fit(iced::ContentFit::Cover)
-            .into(),
-        None => container(iced::widget::Space::new().width(Fill).height(Fill))
-            .style(|_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(iced::Color::BLACK)),
-                ..Default::default()
-            })
-            .into(),
-    };
+    let backdrop: Element<'a, Message> = container(iced::widget::Space::new().width(Fill).height(Fill))
+        .style(|_: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color::BLACK)),
+            ..Default::default()
+        })
+        .into();
 
     // Left/right drawer SLOTS for PvP. The panes themselves render
     // as overlay layers in [`view`] (`setup_drawers_overlay`) so

@@ -109,10 +109,9 @@ pub enum ThemeMode {
 /// `theme::accent_color` (per dark/light shade), this enum is just
 /// the persisted choice.
 ///
-/// The variants were named after Battle Network characters upstream
-/// (`MegaManBlue`, ...); those names stay readable as aliases so
-/// existing configs keep their pick, and the plain names are written
-/// from now on.
+/// The variants were named after characters upstream (`TangoGreen`,
+/// ...); those names stay readable as aliases so existing configs keep
+/// their pick, and the plain names are written from now on.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum AccentColor {
     #[default]
@@ -128,34 +127,6 @@ pub enum AccentColor {
     Yellow,
     #[serde(alias = "BassPurple", alias = "BassGold")]
     Purple,
-}
-
-/// How a two-screen console's screens are arranged in the emulator
-/// pane. Pure presentation: the session always composes its frame the
-/// same way, and the frontend re-lays it out at draw time — which is
-/// what lets this switch take effect mid-session.
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub enum DsScreenStacking {
-    /// The console's own arrangement, one screen above the other. The
-    /// default: it's the shape players know the games by.
-    #[default]
-    Vertical,
-    /// Side by side.
-    Horizontal,
-    /// Only the primary screen (see [`DsPrimaryScreen`]), full pane.
-    PrimaryOnly,
-}
-
-/// Which DS screen leads the arrangement — sits on the left of a
-/// horizontal pair, or on top of a vertical stack. Presentation only,
-/// like [`DsScreenStacking`].
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub enum DsPrimaryScreen {
-    /// The console's upper screen — where these games put the battle.
-    #[default]
-    Upper,
-    /// The touch screen.
-    Touch,
 }
 
 /// Whether matchmaking connections may/must go through the TURN
@@ -204,15 +175,6 @@ pub struct Config {
     pub streamer_mode: bool,
     pub theme: ThemeMode,
     pub accent: AccentColor,
-    /// When `true`, the patch autoupdater (`patch::Autoupdater`)
-    /// runs in the background and refreshes the local patch
-    /// directory every 15 minutes. Off by default in tangoAW2, which
-    /// has no patch tab (a config without the key must not start
-    /// fetching the Battle Network patch feed); off disables the
-    /// background loop but leaves the Update button in the Patches
-    /// tab working.
-    #[serde(default)]
-    pub enable_patch_autoupdate: bool,
     /// GPU upscale effect applied to the emulator frame while it's
     /// drawn (the native frame is uploaded once and magnified in the
     /// fragment shader). Empty = nearest-neighbor pass-through
@@ -227,22 +189,6 @@ pub struct Config {
     /// no bilinear shimmer at non-integer scales.
     #[serde(default)]
     pub fractional_scaling: bool,
-    /// How a DS game's two screens stack in the emulator pane.
-    /// Applied at draw time, so switching it mid-session re-lays the
-    /// pane out immediately. Ignored for single-screen consoles.
-    #[serde(default)]
-    pub ds_screen_stacking: DsScreenStacking,
-    /// Which DS screen leads the arrangement (left of a horizontal
-    /// pair, top of a vertical stack). Applied at draw time like
-    /// [`ds_screen_stacking`](Self::ds_screen_stacking).
-    #[serde(default)]
-    pub ds_primary_screen: DsPrimaryScreen,
-    /// When true, hide the BNLC per-game background art that
-    /// sits behind the framebuffer — fall back to a plain black
-    /// backdrop instead. Default (false) shows the BNLC border
-    /// when the corresponding volume is installed.
-    #[serde(default)]
-    pub hide_emulator_border: bool,
     /// When true, replay playback shows the input display overlay:
     /// one pad chip per side with the recorded buttons lit at the
     /// playhead. Toggled from the replay transport bar.
@@ -338,19 +284,13 @@ pub struct Config {
     /// [`RelayMode`]. Sampled at connect time.
     #[serde(default)]
     pub relay_mode: RelayMode,
-    /// Last "blind my setup from the opponent" choice made in the
-    /// netplay lobby. Seeded into `LobbyState::blind_setup` at connect
-    /// time so the checkbox comes back the way the user last left it;
-    /// each lobby remains independently toggleable thereafter.
+    /// The "blind my setup from the opponent" flag this side sends in
+    /// the netplay lobby. Seeded into `LobbyState::blind_setup` at
+    /// connect time. The lobby no longer offers a checkbox for it, so
+    /// this is whatever an earlier build last stored (false on a fresh
+    /// install).
     #[serde(default)]
     pub last_blind_setup: bool,
-    /// Slide the opponent's setup drawer open automatically at PvP
-    /// match start (when they haven't blinded their setup). Off, the
-    /// drawer starts closed and the edge handle is the invitation.
-    /// Sampled once when the session is installed; the drawer stays
-    /// freely toggleable afterwards.
-    #[serde(default)]
-    pub show_opponent_setup: bool,
 
     /// User-editable input bindings (keyboard + gamepad). See
     /// [`crate::platform::input::Mapping::default`] for the
@@ -371,13 +311,8 @@ impl Default for Config {
             streamer_mode: false,
             theme: ThemeMode::default(),
             accent: AccentColor::default(),
-            // tangoAW2 has no patch tab; the Battle Network patch feed is not fetched.
-            enable_patch_autoupdate: false,
             video_filter: String::new(),
             fractional_scaling: false,
-            ds_screen_stacking: DsScreenStacking::default(),
-            ds_primary_screen: DsPrimaryScreen::default(),
-            hide_emulator_border: false,
             show_replay_inputs: false,
             opponent_view: OpponentView::Off,
             pvp_setup_pane_widths: default_setup_pane_widths(),
@@ -394,7 +329,6 @@ impl Default for Config {
             frame_delay: default_frame_delay(),
             relay_mode: RelayMode::default(),
             last_blind_setup: false,
-            show_opponent_setup: false,
             input_mapping: crate::platform::input::Mapping::default(),
             replay_custom_screen_speedup: false,
         }
@@ -570,12 +504,8 @@ mod tests {
             "data_path": "/home/someone/Tango",
             "matchmaking_endpoint": "wss://example.invalid/mm",
             "patch_repo": "https://example.invalid/patches",
-            "enable_patch_autoupdate": false,
             "video_filter": "hq3x",
             "fractional_scaling": true,
-            "ds_screen_stacking": "Horizontal",
-            "ds_primary_screen": "Touch",
-            "hide_emulator_border": true,
             "show_replay_inputs": true,
             "opponent_view": "StackVertically",
             "pvp_setup_pane_widths": [300.0, 512.5],
@@ -601,7 +531,6 @@ mod tests {
             "frame_delay": 7,
             "relay_mode": "Never",
             "last_blind_setup": true,
-            "show_opponent_setup": true,
             "input_mapping": serde_json::to_value(crate::platform::input::Mapping::default()).unwrap(),
             "replay_custom_screen_speedup": true,
         })
@@ -653,7 +582,6 @@ mod tests {
         assert_eq!(config.patch_repo, "https://example.invalid/patches");
         assert_eq!(config.frame_delay, 7);
         assert_eq!(config.matchmaking_endpoint, DEFAULT_MATCHMAKING_ENDPOINT);
-        assert!(!config.enable_patch_autoupdate);
         assert!(config.enable_updater);
         assert_eq!(config.ui_scale, 1.0);
         assert_eq!(config.volume, 1.0);
@@ -668,12 +596,10 @@ mod tests {
             serde_json::from_value(serde_json::json!({ "show_opponent_pip": true, "accent": "BassGold" })).unwrap();
         assert_eq!(config.opponent_view, OpponentView::PictureInPicture);
         assert_eq!(config.accent, AccentColor::Purple);
-        let blue: Config = serde_json::from_value(serde_json::json!({ "accent": "MegaManBlue" })).unwrap();
-        assert_eq!(blue.accent, AccentColor::Blue);
-        assert_eq!(
-            serde_json::to_value(blue).unwrap().get("accent"),
-            Some(&serde_json::json!("Blue"))
-        );
+        for blue in ["MegaManBlue", "Blue"] {
+            let blue: Config = serde_json::from_value(serde_json::json!({ "accent": blue })).unwrap();
+            assert_eq!(blue.accent, AccentColor::Blue);
+        }
 
         let off: Config = serde_json::from_value(serde_json::json!({ "show_opponent_pip": false })).unwrap();
         assert_eq!(off.opponent_view, OpponentView::Off);
@@ -681,6 +607,26 @@ mod tests {
         let json = serde_json::to_value(config).unwrap();
         assert_eq!(json.get("opponent_view"), Some(&serde_json::json!("PictureInPicture")));
         assert!(json.get("show_opponent_pip").is_none());
+    }
+
+    /// Settings later builds dropped (the patch autoupdater, the DS
+    /// screen layout, the Legacy Collection border, the opponent-setup
+    /// drawer) are ignored when an old config still carries them.
+    #[test]
+    fn dropped_settings_are_ignored() {
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "nickname": "someone",
+            "enable_patch_autoupdate": true,
+            "ds_screen_stacking": "Horizontal",
+            "ds_primary_screen": "Touch",
+            "hide_emulator_border": true,
+            "show_opponent_setup": true,
+        }))
+        .unwrap();
+        assert_eq!(config.nickname.as_deref(), Some("someone"));
+        let json = serde_json::to_value(config).unwrap();
+        assert!(json.get("enable_patch_autoupdate").is_none());
+        assert!(json.get("ds_screen_stacking").is_none());
     }
 
     #[test]

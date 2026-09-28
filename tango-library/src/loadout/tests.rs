@@ -66,7 +66,6 @@ static GAME: Game = Game {
     pvp: &NoEmulator,
     save_templates: None,
     logo_image: None,
-    background: None,
 };
 static OTHER_VARIANT: Game = Game { variant: 1, ..GAME };
 
@@ -222,55 +221,6 @@ fn reconcile_drops_what_a_rescan_retired() {
     catalog.roms.rescan(|| Some(Default::default()));
     selection.reconcile(&catalog, &config);
     assert!(selection == Selection::default());
-}
-
-/// Restoring and family picks resolve through the game registry.
-#[cfg(feature = "gamesupport-bn6")]
-#[test]
-fn a_persisted_selection_restores_once_scanned() {
-    let games: Vec<rom::GameRef> = game::games_in_family("bn6").collect();
-    let (gregar, falzar) = (games[0], games[1]);
-    let catalog = Catalog::new();
-    catalog
-        .roms
-        .rescan(|| Some([(gregar, b"rom".to_vec()), (falzar, b"rom".to_vec())].into()));
-    rescan_saves(
-        &catalog,
-        &[
-            (gregar, "/saves/e.sav"),
-            (falzar, "/saves/f.sav"),
-            (gregar, "/saves/g.sav"),
-        ],
-    );
-    let mut config = Config::with_data_path("/".into());
-    let mut selection = Selection::default();
-    selection.pick_save(falzar, "/saves/f.sav".into(), &catalog, &config);
-    selection.persist(&mut config);
-
-    // Before the first scan only the family comes back.
-    let mut restored = Selection::default();
-    restored.restore(&config, &Catalog::new());
-    assert_eq!(restored.family(), Some("bn6"));
-    assert_eq!(restored.game(), None);
-    restored.restore(&config, &catalog);
-    assert!(restored == selection);
-
-    // A family pick lands on the remembered save, else the first one.
-    let mut picked = Selection::default();
-    picked.pick_family("bn6", &catalog, &config);
-    assert_eq!(picked.save(), Some(Path::new("/saves/f.sav")));
-    assert_eq!(picked.game(), Some(falzar));
-    config.last_save_per_family.clear();
-    picked.pick_family("bn6", &catalog, &config);
-    assert_eq!(picked.save(), Some(Path::new("/saves/e.sav")));
-    assert_eq!(picked.game(), Some(gregar));
-
-    // Deleting the save lands on the family's next one.
-    rescan_saves(&catalog, &[(falzar, "/saves/f.sav"), (gregar, "/saves/g.sav")]);
-    picked.clear_save();
-    picked.pick_first_family_save(&catalog, &config);
-    assert_eq!(picked.save(), Some(Path::new("/saves/f.sav")));
-    assert_eq!(picked.game(), Some(falzar));
 }
 
 #[test]

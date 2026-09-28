@@ -1,6 +1,6 @@
 //! Library scans and reconstruction of the selected save.
 
-use super::{App, Message, RescanFollowup, Tab};
+use super::{App, Message, RescanFollowup};
 use crate::library::{rom, Catalog};
 use crate::selection;
 
@@ -162,7 +162,7 @@ impl App {
 
     pub(super) fn finish_rescan(&mut self, followup: RescanFollowup) -> iced::Task<Message> {
         self.rescans_in_flight = self.rescans_in_flight.saturating_sub(1);
-        let task = match followup {
+        match followup {
             RescanFollowup::Boot => {
                 self.library_scanned = true;
                 log::info!(
@@ -189,13 +189,6 @@ impl App {
                 self.refresh_loaded();
                 iced::Task::none()
             }
-            RescanFollowup::RetryPendingWatch => {
-                self.refresh_loaded();
-                match self.replay_controller.take_pending() {
-                    Some(path) => self.watch_replay(path),
-                    None => iced::Task::none(),
-                }
-            }
             RescanFollowup::RefreshAndReplayStats => {
                 self.refresh_loaded();
                 self.refresh_replay_stats().map(Message::Replays)
@@ -214,21 +207,6 @@ impl App {
                 self.refresh_loaded();
                 iced::Task::none()
             }
-        };
-        // One rule for every landing: the selection's patch
-        // should be on disk. At startup that's the restored
-        // selection, which resolves against the repo index and
-        // so can name a version this machine never downloaded;
-        // afterwards it's the play tab re-asserting itself on
-        // entry, since a trip to the patches tab can have
-        // removed the package underneath it. Deliberately not
-        // while the patches tab is up: re-downloading what the
-        // user just removed, as they watch, is not help.
-        if followup == RescanFollowup::Boot || self.tab == Tab::Play {
-            let fetch = self.fetch_selected_patch();
-            iced::Task::batch([task, fetch])
-        } else {
-            task
         }
     }
 }

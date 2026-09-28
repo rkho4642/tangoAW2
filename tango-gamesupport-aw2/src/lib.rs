@@ -84,7 +84,6 @@ pub static AW2: Game = Game {
     pvp: &ENGINE,
     save_templates: Some(&AW2_T),
     logo_image: None,
-    background: None,
 };
 
 pub static AW2_FAMILY: Family = Family {

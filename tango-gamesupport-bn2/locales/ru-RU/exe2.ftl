@@ -1,9 +1,0 @@
-name = Рок мен ЕХЕ 2
-short = ЕХЕ2
-variant-0 = Рок мен ЕХЕ 2
-match-type-0-0 = Одиночная
-save-hub = Saito/Normal
-save-guts = Guts
-save-custom = Custom
-save-team = Brother
-save-shield = Shield

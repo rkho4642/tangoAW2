@@ -62,7 +62,6 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
     let now = iced::time::Instant::now();
     let frame = framebuffer_view(
         ctx,
-        None,
         iced::alignment::Horizontal::Center,
         iced::alignment::Vertical::Center,
     );
@@ -77,7 +76,7 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
             .filter(|p| p.opponent_loaded.is_some() && state.opponent_panel.shown())
             .map(|p| p.pane_widths[1]),
     ];
-    let body = emulator_body(ctx, frame, slots);
+    let body = emulator_body(frame, slots);
     let mut game_stack = stack![body];
     // A drawer pane mid-animation draws in iced's floating layer, above every
     // base stack layer. The build warning is hoisted alongside it so the

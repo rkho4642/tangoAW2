@@ -86,7 +86,6 @@ def check_boundaries(root: Path) -> list[str]:
         "tango-net": {"tango-platform", "tango-net-protocol"},
         "tango-lobby": {"tango-net", "tango-platform", "tango-net-protocol"},
         "tango-backend-mgba": {"tango-match"},
-        "tango-backend-melonds": {"tango-match"},
         "tango-replay-renderer": {"tango-match"},
         "tango-gamesupport": {"tango-match"},
         "tango-gamesupport-common-dataview": {"tango-gamesupport"},
@@ -109,10 +108,6 @@ def check_boundaries(root: Path) -> list[str]:
     for path in (root / "tango-session/src").rglob("*.rs"):
         if "std::fs::" in path.read_text():
             errors.append(f"{path.relative_to(root)}: session persistence must use a host adapter")
-    for name in ("library", "engine", "link"):
-        path = root / f"tango-lite-web/src/{name}.rs"
-        if "thread_local!" in path.read_text():
-            errors.append(f"{path.relative_to(root)}: state must be owned by an explicit host handle")
     return errors
 
 

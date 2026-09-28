@@ -229,6 +229,3 @@ pub fn format_rel_path(replays_path: &std::path::Path, path: &std::path::Path) -
         format!("/{s}/")
     }
 }
-
-#[cfg(all(test, feature = "native", feature = "gamesupport-bn6", not(target_arch = "wasm32")))]
-mod tests;

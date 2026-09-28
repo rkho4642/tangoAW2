@@ -2,7 +2,6 @@
 
 // Foundations.
 mod config;
-mod flavor; // which upstream Battle Network features this build keeps off screen
 mod i18n;
 mod library; // tango-library bound to the native filesystem + HTTP, plus desktop-only jobs
 mod platform; // host-machine glue: SDL input, CPAL audio, video, crash capture

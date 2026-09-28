@@ -40,7 +40,6 @@ impl App {
             C::StreamerMode(b) => self.config.streamer_mode = b,
             C::MatchmakingEndpoint(s) => self.config.matchmaking_endpoint = s,
             C::RelayMode(m) => self.config.relay_mode = m,
-            C::PatchRepo(s) => self.config.patch_repo = s,
             C::DataPath(path) => {
                 self.config.data_path = path;
                 // Make sure the standard subfolders exist in the new location
@@ -54,35 +53,14 @@ impl App {
                 ] {
                     let _ = std::fs::create_dir_all(&dir);
                 }
-                // Re-point the patch autoupdater at the new patches folder
-                // (it captured the old path at construction), and re-scan
-                // off the UI thread so the new folder's contents show up.
-                // The self-updater cache and log file follow the new path
-                // on next launch.
-                self.patch_autoupdater = crate::library::autoupdate::Autoupdater::new(
-                    self.config.patches_path(),
-                    self.config.patch_repo.clone(),
-                    self.scanners.patches.clone(),
-                );
-                if crate::flavor::PATCHES && self.config.enable_patch_autoupdate {
-                    self.patch_autoupdater.start();
-                }
+                // Re-scan off the UI thread so the new folder's contents
+                // show up. The self-updater cache and log file follow the
+                // new path on next launch.
                 self.persist_config();
                 return self.rescan_off_thread(RescanFollowup::Refresh);
             }
-            C::PatchAutoupdate(b) => {
-                self.config.enable_patch_autoupdate = b;
-                if b {
-                    self.patch_autoupdater.start();
-                } else {
-                    self.patch_autoupdater.stop();
-                }
-            }
             C::VideoFilter(s) => self.config.video_filter = s,
             C::FractionalScaling(b) => self.config.fractional_scaling = b,
-            C::DsScreenStacking(s) => self.config.ds_screen_stacking = s,
-            C::DsPrimaryScreen(s) => self.config.ds_primary_screen = s,
-            C::HideEmulatorBorder(b) => self.config.hide_emulator_border = b,
             C::Fullscreen(b) => {
                 self.config.fullscreen = b;
                 self.persist_config();
@@ -131,9 +109,6 @@ impl App {
             }
             // Sampled by spawn_pvp at match start; nothing live to poke.
             C::DisableBgmInPvp(b) => self.config.disable_bgm_in_pvp = b,
-            // Sampled when the next PvP session is installed
-            // (Message::PvpSessionBuilt); nothing live to poke.
-            C::ShowOpponentSetup(b) => self.config.show_opponent_setup = b,
             C::Theme(t) => self.config.theme = t,
             C::Accent(a) => self.config.accent = a,
             C::AddInputBinding(slot, binding) => {

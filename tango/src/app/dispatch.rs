@@ -90,7 +90,7 @@ impl App {
                 // Play additionally throws away the loaded bundle after
                 // the scan, even when the selected paths did not change:
                 // the click is an explicit reload from disk, including
-                // discarding staged edits and rebuilding ROM/patch assets.
+                // discarding staged edits and rebuilding ROM assets.
                 // Settings doesn't read the scanners, so skip it there.
                 if !self.is_rescanning() {
                     if let Some(followup) = t.rescan_followup() {
@@ -111,14 +111,6 @@ impl App {
             Message::Play(m) => {
                 let task = self.update_play(m);
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
-            }
-            Message::Patches(m) => self.update_patches(m),
-            Message::Download(event) => {
-                if self.downloads.apply(&event) {
-                    self.update_patches(event.message)
-                } else {
-                    iced::Task::none()
-                }
             }
             Message::DiscordTick => {
                 self.handle_discord_tick();

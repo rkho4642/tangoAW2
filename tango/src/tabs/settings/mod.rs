@@ -143,11 +143,6 @@ pub enum Message {
     /// Sampled at the next Connect; doesn't affect an in-flight
     /// connection.
     RelayModeChanged(config::RelayMode),
-    /// "Show opponent's setup at match start" checkbox toggled.
-    /// Persisted to `config.show_opponent_setup`; sampled when the
-    /// next PvP session is installed.
-    ToggleShowOpponentSetup(bool),
-    PatchRepoChanged(String),
     /// "Change…" clicked next to the data folder. The App intercepts this
     /// (before `State::update`) to open an async folder picker, which comes
     /// back as `DataFolderPicked`.
@@ -155,15 +150,8 @@ pub enum Message {
     /// Folder picker resolved: `Some(path)` if the user chose one, `None` if
     /// they dismissed it.
     DataFolderPicked(Option<std::path::PathBuf>),
-    TogglePatchAutoupdate(bool),
     VideoFilterChanged(String),
     ToggleFractionalScaling(bool),
-    /// New DS screen arrangement picked. Applied at draw time, so an
-    /// active session re-lays out immediately.
-    DsScreenStackingChanged(config::DsScreenStacking),
-    /// New DS primary screen picked — same draw-time application.
-    DsPrimaryScreenChanged(config::DsPrimaryScreen),
-    ToggleHideEmulatorBorder(bool),
     ToggleFullscreen(bool),
     /// New windowed size picked, as `(width, height)`.
     ResolutionChanged((f32, f32)),
@@ -217,18 +205,11 @@ pub enum ConfigChange {
     StreamerMode(bool),
     MatchmakingEndpoint(String),
     RelayMode(config::RelayMode),
-    ShowOpponentSetup(bool),
-    PatchRepo(String),
     /// New root data folder picked. The App points `config.data_path` at it,
-    /// creates the standard subfolders, re-scans, and re-points the patch
-    /// autoupdater.
+    /// creates the standard subfolders, and re-scans.
     DataPath(std::path::PathBuf),
-    PatchAutoupdate(bool),
     VideoFilter(String),
     FractionalScaling(bool),
-    DsScreenStacking(config::DsScreenStacking),
-    DsPrimaryScreen(config::DsPrimaryScreen),
-    HideEmulatorBorder(bool),
     Fullscreen(bool),
     Resolution(f32, f32),
     UiScale(f32),
@@ -299,19 +280,13 @@ impl State {
             Message::ToggleStreamerMode(b) => Some(ConfigChange::StreamerMode(b)),
             Message::MatchmakingEndpointChanged(s) => Some(ConfigChange::MatchmakingEndpoint(s)),
             Message::RelayModeChanged(m) => Some(ConfigChange::RelayMode(m)),
-            Message::ToggleShowOpponentSetup(b) => Some(ConfigChange::ShowOpponentSetup(b)),
-            Message::PatchRepoChanged(s) => Some(ConfigChange::PatchRepo(s)),
             // Effects, taken by `update` before this.
             Message::OpenDataFolderPicker | Message::UpdateNow | Message::OpenUrl(_) => None,
             Message::DataFolderPicked(Some(path)) => Some(ConfigChange::DataPath(path)),
             // Dialog dismissed — nothing to change.
             Message::DataFolderPicked(None) => None,
-            Message::TogglePatchAutoupdate(b) => Some(ConfigChange::PatchAutoupdate(b)),
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
             Message::ToggleFractionalScaling(b) => Some(ConfigChange::FractionalScaling(b)),
-            Message::DsScreenStackingChanged(s) => Some(ConfigChange::DsScreenStacking(s)),
-            Message::DsPrimaryScreenChanged(s) => Some(ConfigChange::DsPrimaryScreen(s)),
-            Message::ToggleHideEmulatorBorder(b) => Some(ConfigChange::HideEmulatorBorder(b)),
             Message::ToggleFullscreen(b) => Some(ConfigChange::Fullscreen(b)),
             Message::ResolutionChanged((w, h)) => Some(ConfigChange::Resolution(w, h)),
             Message::UiScaleChanged(s) => Some(ConfigChange::UiScale(s)),

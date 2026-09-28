@@ -10,7 +10,7 @@ pub use rpc::activity;
 use crate::i18n;
 
 /// Tango's Discord application. Discord shows its name ("Tango") and
-/// its Battle Network artwork next to the presence, so tangoAW2 does not
+/// its own game artwork next to the presence, so tangoAW2 does not
 /// connect with it; see [`ENABLED`].
 const APP_ID: u64 = 974089681333534750;
 

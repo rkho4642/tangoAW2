@@ -1,20 +1,17 @@
-//! The loadout strip: the family, save, patch, and version pickers
-//! over the App-level [`Selection`], and the messages they emit.
+//! The loadout strip: the family and save pickers over the App-level
+//! [`Selection`], and the messages they emit.
 //!
 //! The selection policy — what each pick does to the rest of the
 //! selection, and what's remembered per family and per save — is
 //! [`tango_library::loadout::Selection`]'s, shared with the browser
-//! host. What's here is only the iced side: option lists, pickers, and
-//! the download strip that stands in for them.
+//! host. What's here is only the iced side: option lists and pickers.
 
 use crate::config;
 use crate::i18n::t;
 use crate::library::Catalog;
 use crate::library::{game, rom};
-use crate::ui::style::TEXT_CAPTION;
 use crate::ui::widgets;
-use iced::widget::{container, row, text};
-use iced::{Alignment, Element, Length};
+use iced::{Element, Length};
 use tango_library::loadout::Selection;
 use unic_langid::LanguageIdentifier;
 
@@ -22,13 +19,6 @@ use unic_langid::LanguageIdentifier;
 pub enum Message {
     FamilySelected(FamilyOption),
     SaveSelected(SaveOption),
-    /// Real patch name; empty string is the "no patch" sentinel.
-    PatchSelected(String),
-    PatchVersionSelected(semver::Version),
-    /// Start a failed patch download again / stop one in flight. Act on
-    /// the fetch, not on the selection.
-    RetryPatchDownload(crate::library::patch::VersionKey),
-    CancelPatchDownload(crate::library::patch::VersionKey),
 }
 
 /// Side-effects bubble-up, mirroring the tab modules' convention:
@@ -36,14 +26,10 @@ pub enum Message {
 /// that needs App-level collaborators comes back as an `Effect`.
 #[derive(Debug, Clone, Copy)]
 pub enum Effect {
-    /// Selection (family / game / save / patch / version) changed.
+    /// Selection (family / game / save) changed.
     /// App should rebuild its `LoadedSave` cache, persist config, and
     /// resend lobby settings if one is live.
     SelectionChanged,
-    /// Start a failed patch download again.
-    RetryDownload,
-    /// Stop the download the play strip is reporting on.
-    CancelDownload,
 }
 
 /// Apply a strip message to the selection.
@@ -51,11 +37,6 @@ pub fn update(selection: &mut Selection, msg: Message, scanners: &Catalog, confi
     match msg {
         Message::FamilySelected(f) => selection.pick_family(f.family, scanners, config),
         Message::SaveSelected(s) => selection.pick_save(s.game, s.path, scanners, config),
-        // Empty string is the "no patch" sentinel.
-        Message::PatchSelected(name) => selection.pick_patch((!name.is_empty()).then_some(name), scanners, config),
-        Message::PatchVersionSelected(v) => selection.pick_patch_version(v),
-        Message::RetryPatchDownload(_) => return Some(Effect::RetryDownload),
-        Message::CancelPatchDownload(_) => return Some(Effect::CancelDownload),
     }
     Some(Effect::SelectionChanged)
 }
@@ -282,248 +263,17 @@ pub fn save_options(
     save_options
 }
 
-/// Patch picker options (with the "no patch" sentinel first) and the
-/// currently-selected entry. Filtered to patches that support *any*
-/// variant in the selected family — but NOT narrowed to the specific
-/// save's variant, so a patch for the family's other variant still
-/// shows. Within-family incompatibility is resolved by *deselection*
-/// at pick time (selecting a save drops an incompatible patch;
-/// selecting a patch drops an incompatible save), never by hiding.
-/// With no family selected, the list is empty. Favorites sort first
-/// (and get a "★ " label prefix), alphabetical within each group.
-pub fn patch_options(
-    loadout: &Selection,
-    lang: &LanguageIdentifier,
-    scanners: &Catalog,
-    config: &config::Config,
-) -> (Vec<widgets::Choice<String>>, Option<widgets::Choice<String>>) {
-    let patches = scanners.patches.read();
-    let family_games: Vec<rom::GameRef> = loadout
-        .family()
-        .map(|f| game::games_in_family(f).collect())
-        .unwrap_or_default();
-    let names = tango_library::loadout::patch_names_for(&patches, &family_games, &config.favorite_patches);
-    let no_patch_option = widgets::Choice::new(String::new(), t!(lang, "play-no-patch"));
-    let patch_options: Vec<widgets::Choice<String>> = std::iter::once(no_patch_option.clone())
-        .chain(names.into_iter().map(|n| {
-            // The list offers everything the repo has, so say which ones
-            // aren't here yet — picking one downloads it.
-            let mut display = String::new();
-            if config.favorite_patches.contains(&n) {
-                display.push_str("\u{2605} ");
-            }
-            if !patches.installed.contains_key(&n) {
-                display.push_str("\u{2193} ");
-            }
-            display.push_str(&n);
-            widgets::Choice::new(n, display)
-        }))
-        .collect();
-    let selected_patch = match loadout.patch_name() {
-        Some(n) => patch_options.iter().find(|o| o.value == n).cloned(),
-        None => Some(no_patch_option),
-    };
-    (patch_options, selected_patch)
-}
-
-/// Versions of the selected patch that support the current game, newest
-/// first. Empty when no patch is selected. Includes versions that aren't
-/// downloaded — the repo keeps every release forever, and an old one is
-/// exactly what a replay or an opponent may need — marked with a ↓, same
-/// as the patch list.
-pub fn version_options(loadout: &Selection, scanners: &Catalog) -> Vec<widgets::Choice<semver::Version>> {
-    let patches = scanners.patches.read();
-    loadout
-        .patch_name()
-        .map(|name| {
-            let game = loadout.game();
-            let mut vs: Vec<semver::Version> = patches
-                .versions(name)
-                .into_keys()
-                .filter(|v| {
-                    game.map(|g| patches.supported_games(name, v).contains(&g))
-                        .unwrap_or(true)
-                })
-                .collect();
-            vs.sort_by(|a, b| b.cmp(a));
-            vs.into_iter()
-                .map(|v| {
-                    let label = if patches.is_installed(name, &v) {
-                        v.to_string()
-                    } else {
-                        format!("\u{2193} {v}")
-                    };
-                    widgets::Choice::new(v, label)
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 // ---------- Views ----------
 
-/// The full game row for the Play tab's selector strip: family
-/// picker, patch + version pickers. The patch controls are always
-/// visible. No rescan button — scans re-run on their own (tab
-/// entry, session close).
+/// The game row for the Play tab's selector strip: the family picker,
+/// taking the whole row. No rescan button — scans re-run on their own
+/// (tab entry, session close).
 pub fn game_row<'a>(
     loadout: &'a Selection,
     lang: &'a LanguageIdentifier,
     scanners: &'a Catalog,
-    config: &'a config::Config,
-    downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
-    // Gaps are explicit children rather than row spacing, because a
-    // fetch replaces the patch AND version pickers with one unbroken
-    // download strip -- and a uniform spacing would leave a seam down
-    // the middle of it. Laid out this way the fixed 8 + 8 + version
-    // width comes off the row identically in both states, so the game
-    // picker never moves.
-    // tangoAW2 has no patch server (`flavor::PATCHES`): the game
-    // picker takes the whole row.
-    if !crate::flavor::PATCHES {
-        return family_picker(loadout, lang, scanners).width(Length::Fill).into();
-    }
-    let gap = || iced::widget::space::horizontal().width(Length::Fixed(8.0));
-    let download = patch_download(loadout, lang, downloads);
-    // The game the download belongs to can't be changed out from under
-    // it, so its picker goes inert for the duration -- same footprint,
-    // same name on it, just not something you can open. Cancelling the
-    // fetch hands it back.
-    let game: Element<'a, Message> = match (&download, family_label(loadout, lang, scanners)) {
-        (Some(_), Some(label)) => widgets::disabled_pick_list(label).width(Length::FillPortion(3)).into(),
-        _ => family_picker(loadout, lang, scanners)
-            .width(Length::FillPortion(3))
-            .into(),
-    };
-    let rest: Vec<Element<'a, Message>> = match download {
-        Some((bar, controls)) => vec![bar, controls],
-        None => vec![
-            patch_picker(loadout, lang, scanners, config)
-                .width(Length::FillPortion(2))
-                .into(),
-            gap().into(),
-            version_picker(loadout, lang, scanners),
-        ],
-    };
-
-    let mut strip = row![game, gap()].spacing(0).align_y(Alignment::Center);
-    for element in rest {
-        strip = strip.push(element);
-    }
-    strip.into()
-}
-
-/// Width of the version slot. Shared by the picker and the download
-/// strip that replaces it, so a swap can't change the row's shape.
-const VERSION_PICKER_WIDTH: f32 = 100.0;
-
-/// The download strip that replaces the patch and version pickers
-/// while a fetch is in flight or has failed: one continuous run of
-/// bar, percent and a ✕ to call it off, returned as the two adjacent
-/// pieces the row needs to keep its widths (they abut, so it reads as
-/// one). `None` whenever there's nothing to report, which is the
-/// normal case.
-///
-/// The pieces carry exactly the width and height the pickers they
-/// stand in for lay out to, so nothing around them moves.
-fn patch_download<'a>(
-    loadout: &'a Selection,
-    lang: &'a LanguageIdentifier,
-    downloads: &'a crate::library::patch::Downloads,
-) -> Option<(Element<'a, Message>, Element<'a, Message>)> {
-    let key = (loadout.patch_name()?.to_owned(), loadout.patch_version()?.clone());
-    let piece = |content: Element<'a, Message>, width| {
-        Element::from(
-            container(content)
-                .width(width)
-                .height(Length::Fixed(crate::ui::style::PICKER_HEIGHT))
-                .align_y(Alignment::Center),
-        )
-    };
-    // The trailing piece swallows the gap the pickers had between them,
-    // so the strip has no seam.
-    let trailing = Length::Fixed(VERSION_PICKER_WIDTH + 8.0);
-
-    match downloads.get(&key) {
-        Some(download) if download.is_running() => {
-            let caption = match download.percent() {
-                Some(percent) => t!(lang, "play-patch-downloading-progress", percent = percent as i64),
-                None => t!(lang, "play-patch-downloading"),
-            };
-            Some((
-                piece(
-                    iced::widget::progress_bar(0.0..=1.0, download.fraction().unwrap_or(0.0))
-                        .girth(Length::Fixed(4.0))
-                        .length(Length::Fill)
-                        .style(widgets::slim_progress_bar)
-                        .into(),
-                    Length::FillPortion(2),
-                ),
-                piece(
-                    // Percent and ✕ sit as one group at the row's right
-                    // edge, which puts the slack in a single place
-                    // instead of splitting it either side of the
-                    // readout. Right-aligning also pins the number's
-                    // right edge, so 9% → 100% grows leftwards into
-                    // that slack and moves nothing.
-                    row![
-                        iced::widget::space::horizontal(),
-                        text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
-                        // Calling it off puts both pickers straight back.
-                        widgets::icon_button(
-                            lucide_icons::Icon::X,
-                            t!(lang, "patches-cancel"),
-                            Message::CancelPatchDownload(key),
-                            [1.0, 1.0],
-                        ),
-                    ]
-                    .spacing(4)
-                    .align_y(Alignment::Center)
-                    .into(),
-                    trailing,
-                ),
-            ))
-        }
-        Some(crate::library::patch::Download::Failed) => Some((
-            piece(
-                text(t!(lang, "play-patch-download-failed"))
-                    .size(TEXT_CAPTION)
-                    .style(widgets::danger_text_style)
-                    .into(),
-                Length::FillPortion(2),
-            ),
-            piece(
-                row![
-                    iced::widget::space::horizontal(),
-                    widgets::icon_button(
-                        lucide_icons::Icon::RefreshCw,
-                        t!(lang, "patches-retry"),
-                        Message::RetryPatchDownload(key),
-                        [1.0, 1.0],
-                    ),
-                ]
-                .align_y(Alignment::Center)
-                .into(),
-                trailing,
-            ),
-        )),
-        _ => None,
-    }
-}
-
-/// What the family picker currently reads, for the inert stand-in that
-/// replaces it while a download runs. `None` with nothing selected —
-/// then the picker itself (with its placeholder) is the better thing
-/// to show anyway.
-fn family_label(loadout: &Selection, lang: &LanguageIdentifier, scanners: &Catalog) -> Option<String> {
-    let family = loadout.family()?;
-    Some(
-        family_options(lang, scanners)
-            .into_iter()
-            .find(|opt| opt.family == family)?
-            .to_string(),
-    )
+    family_picker(loadout, lang, scanners).width(Length::Fill).into()
 }
 
 fn family_picker<'a>(
@@ -565,49 +315,4 @@ pub fn save_picker<'a>(
                 .collect()
         })
         .placeholder(t!(lang, "play-no-save"))
-}
-
-fn patch_picker<'a>(
-    loadout: &'a Selection,
-    lang: &'a LanguageIdentifier,
-    scanners: &'a Catalog,
-    config: &'a config::Config,
-) -> sweeten::widget::PickList<
-    'a,
-    widgets::Choice<String>,
-    Vec<widgets::Choice<String>>,
-    widgets::Choice<String>,
-    Message,
-> {
-    let (options, selected) = patch_options(loadout, lang, scanners, config);
-    widgets::picker(options, selected, |c: widgets::Choice<String>| {
-        Message::PatchSelected(c.value)
-    })
-}
-
-/// No patch selected (or none with matching versions) → render the
-/// shared disabled-dropdown placeholder so the version slot reads as
-/// locked-off instead of an empty picker users can still click.
-fn version_picker<'a>(
-    loadout: &'a Selection,
-    lang: &'a LanguageIdentifier,
-    scanners: &'a Catalog,
-) -> Element<'a, Message> {
-    let options = version_options(loadout, scanners);
-    if options.is_empty() {
-        return widgets::disabled_pick_list(t!(lang, "play-version-placeholder"))
-            .width(Length::Fixed(VERSION_PICKER_WIDTH))
-            .into();
-    }
-
-    // Plain: the patch slot beside it reports any fetch.
-    let selected = loadout
-        .patch_version()
-        .and_then(|version| options.iter().find(|o| &o.value == version).cloned());
-    widgets::picker(options, selected, |c: widgets::Choice<semver::Version>| {
-        Message::PatchVersionSelected(c.value)
-    })
-    .placeholder(t!(lang, "play-version-placeholder"))
-    .width(Length::Fixed(VERSION_PICKER_WIDTH))
-    .into()
 }

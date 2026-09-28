@@ -25,7 +25,6 @@ discord-presence-in-progress = 對戰進行中
 # Top-bar tabs
 tab-play = 對戰
 tab-replays = 重播
-tab-patches = 補丁
 tab-settings = 設定
 
 # Play selectors
@@ -54,13 +53,7 @@ empty-scanning-body = 正在讀取 ROM、存檔與補丁。
 empty-no-roms-title = 找不到遊戲 ROM
 empty-no-saves-title = 此遊戲沒有存檔檔案
 empty-no-saves-body = 將此遊戲的 .sav 檔案放入：
-play-patch-downloading = ↓ …
-play-patch-downloading-progress = ↓ { $percent }%
-play-patch-download-failed = ↓ 失敗
-play-no-patch = 無補丁
-play-patch-toggle = 使用補丁…
 play-play = 開始遊戲
-play-version-placeholder = —
 
 # Play bottom strip
 play-link-code = 連線代碼（留空則隨機產生）
@@ -109,9 +102,6 @@ lobby-pick-game-first = 請先選擇遊戲
 lobby-compat-ok = 相容 — 可以開始對戰。
 lobby-compat-missing-game = 有一方尚未選擇遊戲。
 lobby-compat-missing-rom = 雙方並未都安裝該遊戲或補丁。
-lobby-compat-fetching-patch = 正在下載本場對戰的補丁…
-lobby-compat-fetching-patch-progress = 正在下載本場對戰的補丁… { $percent }%
-lobby-compat-patch-failed = 無法下載本場對戰的補丁
 lobby-compat-version-mismatch = 遊戲版本不一致（補丁 / ROM 不同）。
 lobby-compat-sim-too-old = 本遊戲的連線對戰在對方的 tangoAW2 版本之後有所變更 — 對方需要更新。
 lobby-compat-sim-too-new = 本遊戲的連線對戰在你的 tangoAW2 版本之後有所變更 — 你需要更新。
@@ -119,7 +109,6 @@ lobby-compat-match-mismatch = 對戰類型不一致。
 lobby-ready = 準備
 lobby-unready = 取消準備
 lobby-match-starting = 開始中…
-lobby-blind-mine = 隱藏配置
 lobby-blind-peer-on = 對手正在隱藏其配置。
 lobby-blind-self-on = 你正在隱藏自己的配置。
 session-opponent = 對手配置
@@ -148,31 +137,8 @@ session-results-draws = { $count } 個回合以平手作收
 session-results-watch-replay = 觀看重播
 session-results-done = 完成
 
-# Save view sub-tabs
-
-# Navi pane
-navi-style = 樣式
-
-# Folder pane
 save-copy = 複製
 copied = 已複製！
-
-# Navi pane
-navi-id = 領航員 ID
-navi-link-navi = 連結領航員
-navi-buster = 洛克砲
-navi-power-attack = 強力攻擊
-navi-style-unset = （無樣式）
-navicust-parts = 已安裝的程式零件
-navicust-empty = （未安裝）
-
-# Navicust editor
-
-# Patch card editor
-
-# Auto Battle Data pane
-
-# Auto Battle Data editor
 
 # Common
 save-empty = 此存檔沒有此檢視的資料。
@@ -253,44 +219,9 @@ replays-duration = 時長：
 replays-round-count = { $count } 個回合
 replays-incomplete = 未完成
 play-you = 自己
-patches-refresh = 重新整理
-patches-refreshing = 正在重新整理…
-patches-refresh-failed = 重新整理失敗：{ $error }
-patches-install = 安裝
-patches-uninstall = 解除安裝
-patches-installed = 已安裝
-patches-cancel = 取消下載
-replays-patch-downloading = 正在下載此重播的補丁…
-replays-patch-downloading-progress = 正在下載此重播的補丁… { $percent }%
-replays-patch-download-failed = 無法下載此重播的補丁
-patches-downloading = 正在下載…
-patches-downloading-progress = 正在下載… { $percent }%
-patches-download-failed = 下載失敗
-patches-retry = 重試
-patches-reveal-package = 顯示補丁包
 
 # Patches
-patches-update = 更新
-patches-updating = 正在更新…
-patches-update-failed = 更新失敗：{ $error }
 patches-open-folder = 開啟資料夾
-patches-favorite = 收藏
-patches-unfavorite = 取消收藏
-patches-search-placeholder = 搜尋補丁…
-patches-filter-all = 全部
-patches-filter-installed = 已安裝
-patches-filter-available = 可用
-patches-select-prompt = 選擇一個補丁。
-patches-scanning = 正在掃描補丁…
-patches-readme-placeholder = 此補丁沒有 README。
-patches-details-authors = 作者：
-patches-details-license = 授權：
-patches-details-source = 來源：
-patches-details-games = 支援的遊戲：
-patches-netplay-compatibility = 連線相容性：
-patches-netplay-isolated = 僅限此版本
-patches-netplay-vanilla = 可與無補丁的遊戲對戰
-patches-netplay-group = 可與以下對戰：{ $group }
 
 # Settings panel
 settings-section-general = 一般
@@ -318,13 +249,10 @@ input-key-left = 左
 input-key-right = 右
 input-key-a = A
 input-key-b = B
-input-key-x = X
-input-key-y = Y
 input-key-l = L
 input-key-r = R
 input-key-start = Start
 input-key-select = Select
-input-key-mic = 對著麥克風吹氣
 input-key-speed-up = 快轉
 input-gamepad-south = A 鍵
 input-gamepad-east = B 鍵
@@ -365,15 +293,12 @@ settings-accent = 強調色
 settings-group-profile = 個人資料
 settings-group-interface = 介面
 settings-group-storage = 儲存
-settings-group-patches = 補丁
 settings-group-updates = 更新
 settings-group-window = 視窗
 settings-group-emulator = 模擬器
 settings-matchmaking-endpoint = 配對伺服器位址
 settings-data-folder = 資料夾
 settings-data-folder-change = 變更…
-settings-patch-repo = 補丁儲存庫
-settings-enable-patch-autoupdate = 在背景自動更新補丁
 settings-enable-updater = 自動檢查應用程式更新
 settings-allow-prerelease-upgrades = 檢查應用程式更新時包含預先發行版本
 settings-netplay-frame-delay = 影格延遲
@@ -381,21 +306,11 @@ settings-use-relay = 使用中繼伺服器
 settings-use-relay-auto = 自動
 settings-use-relay-always = 總是
 settings-use-relay-never = 從不
-settings-show-opponent-setup = 對戰開始時顯示對手的配置
 settings-window-size = 視窗大小
 settings-fullscreen = 全螢幕
 settings-ui-scale = UI 縮放
 settings-video-filter = 影片濾鏡
 settings-fractional-scaling = 分數縮放
-settings-group-ds = 任天堂DS
-settings-ds-screen-stacking = 螢幕排列
-settings-ds-screen-stacking-horizontal = 水平
-settings-ds-screen-stacking-vertical = 垂直
-settings-ds-screen-stacking-primary-only = 僅主螢幕
-settings-ds-primary-screen = 主螢幕
-settings-ds-primary-screen-upper = 上螢幕
-settings-ds-primary-screen-touch = 觸控螢幕
-settings-hide-emulator-border = 隱藏模擬器邊框
 updater-current-version = 目前版本：{ $version }
 updater-latest-version = 最新版本：{ $version }
 updater-loading = 檢查中…

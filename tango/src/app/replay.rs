@@ -2,7 +2,7 @@
 
 use super::desktop::{copy_html_to_clipboard, copy_image_to_clipboard, open_path, reveal_path};
 use super::{App, Message};
-use crate::library::{patch, replays};
+use crate::library::replays;
 use crate::{session, tabs};
 
 /// What [`App::replay_stats_takeover`] settled for a playback session:
@@ -16,20 +16,8 @@ struct ReplayStatsDuty {
 }
 
 impl App {
-    /// Start playback of a replay, downloading the patch it was
-    /// recorded with if we don't have it.
-    ///
-    /// Under the old format every patch was already mirrored, so this
-    /// could never come up; now a replay is the most likely reason to
-    /// need a patch you never installed — including a version that was
-    /// superseded years ago, which is exactly why the repo keeps them.
+    /// Start playback of a replay.
     pub(super) fn watch_replay(&mut self, p: std::path::PathBuf) -> iced::Task<Message> {
-        if let Some(key) = self.replay_missing_patch(&p) {
-            log::info!("replay {} needs {} {}, fetching", p.display(), key.0, key.1);
-            self.replay_controller.defer(p);
-            return self.install_patch(key);
-        }
-
         let duty = self.replay_stats_takeover(&p);
         match session::build_playback(
             &self.scanners,
@@ -53,32 +41,6 @@ impl App {
             Err(e) => log::warn!("failed to play replay {}: {e}", p.display()),
         }
         duty.task
-    }
-
-    /// The first patch a replay needs that isn't installed but is
-    /// offered by the repo. `None` when playback can go ahead — or when
-    /// the patch is one we could never get, which fails as before.
-    fn replay_missing_patch(&self, path: &std::path::Path) -> Option<patch::VersionKey> {
-        // The replay scanner already parsed every metadata header, so
-        // this costs a lookup rather than a decode.
-        let wanted: Vec<(String, String)> = {
-            let replays = self.scanners.replays.read();
-            let scanned = replays.iter().find(|r| r.path == path)?;
-            [scanned.metadata.side(0), scanned.metadata.side(1)]
-                .into_iter()
-                .flatten()
-                .filter_map(|s| s.game_info.as_ref()?.patch.as_ref())
-                .map(|p| (p.name.clone(), p.version.clone()))
-                .collect()
-        };
-        let patches = self.scanners.patches.read();
-        wanted.into_iter().find_map(|(name, version)| {
-            let version = semver::Version::parse(&version).ok()?;
-            // Only worth waiting on something the repo actually offers;
-            // a patch nobody publishes fails at playback as it always did.
-            (!patches.is_installed(&name, &version) && patches.entry(&name, &version).is_some())
-                .then_some((name, version))
-        })
     }
 
     pub(super) fn update_replays(&mut self, msg: tabs::replays::Message) -> iced::Task<Message> {
@@ -105,7 +67,6 @@ impl App {
             E::OpenPath(p) => open_path(p),
             E::RevealPath(p) => reveal_path(p),
             E::Watch(p) => self.watch_replay(p),
-            E::CancelPatchDownload(key) => self.cancel_download(key),
             // The dropped job closes its stream, whose completion
             // message clears the tab's pending marker — a later
             // focus retries the analysis.

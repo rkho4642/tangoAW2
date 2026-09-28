@@ -13,15 +13,11 @@ pub struct Launch {
     pub(super) runtime: RunningSession,
     pub(super) pvp_panes: Option<PvpPanes>,
     pub(super) replay_path: Option<std::path::PathBuf>,
-    /// The game's background art, loaded with the session rather than
-    /// while drawing it.
-    pub(super) backdrop: Option<iced::widget::image::Handle>,
 }
 
 impl Launch {
     fn new(runtime: RunningSession) -> Self {
         Self {
-            backdrop: super::backdrop::load(runtime.local_game()),
             runtime,
             pvp_panes: None,
             replay_path: None,

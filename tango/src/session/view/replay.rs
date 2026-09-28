@@ -29,23 +29,10 @@ const POPOVER_LIFT: f32 = 12.0 + 16.0 + 32.0 + 4.0 + 4.0 + 26.0 + 2.0 + 6.0;
 pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, SessionMessage> {
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
-    // While the input display is on, a recorded touch draws at its
-    // spot on the touch screen — the displayed perspective's touch on
-    // the main pane, the other side's on the PiP inset — following
-    // the swap toggle like the pad chips do.
-    let (touch_spot, pip_touch_spot) = if ctx.show_replay_inputs {
-        let (mut local, mut remote) = r.touch_at(playhead_tick(r, state));
-        if r.swap_perspective() {
-            std::mem::swap(&mut local, &mut remote);
-        }
-        (local, remote)
-    } else {
-        (None, None)
-    };
     let (main_horizontal, main_vertical) = main_frame_alignment(ctx.opponent_view);
-    let frame = framebuffer_view(ctx, touch_spot, main_horizontal, main_vertical);
-    let frame = stacked_framebuffers(ctx, frame, pip_touch_spot, ctx.opponent_view);
-    let body = emulator_body(ctx, frame, [None, None]);
+    let frame = framebuffer_view(ctx, main_horizontal, main_vertical);
+    let frame = stacked_framebuffers(ctx, frame, ctx.opponent_view);
+    let body = emulator_body(frame, [None, None]);
     // Clicking the screen itself plays/pauses, like any video player.
     // This is the stack's bottom layer, and iced dispatches presses
     // topmost-first with capture — so the transport bar's controls
@@ -87,7 +74,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     // outside the controls gate — it's for watching, so it must not
     // tuck away with the idle cursor.
     if ctx.opponent_view == crate::config::OpponentView::PictureInPicture {
-        if let Some(o) = pip_overlay(ctx, pip_touch_spot) {
+        if let Some(o) = pip_overlay(ctx) {
             stacked = stacked.push(o);
         }
     }

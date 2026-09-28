@@ -1,57 +1,9 @@
 //! The selected replay's detail panel: matchup and build selector, HP
-//! chart, patch download line, and actions.
+//! chart, and actions.
 
 use super::*;
 // Explicit: macros reached only through the glob above are ambiguous.
 use sweeten::widget::{column, row};
-
-/// The replay's own patch download, when it has one in flight or
-/// failed: the same row the patches tab, play strip and lobby use.
-/// Absent the rest of the time, so the detail carries no empty slot.
-fn patch_download_line<'a>(
-    lang: &'a LanguageIdentifier,
-    r: &replays::ScannedReplay,
-    scanners: &'a Catalog,
-    downloads: &'a crate::library::patch::Downloads,
-) -> Option<Element<'a, Message>> {
-    // Same pick App makes when Watch fires: the first side's patch we
-    // don't have. Both sides matter -- playback runs both games.
-    let patches = scanners.patches.read();
-    let key = [r.metadata.side(0), r.metadata.side(1)]
-        .into_iter()
-        .flatten()
-        .filter_map(|s| s.game_info.as_ref()?.patch.as_ref())
-        .find_map(|p| {
-            let version = semver::Version::parse(&p.version).ok()?;
-            (!patches.is_installed(&p.name, &version)).then_some((p.name.clone(), version))
-        });
-    let key = key?;
-    match downloads.get(&key) {
-        Some(download) if download.is_running() => {
-            let caption = match download.percent() {
-                Some(percent) => t!(lang, "replays-patch-downloading-progress", percent = percent as i64),
-                None => t!(lang, "replays-patch-downloading"),
-            };
-            Some(widgets::download_row(
-                caption,
-                download.fraction(),
-                false,
-                None,
-                Some((t!(lang, "patches-cancel"), Message::CancelPatchDownload(key))),
-            ))
-        }
-        Some(crate::library::patch::Download::Failed) => Some(widgets::download_row(
-            t!(lang, "replays-patch-download-failed"),
-            None,
-            true,
-            // Retrying is just watching again: App re-runs the fetch and
-            // queues the playback behind it.
-            Some((t!(lang, "patches-retry"), Message::Watch(r.path.clone()))),
-            None,
-        )),
-        _ => None,
-    }
-}
 
 /// What stands in for the HP chart while streamer mode has it masked: the
 /// reason and the button that unmasks it, on one row so the whole thing fits
@@ -116,7 +68,6 @@ pub(super) fn replay_detail<'a>(
     scanners: &'a Catalog,
     netplay_active: bool,
     streamer_mode: bool,
-    downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
     // Playback needs a scanned ROM for the local-side game; without
     // one the emulator session would error on construction. Resolve
@@ -268,15 +219,6 @@ pub(super) fn replay_detail<'a>(
             // Top-align so the action buttons stay anchored when
             // a long title wraps to a second line.
             .align_y(Alignment::Start),
-            // Watch on a replay whose patch we lack starts a download;
-            // without this the click looked like it did nothing at all
-            // until playback appeared, and a failure looked like
-            // nothing happening forever. Only present while there is
-            // one -- no reserved gap the rest of the time.
-            Element::from(
-                patch_download_line(lang, r, scanners, downloads)
-                    .unwrap_or_else(|| iced::widget::space::vertical().height(Length::Fixed(0.0)).into())
-            ),
             // Metadata rows: file path, timestamp, match type,
             // duration. Stacked tight in a sub-column so the rows
             // read as one block (matches the patches detail-card

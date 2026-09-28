@@ -1,33 +1,6 @@
-//! Graphics pane: window, emulator display, DS screen arrangement.
+//! Graphics pane: window and emulator display.
 
 use super::*;
-
-fn ds_screen_stacking_choice(
-    lang: &LanguageIdentifier,
-    stacking: config::DsScreenStacking,
-) -> Choice<config::DsScreenStacking> {
-    Choice::new(
-        stacking,
-        match stacking {
-            config::DsScreenStacking::Horizontal => t!(lang, "settings-ds-screen-stacking-horizontal"),
-            config::DsScreenStacking::Vertical => t!(lang, "settings-ds-screen-stacking-vertical"),
-            config::DsScreenStacking::PrimaryOnly => t!(lang, "settings-ds-screen-stacking-primary-only"),
-        },
-    )
-}
-
-fn ds_primary_screen_choice(
-    lang: &LanguageIdentifier,
-    primary: config::DsPrimaryScreen,
-) -> Choice<config::DsPrimaryScreen> {
-    Choice::new(
-        primary,
-        match primary {
-            config::DsPrimaryScreen::Upper => t!(lang, "settings-ds-primary-screen-upper"),
-            config::DsPrimaryScreen::Touch => t!(lang, "settings-ds-primary-screen-touch"),
-        },
-    )
-}
 
 /// A window resolution as a pick_list [`Choice`]. PartialEq is exact
 /// f32 — fine since the values come straight from
@@ -78,7 +51,7 @@ pub(super) fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a co
         .iter()
         .find(|c| (c.value - config.ui_scale).abs() < f32::EPSILON)
         .cloned();
-    let mut groups: Vec<Element<'a, Message>> = vec![
+    let groups: Vec<Element<'a, Message>> = vec![
         settings_group(
             t!(lang, "settings-group-window"),
             vec![
@@ -113,47 +86,9 @@ pub(super) fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a co
                     t!(lang, "settings-fractional-scaling"),
                     toggle(config.fractional_scaling, Message::ToggleFractionalScaling),
                 ),
-            ]
-            .into_iter()
-            // The border is Legacy Collection art; tangoAW2 never has any.
-            .chain(crate::flavor::BATTLE_NETWORK_EXTRAS.then(|| {
-                option_row(
-                    t!(lang, "settings-hide-emulator-border"),
-                    toggle(config.hide_emulator_border, Message::ToggleHideEmulatorBorder),
-                )
-            }))
-            .collect(),
+            ],
         ),
     ];
-    // Only the Battle Network DS games have a second screen.
-    if crate::flavor::BATTLE_NETWORK_EXTRAS {
-        groups.push(settings_group(
-            t!(lang, "settings-group-ds"),
-            vec![
-                option_row::<Message>(t!(lang, "settings-ds-screen-stacking"), {
-                    let options = vec![
-                        ds_screen_stacking_choice(lang, config::DsScreenStacking::Vertical),
-                        ds_screen_stacking_choice(lang, config::DsScreenStacking::Horizontal),
-                        ds_screen_stacking_choice(lang, config::DsScreenStacking::PrimaryOnly),
-                    ];
-                    let selected = options.iter().find(|c| c.value == config.ds_screen_stacking).cloned();
-                    widgets::picker(options, selected, |c: Choice<config::DsScreenStacking>| {
-                        Message::DsScreenStackingChanged(c.value)
-                    })
-                }),
-                option_row::<Message>(t!(lang, "settings-ds-primary-screen"), {
-                    let options = vec![
-                        ds_primary_screen_choice(lang, config::DsPrimaryScreen::Upper),
-                        ds_primary_screen_choice(lang, config::DsPrimaryScreen::Touch),
-                    ];
-                    let selected = options.iter().find(|c| c.value == config.ds_primary_screen).cloned();
-                    widgets::picker(options, selected, |c: Choice<config::DsPrimaryScreen>| {
-                        Message::DsPrimaryScreenChanged(c.value)
-                    })
-                }),
-            ],
-        ));
-    }
     sweeten::widget::Column::with_children(groups)
         .spacing(24)
         .padding(style::PANE_PADDING)

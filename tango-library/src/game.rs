@@ -56,16 +56,6 @@ macro_rules! register_games {
 // The sole registration list. Order is the series order used by pickers.
 register_games! {
     "gamesupport-aw2" => tango_gamesupport_aw2,
-    "gamesupport-bn1" => tango_gamesupport_bn1,
-    "gamesupport-exeoss" => tango_gamesupport_exeoss,
-    "gamesupport-bn2" => tango_gamesupport_bn2,
-    "gamesupport-bn3" => tango_gamesupport_bn3,
-    "gamesupport-bn4" => tango_gamesupport_bn4,
-    "gamesupport-exe45" => tango_gamesupport_exe45,
-    "gamesupport-bn5" => tango_gamesupport_bn5,
-    "gamesupport-bn5ds" => tango_gamesupport_bn5ds,
-    "gamesupport-bn6" => tango_gamesupport_bn6,
-    "gamesupport-bcc" => tango_gamesupport_bcc,
 }
 
 /// Every enabled family, in registration order.

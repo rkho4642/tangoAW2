@@ -338,7 +338,6 @@ mod tests {
             runtime: runtime(&events),
             pvp_panes: None,
             replay_path: None,
-            backdrop: None,
         };
         drop(launch);
         assert_eq!(*events.lock().unwrap(), ["close", "audio", "session", "worker"]);
@@ -356,7 +355,6 @@ mod tests {
                 runtime: runtime(&old),
                 pvp_panes: None,
                 replay_path: None,
-                backdrop: None,
             },
             &binder,
             &config,
@@ -371,7 +369,6 @@ mod tests {
                 runtime: runtime(&new),
                 pvp_panes: None,
                 replay_path: None,
-                backdrop: None,
             },
             &binder,
             &config,

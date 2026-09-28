@@ -1,9 +1,9 @@
 # Match engine
 
 `tango-match` coordinates deterministic simulation over emulator-independent
-interfaces. GBA games use `tango-backend-mgba`; DS games use
-`tango-backend-melonds`. A game's registration supplies a `Backend`, so
-sessions and replay consumers use the same engine API for either console.
+interfaces. Advance Wars 2 runs on `tango-backend-mgba`. A game's
+registration supplies a `Backend`, so sessions and replay consumers use
+the same engine API whatever the emulator.
 
 The crate owns no network connection, UI, audio device, or drive thread.
 The host advances the simulation and decides how to pace it. See
@@ -71,11 +71,10 @@ re-simulation begins.
 - `SeekController` lets a newer seek supersede work on an older target.
 
 `tango-session::replay` exposes the work as driven workers. The desktop gives
-playback, seeking, and prefetching their own threads. The browser uses a
-combined driver that budgets the work across event-loop turns.
+playback, seeking, and prefetching their own threads.
 `tango-session::replay::EngineReplay` is the one mapping from a decoded
 recording to the local seat's backend and its `ReplayConfig`; playback,
-headless analysis (`tango-session::replay::analyze`), and both hosts' video
+headless analysis (`tango-session::replay::analyze`), and the app's video
 export build from it.
 
 `analysis::StatsBuilder` folds confirmed samples and events for live matches

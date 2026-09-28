@@ -10,25 +10,11 @@ use std::{
 
 #[derive(Default)]
 pub struct Controller {
-    pending: Option<PathBuf>,
     carry_speed: Option<f32>,
     was_playing: bool,
     jobs: HashMap<PathBuf, (Arc<AtomicBool>, iced::task::Handle)>,
 }
 impl Controller {
-    pub fn defer(&mut self, path: PathBuf) {
-        self.pending = Some(path);
-    }
-    pub fn has_pending(&self) -> bool {
-        self.pending.is_some()
-    }
-    pub fn take_pending(&mut self) -> Option<PathBuf> {
-        self.pending.take()
-    }
-    pub fn cancel_pending(&mut self) {
-        self.pending = None;
-        self.carry_speed = None;
-    }
     pub fn take_speed(&mut self) -> Option<f32> {
         self.carry_speed.take()
     }
@@ -77,14 +63,5 @@ mod tests {
         assert!(!owner.observe(false, false, 100, 100));
         owner.observe(true, false, 99, 100);
         assert!(owner.observe(false, false, 100, 100));
-    }
-    #[test]
-    fn download_cancellation_clears_deferred_queue_speed() {
-        let mut owner = Controller::default();
-        owner.handoff(Some(2.0));
-        owner.defer("replay".into());
-        owner.cancel_pending();
-        assert!(!owner.has_pending());
-        assert_eq!(owner.take_speed(), None);
     }
 }

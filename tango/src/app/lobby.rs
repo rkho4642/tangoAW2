@@ -43,29 +43,23 @@ impl App {
 
     /// Run the lobby's follow-up ([`netplay::State::reconcile`]) — only
     /// meaningful while netplay is in Lobby phase; outside that this
-    /// returns `Task::none()`. Pushes our current Settings (deduped),
-    /// unreadies us if the verdict is no longer Compatible, and fetches a
-    /// patch the lobby needs but doesn't have. Called after every
-    /// netplay report and every Play-tab dispatch.
+    /// returns `Task::none()`. Pushes our current Settings (deduped) and
+    /// unreadies us if the verdict is no longer Compatible. Called after
+    /// every netplay report and every Play-tab dispatch.
     pub(super) fn resend_settings_if_lobby(&mut self) -> iced::Task<Message> {
         if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
             return iced::Task::none();
         }
         self.apply_default_match_type();
-        let missing = {
-            let (loadout, config, scanners) = (&self.loadout, &self.config, &self.scanners);
-            self.netplay.reconcile(
-                |lobby| crate::tabs::play::loadout_strip::local_settings(loadout, config, lobby),
-                |local, remote| scanners.compatibility_facts(local, remote),
-            )
-        };
-        // Idempotent: the download tracker ignores a key already in
-        // flight, and this fires on every lobby state change.
-        let Some(key) = missing else {
-            return iced::Task::none();
-        };
-        log::info!("lobby needs {} {}, fetching", key.0, key.1);
-        self.install_patch(key)
+        let (loadout, config, scanners) = (&self.loadout, &self.config, &self.scanners);
+        // The patch `reconcile` would have this side fetch is ignored:
+        // there is no patch server to fetch it from, so the verdict
+        // stands as a mismatch.
+        let _ = self.netplay.reconcile(
+            |lobby| crate::tabs::play::loadout_strip::local_settings(loadout, config, lobby),
+            |local, remote| scanners.compatibility_facts(local, remote),
+        );
+        iced::Task::none()
     }
 
     pub(super) fn update_netplay(&mut self, delivery: netplay::Delivery) -> iced::Task<Message> {

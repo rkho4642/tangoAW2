@@ -1,4 +1,4 @@
-//! General pane: profile, interface, storage, updates, patches.
+//! General pane: profile, interface, storage, updates.
 
 use super::*;
 // Explicit: macros reached only through the glob above are ambiguous.
@@ -22,18 +22,18 @@ fn accent_choice(lang: &LanguageIdentifier, accent: config::AccentColor) -> Choi
     Choice::new(
         accent,
         match accent {
-            config::AccentColor::Green => t!(lang, "settings-accent-tango-green"),
-            config::AccentColor::Blue => t!(lang, "settings-accent-megaman-blue"),
-            config::AccentColor::Red => t!(lang, "settings-accent-protoman-red"),
-            config::AccentColor::Pink => t!(lang, "settings-accent-roll-pink"),
-            config::AccentColor::Yellow => t!(lang, "settings-accent-gutsman-yellow"),
-            config::AccentColor::Purple => t!(lang, "settings-accent-bass-purple"),
+            config::AccentColor::Green => t!(lang, "settings-accent-green"),
+            config::AccentColor::Blue => t!(lang, "settings-accent-blue"),
+            config::AccentColor::Red => t!(lang, "settings-accent-red"),
+            config::AccentColor::Pink => t!(lang, "settings-accent-pink"),
+            config::AccentColor::Yellow => t!(lang, "settings-accent-yellow"),
+            config::AccentColor::Purple => t!(lang, "settings-accent-purple"),
         },
     )
 }
 
 pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a config::Config) -> Element<'a, Message> {
-    let mut groups: Vec<Element<'a, Message>> = vec![
+    let groups: Vec<Element<'a, Message>> = vec![
         settings_group(
             t!(lang, "settings-group-profile"),
             vec![
@@ -128,29 +128,6 @@ pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a con
             ],
         ),
     ];
-    // The patch server is off in tangoAW2 (see `flavor::PATCHES`).
-    if crate::flavor::PATCHES {
-        groups.insert(
-            3,
-            settings_group(
-                t!(lang, "settings-group-patches"),
-                vec![
-                    option_row::<Message>(
-                        t!(lang, "settings-patch-repo"),
-                        text_input("", &config.patch_repo)
-                            .on_input(Message::PatchRepoChanged)
-                            .padding(STANDARD_PADDING)
-                            .width(Length::Fixed(380.0))
-                            .style(widgets::chunky_text_input),
-                    ),
-                    option_row(
-                        t!(lang, "settings-enable-patch-autoupdate"),
-                        toggle(config.enable_patch_autoupdate, Message::TogglePatchAutoupdate),
-                    ),
-                ],
-            ),
-        );
-    }
     sweeten::widget::Column::with_children(groups)
         .spacing(24)
         .padding(style::PANE_PADDING)

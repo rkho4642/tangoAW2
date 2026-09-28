@@ -25,7 +25,6 @@ discord-presence-in-progress = 対戦中
 # Top-bar tabs
 tab-play = 対戦
 tab-replays = リプレイ
-tab-patches = パッチ
 tab-settings = 設定
 
 # Play selectors
@@ -54,13 +53,7 @@ empty-scanning-body = ROM・セーブ・パッチを読み込んでいます。
 empty-no-roms-title = ROMが見つかりません
 empty-no-saves-title = このゲームのセーブがありません
 empty-no-saves-body = このゲームの .sav ファイルを次の場所に置いてください：
-play-patch-downloading = ↓ …
-play-patch-downloading-progress = ↓ { $percent }%
-play-patch-download-failed = ↓ 失敗
-play-no-patch = パッチなし
-play-patch-toggle = パッチを使用…
 play-play = プレイ
-play-version-placeholder = —
 
 # Play bottom strip
 play-link-code = リンクコード（空欄でランダム生成）
@@ -107,16 +100,12 @@ settings-use-relay = リレーサーバーを使用
 settings-use-relay-auto = 自動
 settings-use-relay-always = 常に使用
 settings-use-relay-never = 使用しない
-settings-show-opponent-setup = 対戦開始時に相手の構築を表示
 lobby-frame-delay-suggest = Pingから推奨
 lobby-no-match-types = （このゲームには対戦モードがありません）
 lobby-pick-game-first = まずゲームを選んでください
 lobby-compat-ok = 互換あり — 対戦できます。
 lobby-compat-missing-game = ゲームが選択されていない側があります。
 lobby-compat-missing-rom = どちらかにゲームまたはパッチがインストールされていません。
-lobby-compat-fetching-patch = この対戦のパッチをダウンロードしています…
-lobby-compat-fetching-patch-progress = この対戦のパッチをダウンロードしています… { $percent }%
-lobby-compat-patch-failed = この対戦のパッチをダウンロードできませんでした
 lobby-compat-version-mismatch = ゲームのバージョンが一致しません（パッチ／ROM が異なる）。
 lobby-compat-sim-too-old = このゲームのネットプレイは相手のtangoAW2のバージョン以降に変更されました — 相手の更新が必要です。
 lobby-compat-sim-too-new = このゲームのネットプレイはあなたのtangoAW2のバージョン以降に変更されました — 更新が必要です。
@@ -124,7 +113,6 @@ lobby-compat-match-mismatch = 対戦モードが一致しません。
 lobby-ready = 準備完了
 lobby-unready = 取消
 lobby-match-starting = 開始中…
-lobby-blind-mine = 構築を隠す
 lobby-blind-peer-on = 相手は構築を隠しています。
 lobby-blind-self-on = 自分の構築を隠しています。
 session-opponent = 相手の構築
@@ -152,33 +140,8 @@ session-results-draws = { $count }ラウンドが引き分けに終わりまし�
 session-results-watch-replay = リプレイを再生
 session-results-done = 完了
 
-# Save view sub-tabs
-
-# Navi pane
-navi-style = スタイル
-
-# Folder pane
 save-copy = コピー
 copied = コピーしました！
-
-# Navi pane
-navi-id = ナビID
-navi-link-navi = リンクナビ
-navi-buster = バスター
-navi-power-attack = パワーアタック
-navi-style-unset = （スタイルなし）
-navicust-parts = 設定済みパーツ
-navicust-empty = （未設定）
-
-# Folder editor
-
-# Navicust editor
-
-# Patch card editor
-
-# Auto Battle Data pane
-
-# Auto Battle Data editor
 
 # Common
 save-empty = このセーブにはこのビューのデータがありません。
@@ -247,44 +210,9 @@ replays-duration = 再生時間:
 replays-round-count = { $count }ラウンド
 replays-incomplete = 未完了
 play-you = 自分
-patches-refresh = 更新
-patches-refreshing = 更新中…
-patches-refresh-failed = 更新に失敗しました: { $error }
-patches-install = インストール
-patches-uninstall = 削除
-patches-installed = インストール済み
-patches-cancel = ダウンロードをキャンセル
-replays-patch-downloading = このリプレイのパッチをダウンロードしています…
-replays-patch-downloading-progress = このリプレイのパッチをダウンロードしています… { $percent }%
-replays-patch-download-failed = このリプレイのパッチをダウンロードできませんでした
-patches-downloading = ダウンロード中…
-patches-downloading-progress = ダウンロード中… { $percent }%
-patches-download-failed = ダウンロードに失敗しました
-patches-retry = 再試行
-patches-reveal-package = パッケージを表示
 
 # Patches
-patches-update = 更新
-patches-updating = 更新中…
-patches-update-failed = 更新に失敗しました: { $error }
 patches-open-folder = フォルダを開く
-patches-favorite = お気に入り
-patches-unfavorite = お気に入り解除
-patches-search-placeholder = パッチを検索…
-patches-filter-all = すべて
-patches-filter-installed = インストール済み
-patches-filter-available = 利用可能
-patches-select-prompt = パッチを選択してください。
-patches-scanning = パッチをスキャンしています…
-patches-readme-placeholder = このパッチにはREADMEがありません。
-patches-details-authors = 作者:
-patches-details-license = ライセンス:
-patches-details-source = ソース:
-patches-details-games = 対応ゲーム:
-patches-netplay-compatibility = ネットプレイ互換性:
-patches-netplay-isolated = このバージョンのみ
-patches-netplay-vanilla = 未パッチのゲームと対戦可能
-patches-netplay-group = 対戦可能: { $group }
 
 # Settings panel
 settings-section-general = 一般
@@ -312,13 +240,10 @@ input-key-left = 左
 input-key-right = 右
 input-key-a = A
 input-key-b = B
-input-key-x = X
-input-key-y = Y
 input-key-l = L
 input-key-r = R
 input-key-start = スタート
 input-key-select = セレクト
-input-key-mic = マイクに息をふきかける
 input-key-speed-up = 早送り
 input-gamepad-south = Aボタン
 input-gamepad-east = Bボタン
@@ -359,28 +284,16 @@ settings-accent = アクセントカラー
 settings-group-profile = プロフィール
 settings-group-interface = インターフェース
 settings-group-storage = 保存先
-settings-group-patches = パッチ
 settings-group-updates = アップデート
 settings-group-window = ウィンドウ
 settings-group-emulator = エミュレーター
 settings-matchmaking-endpoint = マッチメイキングエンドポイント
-settings-patch-repo = パッチリポジトリ
-settings-enable-patch-autoupdate = パッチを自動更新する
 settings-enable-updater = アプリの更新を自動チェック
 settings-allow-prerelease-upgrades = プレリリースも対象にする
 settings-window-size = ウィンドウサイズ
 settings-fullscreen = フルスクリーン
 settings-ui-scale = UI拡大率
 settings-fractional-scaling = フラクショナルスケーリング
-settings-group-ds = ニンテンドーDS
-settings-ds-screen-stacking = 画面の配置
-settings-ds-screen-stacking-horizontal = 横並び
-settings-ds-screen-stacking-vertical = 縦並び
-settings-ds-screen-stacking-primary-only = メイン画面のみ
-settings-ds-primary-screen = メイン画面
-settings-ds-primary-screen-upper = 上画面
-settings-ds-primary-screen-touch = タッチ画面
-settings-hide-emulator-border = エミュレーターの枠を非表示
 settings-video-filter = ビデオフィルター
 updater-current-version = 現在のバージョン: { $version }
 updater-latest-version = 最新バージョン: { $version }

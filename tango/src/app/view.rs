@@ -73,11 +73,8 @@ impl App {
                 lang,
                 state: &self.session,
                 fractional_scaling: self.config.fractional_scaling,
-                hide_emulator_border: self.config.hide_emulator_border,
                 show_replay_inputs: self.config.show_replay_inputs,
                 opponent_view: self.config.opponent_view,
-                ds_screen_stacking: self.config.ds_screen_stacking,
-                ds_primary_screen: self.config.ds_primary_screen,
                 clip_export_scale: self.replays.export_settings.scale,
                 clip_job,
                 queued: self.replays.queue.len(),
@@ -249,7 +246,6 @@ impl App {
                         self.loaded.as_ref(),
                         self.config.streamer_mode,
                         &self.config,
-                        self.downloads.entries(),
                         !self.library_scanned,
                         tabs::play::LobbyBandCtx {
                             phase: &self.netplay.phase,
@@ -270,20 +266,9 @@ impl App {
                     &self.scanners,
                     &self.config,
                     &self.netplay.phase,
-                    self.downloads.entries(),
                     !self.replays_scanned,
                 )
                 .map(Message::Replays),
-            Tab::Patches => self
-                .patches
-                .view(
-                    lang,
-                    &self.scanners,
-                    &self.config,
-                    self.downloads.entries(),
-                    !self.library_scanned,
-                )
-                .map(Message::Patches),
             Tab::Settings => {
                 tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking(), None)
                     .map(Message::Settings)
@@ -378,13 +363,10 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool, fullscreen
         ),
         tab(Icon::Film, t!(lang, "tab-replays"), Tab::Replays),
         horizontal_space(),
-        // Patches + Settings = low-emphasis utility tabs.
-        // Patch management is an occasional maintenance chore,
-        // not a destination, so it doesn't get equal billing
-        // with Play/Replays — icon-only on the right, with the
-        // label exposed as a hover tooltip.
-        // tangoAW2 applies its own Advance Wars 2 patches in memory,
-        // so the patch-server tab is not offered.
+        // Settings is a low-emphasis utility tab, not a destination,
+        // so it doesn't get equal billing with Play/Replays —
+        // icon-only on the right, with the label exposed as a hover
+        // tooltip.
         widgets::nav_icon_tab_button(
             Icon::Settings,
             t!(lang, "tab-settings"),

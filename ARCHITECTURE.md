@@ -1,36 +1,31 @@
 # Architecture
 
-Tango has two hosts over the same library, lobby, session drivers, and
-match engine. The desktop owns threads and native devices. The browser
-pumps drivers from its event loop and supplies browser storage and audio.
+tangoAW2 is one desktop app over Tango's library, lobby, session drivers
+and match engine, with one game: Advance Wars 2. The app owns threads and
+native devices. (Upstream Tango also had a browser host and the Battle
+Network games; tangoAW2 removed them.)
 
 ## Dependencies
 
-Arrows point from a consumer to the layer it uses. The frontends also use
+Arrows point from a consumer to the layer it uses. The app also uses
 the replay renderer, which takes an engine replay configuration and emits
 video through `encoder-facade`. The library depends on
 `tango-net-protocol` only for the wire game info and settings it reads and
-builds, and the `compat::Facts` it returns to hosts. Both hosts build the
-lobby's `Settings` from `tango-net-protocol` directly, and the browser uses
-`tango-platform` for its timers. Neither host touches `tango-net`: the
-lobby and the session drive the transport.
+builds, and the `compat::Facts` it returns to the app. The app builds the
+lobby's `Settings` from `tango-net-protocol` directly and never touches
+`tango-net`: the lobby and the session drive the transport.
 
 ```mermaid
 flowchart TD
     Desktop[tango: desktop host] --> Library[tango-library]
-    Browser[tango-lite-web: browser host] --> Library
     Desktop --> Lobby[tango-lobby]
-    Browser --> Lobby
     Desktop --> Session[tango-session]
-    Browser --> Session
-    Browser --> Platform[tango-platform]
     Desktop --> Protocol[tango-net-protocol]
-    Browser --> Protocol
     Lobby --> Net[tango-net]
     Session --> Net
     Net --> Protocol
     Net --> Platform
-    Lobby --> Platform
+    Lobby --> Platform[tango-platform]
     Lobby --> Protocol
     Session --> Platform
     Session --> Match[tango-match]
@@ -39,13 +34,13 @@ flowchart TD
     Library --> Protocol
     Library --> Model[headless save models and validation]
     Library --> Games[per-game registrations]
-    Games --> Backends[mgba / melonDS backends]
+    Games --> Backends[tango-backend-mgba]
     Backends --> Match
 ```
 
 | Layer | Owns | Does not own |
 | --- | --- | --- |
-| Frontends | Screens, input mapping, host preferences (appearance, window, audio, netplay knobs), devices, scheduling, application effects | Rollback or game-specific binary layouts |
+| App | Screens, input mapping, host preferences (appearance, window, audio, netplay knobs), devices, scheduling, application effects | Rollback or game-specific binary layouts |
 | Library | Game registry, catalogs, shared settings (paths, endpoints, selection memory), selection policy, save-file operations, loadout preparation, stats cache | Emulation and session lifetime |
 | Lobby | Connection negotiation, readiness, committed settings/save exchange | Game registry, catalogs, emulation |
 | Net / platform | Transport, reconnect, portable spawning and timers | Library, game backends, UI |
@@ -57,8 +52,8 @@ flowchart TD
 `tango-gamesupport-common-dataview::model` owns save preparation, staged edits,
 ROM overrides, and checksum-correct session snapshots. Per-game `-dataview`
 crates own layouts, assets, custom edits, and structured validation findings.
-`-ui` crates render these models and format findings as warnings. These remain separate because the browser
-and headless consumers need parsing and emulation without the desktop UI.
+`-ui` crates render these models and format findings as warnings. These remain separate because headless
+consumers (tests, the library) need parsing and emulation without the desktop UI.
 
 ## Game registration and features
 
@@ -68,9 +63,9 @@ and optional editor lookup derive from that list.
 
 `Game` and `Family` are independent of UI features. The library's `ui`
 feature enables each selected game's editor through Cargo's weak dependency
-forwarding (`dependency?/ui`). Enabling UI alone adds no games. Desktop and
-browser `gamesupport-*` flags both forward to the library; the desktop also
-enables its `ui` feature.
+forwarding (`dependency?/ui`). Enabling UI alone adds no games. The app's
+`gamesupport-*` flags forward to the library; the app also enables its
+`ui` feature.
 
 ## Desktop message flow
 
@@ -105,7 +100,7 @@ handler, which does no allocation or stderr I/O.
 | Settings effects (data folder, updater) and welcome screen effects | `app/settings.rs` |
 | Clipboard, file manager, external links, window events, Discord | `app/desktop.rs` |
 
-`tango_library::config::Config` holds only what both hosts read: the data
+`tango_library::config::Config` holds what the library and app share: the data
 and cache paths, the matchmaking and patch endpoints, and the selection
 memory (last game and family, save per family, patch per save, match type per
 family, favorite patches). `tango/src/config.rs` owns every other setting,
@@ -151,9 +146,7 @@ Closing a session resets its presentation to the defaults in one step; only
 the install counter, the frame revisions, and the results card survive.
 
 `tango-match::screens::Arrangement` is the one geometry for presenting a
-multi-screen composition: the desktop maps its DS stacking and primary
-screen settings onto it, the browser always stacks vertically, and both
-re-pack frames and place the stylus area through it. The video exporter
+multi-screen composition (Advance Wars 2 has one screen). The video exporter
 stacks each seat through the same `Arrangement::STACKED`, in place.
 
 A playback session that should double as its replay's analysis is built with
@@ -175,17 +168,6 @@ state destruction. A pending launch never binds the output device.
 Post-match results survive session close so watching their replay can return
 to the results screen.
 
-The browser's `host.rs` composes explicit library, engine, and link handles
-and supplies them to Dioxus through context. Each operation receives its
-handle; the core state has no thread-local singleton. The library handle
-holds the same `tango-library::Catalog` and library config as the desktop,
-without the desktop's preferences, and the shell records every selection
-change in that config. The engine owns its
-audio sink and scheduling callbacks. Weak callback captures and listener,
-worker, and audio guards release resources when the host goes away. Pending
-match builds carry the lobby's handoff ticket, so a disconnect cannot
-install an abandoned match. The browser uses the same portable session drivers.
-
 ## Netplay
 
 `tango-lobby` depends on `tango-net` and `tango-platform`, independently of
@@ -195,7 +177,7 @@ library catalogs and emulator backends. Hosts resolve compatibility facts
 `tango-net-protocol::compat::Facts`, sits below both crates, so the library
 returns it and the lobby consumes it unchanged.
 
-After every lobby report and every local change, both hosts call
+After every lobby report and every local change, the app calls
 `State::reconcile`, passing their Settings builder and fact resolver. It
 resends Settings with deduplication, withdraws readiness when the verdict is
 not Compatible, and returns any patch the host should fetch.
@@ -235,11 +217,11 @@ Disable the session crate's default `netplay` feature for offline drivers.
 - `pvp/mod.rs` exposes controls, status, and shared state.
 
 `tango-session::Priming` (from `dyn Session::priming`) reports where a
-session stands on its priming walk, for both hosts' notices.
+session stands on its priming walk, for the app's notices.
 `pvp::clamp_frame_delay` and `pvp::initial_frame_delay` are the frame-delay rules.
 
 The host must call `Drive::finish` when a driver ends, so recordings receive
-their final marker. The desktop's runtime loop and browser pump do this.
+their final marker. The app's runtime loop does this.
 Completed match stats go to an optional host-supplied `StatsSink`. Replay
 analysis returns stats to its host too. `tango-library::stats` handles cache
 paths, encoding, and atomic writes through `Storage`; sessions never open
@@ -251,7 +233,7 @@ Simulation details and invariants are in
 ## Loadout preparation
 
 `tango-library::Catalog` bundles the ROM, save, patch, and replay scanners.
-Both hosts rescan through it (`Catalog::list`, then `rescan`, `rescan_library`,
+The app rescans through it (`Catalog::list`, then `rescan`, `rescan_library`,
 or `rescan_replays`), and build preparation inputs with `Catalog::resolver`,
 `Catalog::open_replay`, and `Catalog::compatibility_facts` rather than
 assembling them by hand.
@@ -260,15 +242,14 @@ assembling them by hand.
 family, game, save, and patch overlay, and changes only through its pick
 methods, which keep them consistent with each other and the catalog. It
 restores from and persists to the config's per-family save memory and
-per-save patch memory. The desktop's pickers and the browser's library screen
-both drive it; the browser additionally calls `reconcile` after rescans.
+per-save patch memory. The app's pickers drive it.
 
 `tango-library::save` owns save-file operations over `Storage`: template
 lookup (patch templates override bundled ones), creation, duplication,
 renaming, deletion, name sanitizing and disambiguation, and game detection.
 Hosts only format labels.
 
-Both hosts use `tango-library::loadout::Resolver` for single-player, training,
+The app uses `tango-library::loadout::Resolver` for single-player, training,
 and live matches, and for save-editor previews. It resolves the exact game and patch, parses either the
 saved file or an explicitly supplied snapshot, derives patched assets, and
 returns structured validation findings without creating an editor or emulator.
@@ -305,13 +286,12 @@ Missing patches and incompatible simulations fail before emulation starts.
 scanner lock before patch I/O and leaves the clean cached ROM unchanged.
 
 Storage and HTTP go through the library traits. Native adapters use the
-filesystem and reqwest; the browser supplies an IndexedDB-backed memory
-image and fetch. Save-editor previews (`Resolver::preview`) can intentionally
+filesystem and reqwest. Save-editor previews (`Resolver::preview`) can intentionally
 recover from a missing patch; simulation input preparation cannot.
 
 ## Boundary checks
 
 `tools/check_workspace.py --resolved` checks the allowed direct crate edges
 of every shared layer and the resolved headless Cargo graphs. It also rejects direct filesystem persistence in
-session code and thread-local core state in the browser. CI exercises offline
+session code. CI exercises offline
 sessions, the standalone lobby/transport, and headless save preparation.

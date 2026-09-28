@@ -14,16 +14,6 @@ pub const TEXT_DISPLAY: f32 = 22.0;
 // size inherit the app default.
 pub const STANDARD_PADDING: [f32; 2] = [6.0, 14.0];
 
-/// The height a [`crate::ui::widgets::picker`] lays out to: its text's
-/// line box (iced's default 1.3 relative line height over the app's
-/// body size) plus its vertical padding. Borders draw inside the
-/// bounds, so they don't add to it.
-///
-/// Anything swapped INTO a picker's slot should carry this height, so
-/// the row it sits in measures the same either way and a live-state
-/// flip can't shift the layout around it.
-pub const PICKER_HEIGHT: f32 = TEXT_BODY * 1.3 + STANDARD_PADDING[0] * 2.0;
-
 /// Pinned inner-control height for the play-tab link-code bar
 /// and the session media-controls bar — every button / picker
 /// in both strips is sized to this so the bars come out the

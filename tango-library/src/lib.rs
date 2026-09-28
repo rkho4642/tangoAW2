@@ -6,8 +6,6 @@
 //!   content scans below build on.
 //! * [`rom`] / [`save`] / [`patch`] / [`replays`]: one module per kind of
 //!   content the library folders hold.
-//! * [`bnlc`]: Battle Network Legacy Collection (Steam) discovery, an
-//!   extra source of ROMs — native only, and absent from a wasm build.
 //! * [`catalog`]: the four scanners bundled, with the rescan pipeline
 //!   and the preparation helpers that read them.
 //! * [`config`]: the persisted settings model.
@@ -34,10 +32,6 @@ pub mod save;
 pub mod scanner;
 pub mod stats;
 pub mod storage;
-
-// Steam discovery: no meaning in a browser, and it pulls in steamlocate.
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-pub mod bnlc;
 
 pub use catalog::Catalog;
 
