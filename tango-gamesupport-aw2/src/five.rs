@@ -31,6 +31,7 @@ const OLD_PLAYERS: u32 = 0x0202_3284;
 const CURRENT_ARMY: u32 = 0x0300_33EC;
 const CURRENT_BASE: u32 = 0x0300_3F2C;
 const MAP: u32 = 0x0201_E450;
+const ARMIES_ON_MAP: u32 = MAP + 0x4233;
 
 /// tangoAW2's own tables, in the ROM image's free space (0xFF padding).
 pub const ROM_DATA: u32 = 0x0861_8000;
@@ -40,6 +41,10 @@ const ICON_PALETTES: u32 = ROM_DATA + 0x20;
 const BASE_SPRITES: u32 = ROM_DATA + 0x40;
 const HQ_SPRITES: u32 = ROM_DATA + 0x60;
 const HQ5_SPRITE: u32 = ROM_DATA + 0x80;
+/// The results screen's layouts for 1..4 winners / losers.
+const RES_WSTEP: u32 = ROM_DATA + 0xA0;
+const RES_LBASE: u32 = ROM_DATA + 0xA8;
+const RES_LSTEP: u32 = ROM_DATA + 0xB8;
 const DATA_SENTINEL: u32 = ROM_DATA + 0xFC;
 const DATA_MAGIC: u32 = 0x3541_5754; // "TWA5"
 
@@ -115,6 +120,9 @@ pub enum Table {
     HqSprites,
     Threat,
     Threat64,
+    ResWstep,
+    ResLbase,
+    ResLstep,
 }
 
 impl Table {
@@ -130,6 +138,9 @@ impl Table {
             Table::HqSprites => HQ_SPRITES,
             Table::Threat => THREAT,
             Table::Threat64 => THREAT + 0x64,
+            Table::ResWstep => RES_WSTEP,
+            Table::ResLbase => RES_LBASE,
+            Table::ResLstep => RES_LSTEP,
         }
     }
 }
@@ -242,6 +253,15 @@ fn install_data(core: &mut Core) {
         let mut buf = [0u8; 0x100];
         core.raw_read_range(sheet + (HQ5_TILE - 0x48) * 32, -1, &mut buf);
         core.raw_write_range(SHEET_BACKUP + 0x100 * i as u32, -1, &buf);
+    }
+    for (i, v) in [0u16, 0x24, 0x24, 0x24].iter().enumerate() {
+        core.raw_write_16(RES_WSTEP + 2 * i as u32, -1, *v);
+    }
+    for (i, v) in [0xD8u32, 0xFC, 0xD8, 0xB8].iter().enumerate() {
+        core.raw_write_32(RES_LBASE + 4 * i as u32, -1, *v);
+    }
+    for (i, v) in [0u16, 0x24, 0x20, 0x20].iter().enumerate() {
+        core.raw_write_16(RES_LSTEP + 2 * i as u32, -1, *v);
     }
     crate::five_map::install(core);
     core.raw_write_32(DATA_SENTINEL, -1, DATA_MAGIC);
@@ -427,4 +447,8 @@ fn setup_army5(core: &mut Core) {
     core.raw_write_8(p + 0x2A, -1, 4);
     core.raw_write_8(p + 0x2B, -1, 0x10);
     core.raw_write_8(p + 0x2C, -1, 0);
+    // The armies on the map: the header says 4 for the Teams screen, and
+    // sub_08026924 (just done) needed that; the CO and Intel screens count
+    // armies with it.
+    core.raw_write_8(ARMIES_ON_MAP, -1, 5);
 }

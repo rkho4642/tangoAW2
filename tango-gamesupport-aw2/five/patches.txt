@@ -297,14 +297,14 @@ fn 080240B4 capture_tile | push {r4, r5, r6, r7, lr}
 fn 0802419C hq_to_city   | push {r4, r5, r6, r7, lr}
 pre 08021996 property_census | pop {r3, r4, r5}
 
-# ---- building sprites: army 5 on OBJ palette 13; the fog grey moves to 5
-# (a HUD sprite uses 14; 5 is only rewritten off the map, and this loader
-# runs again whenever the map comes back) ----
+# ---- building sprites: army 5 on OBJ palette 13, where the fog grey was.
+# No other OBJ palette stays free on the map (a HUD sprite uses 14, the turn
+# banner 5, ...), so buildings under fog use the neutral palette, 8: the map
+# under them is darkened, and the grey hid the owner just the same ----
 word 0803FAF8 BASE_SPRITES
 word 0803FB10 BASE_SPRITES
 word 0803FB44 HQ_SPRITES
-imm 0803F952 0x50 | movs r3, #0xd0
-imm 0803F836 0x0d | adds r1, #0x15
+imm 0803F952 0x80 | movs r3, #0xd0
 imm 0803F848 4    | movs r5, #3
 # Black Hole's unit palette on BG palette 1 (only pipes use it; this map has
 # none), after each of the game's palette loads
@@ -396,3 +396,89 @@ word 0805B710 THREAT
 word 080620F4 THREAT
 word 08062308 THREAT
 word 08062328 THREAT64
+
+# ---- battle menus: the map menu's CO screen (5 emblems at a 20-px stride,
+# its second OBJ tile bank moved up 4 tiles to make room for the 5th) ----
+half 080853D2 0x0061 0x00A1 | lsls r1, r4, #1
+half 080853D6 0x00C9 0x0089 | lsls r1, r1, #3
+half 080850C0 0x0041 0x0081 | lsls r1, r0, #1
+half 080850C4 0x00C9 0x0089 | lsls r1, r1, #3
+imm 08084A90 0xB8 | movs r2, #0xb7
+
+# ---- Intel -> Status: five rows (the table moves up two rows, and its
+# background with it) ----
+imm 080462A4 4 | movs r1, #6
+imm 080462B4 4 | movs r1, #6
+imm 080462C4 4 | movs r1, #6
+imm 080462D4 4 | movs r1, #6
+imm 080462DA 6 | movs r3, #8
+imm 08046372 0x80 | movs r0, #0xc0
+imm 080463A6 0x80 | movs r3, #0xc0
+imm 08046476 0x80 | movs r3, #0xc0
+imm 080464FA 4 | adds r1, r4, #6
+imm 0804653E 4 | adds r1, r4, #6
+imm 08046558 4 | adds r1, r4, #6
+imm 08045FE8 0x20 | adds r2, #0x30
+imm 0804601C 0x20 | movs r2, #0x30
+imm 080463CA 0x38 | adds r1, #0x3c
+imm 08046422 0x38 | adds r4, #0x3c
+imm 080460F4 5 | cmp r1, #4
+imm 08046242 5 | cmp r2, #4
+half 08125840 0x0005 0x000A
+half 08125842 0x0005 0x000A
+half 08125844 0x0005 0x000A
+half 08125846 0x0005 0x000A
+half 08125848 0x0005 0x000A
+half 0812584A 0x0005 0x000A
+half 0812584C 0x0005 0x000B
+half 0812584E 0x0005 0x000A
+half 08125850 0x0005 0x000A
+half 08125852 0x0005 0x000A
+half 08125854 0x0005 0x000B
+half 08125856 0x0005 0x000A
+half 08125858 0x0005 0x000A
+half 0812585A 0x0005 0x000B
+half 0812585C 0x0005 0x000A
+half 0812585E 0x0005 0x000A
+half 08125860 0x0005 0x000A
+half 08125862 0x0005 0x000A
+half 08125864 0x0005 0x000A
+half 08125866 0x0005 0x000A
+half 08125868 0x0005 0x000B
+half 0812586A 0x0005 0x000A
+half 0812586C 0x0005 0x000A
+half 0812586E 0x0005 0x000A
+half 08125870 0x0005 0x000A
+half 08125872 0x0005 0x000A
+half 08125874 0x0005 0x000A
+half 08125876 0x0005 0x000A
+half 08125888 0x0005 0x000C
+half 08125890 0x0005 0x000C
+half 08125896 0x0005 0x000C
+half 081258A4 0x0005 0x000C
+
+# ---- Intel -> Rules: the per-army panels stay four ----
+half 0803C0D8 0xF7E8 0x2004 | bl sub_080248F8
+half 0803C0DA 0xFC0E 0x46C0 | 
+
+# ---- results: up to 4 winners or 4 losers (losers packed after winners) ----
+imm 0807ACFC 0xC8 | movs r4, #0xb6
+half 0807AD22 0x1C32 0x221D | adds r2, r6, #0
+half 0807AD24 0x321C 0x1B92 | adds r2, #0x1c
+half 0807AD2A 0x3424 0x3C24 | adds r4, #0x24
+imm 0807B050 0xC8 | movs r5, #0xb6
+half 0807B07E 0x1C22 0x220D | adds r2, r4, #0
+half 0807B080 0x320C 0x1B12 | adds r2, #0xc
+half 0807B08E 0x3524 0x3D24 | adds r5, #0x24
+imm 0807B1BC 0xC8 | movs r5, #0xb6
+half 0807B1E4 0x1C22 0x220D
+half 0807B1E6 0x320C 0x1B12
+half 0807B1F4 0x3524 0x3D24
+half 086160AA 0x0000 0x0018
+half 086160E2 0x0000 0x0018
+word 0807B0BC RES_WSTEP
+word 0807B0C8 RES_LBASE
+word 0807B0CC RES_LSTEP
+word 0807B208 RES_WSTEP
+word 0807B214 RES_LBASE
+word 0807B218 RES_LSTEP
