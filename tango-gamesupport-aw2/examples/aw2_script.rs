@@ -352,7 +352,10 @@ fn main() {
                     core.step();
                     let v = core.raw_read_32(addr, -1);
                     if v != last {
-                        println!("  {addr:08x}: {last:08x} -> {v:08x} near pc={pc:08x} lr={:08x}", core.gba().cpu().gpr(14));
+                        println!(
+                            "  {addr:08x}: {last:08x} -> {v:08x} near pc={pc:08x} lr={:08x}",
+                            core.gba().cpu().gpr(14)
+                        );
                         last = v;
                     }
                 }

@@ -133,14 +133,20 @@ fn extract(rom: &[u8]) -> Option<Art> {
     let palette = nds_file(rom, "bmap/00e")?.get(0x180..0x1A0)?;
     let map = colour_map(palette);
     let recolour = |b: &[u8]| -> Vec<u8> {
-        b.iter().map(|&x| map[(x & 15) as usize] | map[(x >> 4) as usize] << 4).collect()
+        b.iter()
+            .map(|&x| map[(x & 15) as usize] | map[(x >> 4) as usize] << 4)
+            .collect()
     };
     let crystal_bmp = recolour(data.get(0x1600..0x1700)?);
     let obelisk_bmp = recolour(data.get(0x3F00..0x4700)?);
     let (crystal_bmp, obelisk_bmp) = (&crystal_bmp[..], &obelisk_bmp[..]);
     let crystal = tiles(crystal_bmp, 16, &[(0, 0, 16, 32)]);
     // The footprint: x 8..56, y 0..48 of the 64x64 picture.
-    let obelisk = tiles(obelisk_bmp, 64, &[(8, 0, 32, 32), (40, 0, 16, 32), (8, 32, 32, 16), (40, 32, 16, 16)]);
+    let obelisk = tiles(
+        obelisk_bmp,
+        64,
+        &[(8, 0, 32, 32), (40, 0, 16, 32), (8, 32, 32, 16), (40, 32, 16, 16)],
+    );
     // The panel's 16x32: the footprint shrunk, every third column and the
     // rows spread over 32.
     let mut small = vec![0u8; 16 * 32 / 2];
@@ -163,7 +169,8 @@ fn extract(rom: &[u8]) -> Option<Art> {
 
 /// Black Hole's sprite palette in Advance Wars 2 (`0x080D3E84`), BGR555.
 const AW2_PALETTE: [u16; 16] = [
-    0x3DEF, 0x7FFF, 0x5F3B, 0x4E95, 0x4D11, 0x392C, 0x3BFF, 0x7F9C, 0x7EF7, 0x1013, 0x7F39, 0x4F30, 0x63DF, 0x5F5C, 0x1C1C, 0x3612,
+    0x3DEF, 0x7FFF, 0x5F3B, 0x4E95, 0x4D11, 0x392C, 0x3BFF, 0x7F9C, 0x7EF7, 0x1013, 0x7F39, 0x4F30, 0x63DF, 0x5F5C,
+    0x1C1C, 0x3612,
 ];
 
 /// Each Dual Strike colour index -> the nearest Advance Wars 2 one (0, the
@@ -203,8 +210,14 @@ fn tiles(bmp: &[u8], width: usize, rects: &[(usize, usize, usize, usize)]) -> Ve
 
 /// A file of the DS ROM's file system by path.
 fn nds_file<'a>(rom: &'a [u8], path: &str) -> Option<&'a [u8]> {
-    let u32_at = |o: usize| rom.get(o..o + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize);
-    let u16_at = |o: usize| rom.get(o..o + 2).map(|b| u16::from_le_bytes(b.try_into().unwrap()) as usize);
+    let u32_at = |o: usize| {
+        rom.get(o..o + 4)
+            .map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize)
+    };
+    let u16_at = |o: usize| {
+        rom.get(o..o + 2)
+            .map(|b| u16::from_le_bytes(b.try_into().unwrap()) as usize)
+    };
     let (fnt, fat) = (u32_at(0x40)?, u32_at(0x48)?);
     let mut dir = 0usize;
     let parts: Vec<&str> = path.split('/').collect();

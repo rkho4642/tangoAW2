@@ -99,7 +99,14 @@ fn main() {
     // `AW2_SHARED_ART=1`: the match as the lobby makes it when both players
     // have imported the Dual Strike art (`ds_art::SHARED_ART`).
     let shared_art = std::env::var_os("AW2_SHARED_ART").is_some();
-    let match_type = (0u8, if shared_art { tango_gamesupport_aw2::ds_art::SHARED_ART } else { 0 });
+    let match_type = (
+        0u8,
+        if shared_art {
+            tango_gamesupport_aw2::ds_art::SHARED_ART
+        } else {
+            0
+        },
+    );
 
     let game = &tango_gamesupport_aw2::AW2;
     let start = |local_player| {

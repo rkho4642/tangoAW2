@@ -259,7 +259,12 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     HOOKS
         .iter()
         .enumerate()
-        .map(|(i, &(addr, _, _))| (addr, Box::new(move |core: &mut Core| run(core, i)) as Box<dyn Fn(&mut Core)>))
+        .map(|(i, &(addr, _, _))| {
+            (
+                addr,
+                Box::new(move |core: &mut Core| run(core, i)) as Box<dyn Fn(&mut Core)>,
+            )
+        })
         .collect()
 }
 
@@ -288,7 +293,11 @@ fn apply(core: &mut Core, on: bool) {
     for (i, (sheet, art)) in SHEETS.iter().enumerate() {
         let at = sheet + (HQ5_TILE - 0x48) * 32;
         let mut buf = [0u8; 0x100];
-        let src = if on { art + (BLACK_HOLE as u32 - 1) * 0x100 } else { SHEET_BACKUP + 0x100 * i as u32 };
+        let src = if on {
+            art + (BLACK_HOLE as u32 - 1) * 0x100
+        } else {
+            SHEET_BACKUP + 0x100 * i as u32
+        };
         core.raw_read_range(src, -1, &mut buf);
         core.raw_write_range(at, -1, &buf);
     }
@@ -353,7 +362,13 @@ fn run(core: &mut Core, i: usize) {
     let (addr, _, hook) = HOOKS[i];
     if std::env::var_os("AW2_FIVE_LOG").is_some() {
         let cpu = core.gba().cpu();
-        eprintln!("five {addr:08x} {hook:?} r0={:x} r1={:x} r2={:x} lr={:x}", cpu.gpr(0), cpu.gpr(1), cpu.gpr(2), cpu.gpr(14));
+        eprintln!(
+            "five {addr:08x} {hook:?} r0={:x} r1={:x} r2={:x} lr={:x}",
+            cpu.gpr(0),
+            cpu.gpr(1),
+            cpu.gpr(2),
+            cpu.gpr(14)
+        );
     }
     match hook {
         Hook::Set(op, dst, src) => set(core, addr, op, dst as usize, src as usize),

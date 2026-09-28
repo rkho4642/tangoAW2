@@ -72,7 +72,10 @@ pub fn local_settings(
 ) -> tango_net_protocol::control::Settings {
     tango_net_protocol::control::Settings {
         nickname: config.nickname.clone().unwrap_or_default(),
-        match_type: (lobby.match_type.0, lobby.match_type.1 | tango_library::shared_content_flag()),
+        match_type: (
+            lobby.match_type.0,
+            lobby.match_type.1 | tango_library::shared_content_flag(),
+        ),
         game_info: selection.game_info(),
         blind_setup: lobby.blind_setup,
     }

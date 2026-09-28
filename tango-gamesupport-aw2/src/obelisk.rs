@@ -172,8 +172,16 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
 fn load_tiles(core: &mut Core) {
     let blank = [0u8; 36 * 32];
     let art = crate::ds_art::art();
-    core.raw_write_range(0x0601_0000 + OBELISK_OBJ_TILE * 32, -1, art.map_or(&blank[..], |a| &a.obelisk));
-    core.raw_write_range(0x0601_0000 + CRYSTAL_OBJ_TILE * 32, -1, art.map_or(&blank[..256], |a| &a.crystal));
+    core.raw_write_range(
+        0x0601_0000 + OBELISK_OBJ_TILE * 32,
+        -1,
+        art.map_or(&blank[..], |a| &a.obelisk),
+    );
+    core.raw_write_range(
+        0x0601_0000 + CRYSTAL_OBJ_TILE * 32,
+        -1,
+        art.map_or(&blank[..256], |a| &a.crystal),
+    );
 }
 
 /// sub_0803F908(x, y, def, army, fog) puts a building's or invention's
@@ -181,7 +189,12 @@ fn load_tiles(core: &mut Core) {
 /// Black Cannon's rubble).
 fn sprite(core: &mut Core) {
     let cpu = core.gba().cpu();
-    let (x, y, def, lr) = (cpu.gpr(0) as u32, cpu.gpr(1) as u32, cpu.gpr(2) as u32, cpu.gpr(14) as u32);
+    let (x, y, def, lr) = (
+        cpu.gpr(0) as u32,
+        cpu.gpr(1) as u32,
+        cpu.gpr(2) as u32,
+        cpu.gpr(14) as u32,
+    );
     let new = match lr {
         0x0803_FB93 if tile_at(core, x, y) == CRYSTAL_TILE => CRYSTAL_DEF,
         0x0803_FD09 if matches!(def, 0x0849_FA22 | 0x0849_FA08) && tile_at(core, x + 1, y + 1) == OBELISK_TILE => {
@@ -237,7 +250,11 @@ fn heal(core: &mut Core) {
     if sources.is_empty() {
         return;
     }
-    let (first, per) = if crate::five::active(core) { ((army - 1) * 51, 51) } else { ((army - 1) * 64, 64) };
+    let (first, per) = if crate::five::active(core) {
+        ((army - 1) * 51, 51)
+    } else {
+        ((army - 1) * 64, 64)
+    };
     for id in first + 1..first + per.min(51) {
         let u = UNITS + 12 * id;
         let kind = core.raw_read_8(u, -1) as u32;
@@ -248,8 +265,20 @@ fn heal(core: &mut Core) {
         let heal = sources
             .iter()
             .filter(|&&(x0, y0, x1, y1, range, _)| {
-                let dx = if ux < x0 { x0 - ux } else if ux > x1 { ux - x1 } else { 0 };
-                let dy = if uy < y0 { y0 - uy } else if uy > y1 { uy - y1 } else { 0 };
+                let dx = if ux < x0 {
+                    x0 - ux
+                } else if ux > x1 {
+                    ux - x1
+                } else {
+                    0
+                };
+                let dy = if uy < y0 {
+                    y0 - uy
+                } else if uy > y1 {
+                    uy - y1
+                } else {
+                    0
+                };
                 dx + dy <= range
             })
             .map(|s| s.5)

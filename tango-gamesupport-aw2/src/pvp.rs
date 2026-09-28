@@ -521,7 +521,11 @@ impl tango_backend_mgba::SharedGame for Aw2 {
             for slot in 0..armies {
                 let colour = core.raw_read_8(TEAMS_COLOUR + slot, -1);
                 if (1..=5).contains(&colour) {
-                    core.raw_write_8(crate::five::players(core) + PLAYER_STRIDE * (slot + 1) + COLOUR, -1, colour);
+                    core.raw_write_8(
+                        crate::five::players(core) + PLAYER_STRIDE * (slot + 1) + COLOUR,
+                        -1,
+                        colour,
+                    );
                 }
             }
             if DESIGN_MAPS.contains(&core.raw_read_8(MAP_ID, -1)) {

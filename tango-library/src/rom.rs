@@ -99,7 +99,10 @@ fn scan_stored_roms(storage: &dyn Storage, listing: &Listing) -> std::collection
                     continue;
                 }
                 ds_art::Offered::DsRom { imported } => {
-                    log::info!("rom scan: {}: Dual Strike ROM, art imported: {imported}", entry.path.display());
+                    log::info!(
+                        "rom scan: {}: Dual Strike ROM, art imported: {imported}",
+                        entry.path.display()
+                    );
                     if let Some(data) = ds_art::cache() {
                         let to = entry.path.with_file_name(ds_art::CACHE_NAME);
                         if let Err(e) = storage.write(&to, &data) {

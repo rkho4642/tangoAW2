@@ -75,16 +75,16 @@ pub fn entries(core: &Core) -> u32 {
 /// minicannon and a Black Cannon to the game (`crate::obelisk`); their words
 /// carry bit 8 ([`OURS`]) so the bar can tell them from the real ones.
 pub const ENTRIES_ADDED: [(u16, u16); 12] = [
-    (0x15, 0x182), // minicannon facing down
-    (0x16, 0x183), // up
-    (0x17, 0x184), // left
-    (0x18, 0x185), // right
-    (0x19, 0x181), // laser
-    (0x1A, 0x187), // Black Cannon facing down
-    (0x1B, 0x18A), // up
-    (0x1D, 0x18D), // Black Factory
-    (0x1C, 0x1A7), // Volcano
-    (0x1E, 0x190), // Deathray
+    (0x15, 0x182),        // minicannon facing down
+    (0x16, 0x183),        // up
+    (0x17, 0x184),        // left
+    (0x18, 0x185),        // right
+    (0x19, 0x181),        // laser
+    (0x1A, 0x187),        // Black Cannon facing down
+    (0x1B, 0x18A),        // up
+    (0x1D, 0x18D),        // Black Factory
+    (0x1C, 0x1A7),        // Volcano
+    (0x1E, 0x190),        // Deathray
     (OURS | 0x15, 0x192), // Black Crystal
     (OURS | 0x1A, 0x193), // Black Obelisk
 ];
@@ -111,7 +111,11 @@ pub fn patch_rom(core: &mut Core, with_obelisk: bool) {
     let n = if with_obelisk { ENTRIES_ALL } else { ENTRIES_BASE };
     for (at, kind) in LENGTH_SITES {
         let op = core.raw_read_16(at, -1);
-        let known = [site_value(kind, OLD_ENTRIES), site_value(kind, ENTRIES_BASE), site_value(kind, ENTRIES_ALL)];
+        let known = [
+            site_value(kind, OLD_ENTRIES),
+            site_value(kind, ENTRIES_BASE),
+            site_value(kind, ENTRIES_ALL),
+        ];
         let want = site_value(kind, n);
         if op as u8 != want && known.contains(&(op as u8)) {
             core.raw_write_16(at, -1, (op & 0xFF00) | want as u16);

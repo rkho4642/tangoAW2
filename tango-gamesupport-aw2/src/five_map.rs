@@ -20,7 +20,14 @@ const TERRAIN_TABLE: u32 = 0x080C_1BC4;
 const METATILES: u32 = 0x080B_FBC4;
 const NEUTRAL_HQ_TILE: u32 = 0x1C0;
 /// Army 5's HQ, base, city, airport, port and lab.
-const ARMY5_TILES: [(u32, u8); 6] = [(0x1B4, 0xA8), (0x1B5, 0xAE), (0x1B6, 0xA6), (0x1B7, 0xAA), (0x1B8, 0xAB), (0x1B9, 0xB4)];
+const ARMY5_TILES: [(u32, u8); 6] = [
+    (0x1B4, 0xA8),
+    (0x1B5, 0xAE),
+    (0x1B6, 0xA6),
+    (0x1B7, 0xAA),
+    (0x1B8, 0xAB),
+    (0x1B9, 0xB4),
+];
 
 /// The map list's tabs run 2..8 (Classic .. Design Maps); these raise the
 /// last one to 9, the 5P tab: (address, original, patched).
@@ -132,7 +139,7 @@ pub fn install(core: &mut Core) {
         w32(&mut h, 0x00, tiles);
         w16(&mut h, 0x14, TAB_TEXT + 1 + k as u16);
         h[0x16] = 2; // pre-deployed art
-        // armies in the header (a 5-army map says 4: army 5 is tangoAW2's)
+                     // armies in the header (a 5-army map says 4: army 5 is tangoAW2's)
         h[0x18] = map.armies.min(4);
         w16(&mut h, 0x1A, map.tab);
         w16(&mut h, 0x1C, 1);

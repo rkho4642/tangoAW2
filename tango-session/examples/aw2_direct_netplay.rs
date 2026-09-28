@@ -294,7 +294,10 @@ async fn run_lobby(name: &'static str, command: String, lib: &Library, match_typ
     };
     let local_settings = |lobby: &tango_lobby::LobbyState| tango_net_protocol::control::Settings {
         nickname: name.to_owned(),
-        match_type: (lobby.match_type.0, lobby.match_type.1 | tango_library::shared_content_flag()),
+        match_type: (
+            lobby.match_type.0,
+            lobby.match_type.1 | tango_library::shared_content_flag(),
+        ),
         game_info: lib.selection.game_info(),
         blind_setup: lobby.blind_setup,
     };

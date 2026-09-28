@@ -13,6 +13,7 @@ pub mod ui {
 pub mod branding;
 pub mod design;
 pub mod design_bar;
+pub mod ds_art;
 pub mod factory;
 pub mod five;
 mod five_art;
@@ -20,7 +21,6 @@ mod five_map;
 mod five_map_data;
 mod five_patches;
 pub mod invention_art;
-pub mod ds_art;
 pub mod obelisk;
 mod obelisk_art;
 pub mod pvp;
