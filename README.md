@@ -1,8 +1,9 @@
 # tangoAW2
 
 Rollback netplay for **Advance Wars 2: Black Hole Rising** (GBA, USA), with
-everything unlocked, Black Hole as a fifth playable army, **five-army
-battles on new 5P maps**, and Black Hole's inventions in the Design Room.
+everything unlocked, **Black Hole as a playable army on any map**,
+**five-army battles**, Black Hole's inventions in the Design Room, and, as
+a hidden extra, Dual Strike's **Black Crystal and Black Obelisk**.
 
 tangoAW2 is a fork of [Tango](https://github.com/tangobattle/tango) by the
 Tango developers. It keeps Tango's emulator (mGBA), rollback engine, lobby
@@ -18,6 +19,19 @@ No game is included. You need your own copy of the cartridge dumped to a
 </tr>
 </table>
 
+## New in 0.2.0
+
+- **Five armies on one map.** A **5P Maps** tab in Versus: Orange Star,
+  Blue Moon, Green Earth, Yellow Comet and Black Hole all at once, each a
+  person or the computer, offline and online. Five new maps: a sea war, a
+  land war, a volcano, an air war and a siege. See
+  [Five armies](#five-armies-5p-maps).
+- **Hidden feature: the Black Crystal and Black Obelisk** from Advance
+  Wars: Dual Strike. Black Hole structures that heal and resupply Black
+  Hole's units, on four new maps (2, 3, 4 and 5 armies) and in the Design
+  Room. They unlock only if you load your own Dual Strike `.nds` once. See
+  [Black Crystal and Black Obelisk](#black-crystal-and-black-obelisk).
+
 ## What it does
 
 - **Rollback netplay.** Both players run the same emulated Game Boy
@@ -32,31 +46,22 @@ No game is included. You need your own copy of the cartridge dumped to a
   edit, every Battle Map, Hard Campaign and the Sound Room. This is
   applied while the game runs, like Slippi's codes for Melee, so the ROM
   file is never modified. Save in-game and it sticks.
-- **Five armies, picked in the game.** On Versus' **Teams** screen, move
-  to an army and press **SELECT** (or **R**) to change its colour, **L**
-  to go back: Orange Star, Blue Moon, Yellow Comet, Green Earth and
-  **Black Hole**, each with its own emblem. It works on 2-, 3- and 4-army
-  maps, team (alliance) games included, online and offline. Units,
-  buildings, HQs and banners take the picked army's colours; Campaign and
-  War Room keep their story armies.
-- **Five armies on one map.** A new **5P Maps** tab in Versus with five
-  maps for Orange Star, Blue Moon, Green Earth, Yellow Comet and Black
-  Hole all at once: a sea war, a land war, a volcano, an air war and a
-  siege (plus Black Monolith, with the Dual Strike art below). Every army
-  can be a person or the computer, offline and online. See [Five armies](#five-armies-5p-maps).
-- **Hidden feature: the Black Crystal and Black Obelisk** from Advance Wars: Dual Strike:
-  Black Hole structures that heal and resupply Black Hole's units at the
-  start of its turn, in the Design Room and on four maps (2, 3, 4 and 5
-  armies), drawn with Dual Strike's own sprites. They unlock when you load
-  your own Dual Strike `.nds` once; without it they stay hidden. The real minicannons and
-  Black Cannons are untouched. See [Black Crystal and Black Obelisk](#black-crystal-and-black-obelisk).
+- **Any army, any colour.** On Versus' **Teams** screen, move to an army
+  and press **SELECT** (or **R**) to change its colour, **L** to go back:
+  Orange Star, Blue Moon, Yellow Comet, Green Earth and **Black Hole**,
+  each with its own emblem. It works on every map, team (alliance) games
+  included, online and offline. Units, buildings, HQs and banners take the
+  picked army's colours; Campaign and War Room keep their story armies.
+- **Five armies on one map** (new). See [Five armies](#five-armies-5p-maps).
 - **Black Hole in the Design Room.** Build maps with a Black Hole army and
   Black Hole's inventions (minicannons, laser, Black Cannons, Black
   Factory, Volcano and Deathray), each picked from the terrain bar and
-  shown as it looks in battle. Switch back to Yellow Comet any time. See [Design Room](#design-room-black-hole-and-its-inventions).
+  shown as it looks in battle. See [Design Room](#design-room-black-hole-and-its-inventions).
 - **Play as Black Hole with its inventions.** The Black Factory deploys
   units for you and the Deathray fires on your enemies, like in the
   campaign, offline and online. See [inventions in battle](#black-holes-inventions-in-battle).
+- **Hidden: Black Crystal and Black Obelisk** (new), if you load your own
+  Dual Strike ROM. See [Black Crystal and Black Obelisk](#black-crystal-and-black-obelisk).
 - **tangoAW2 on the title screen and the main menu**, so you can tell at a
   glance you're in tangoAW2. The game draws it as part of its own picture;
   your ROM file is unchanged.
@@ -69,16 +74,16 @@ No game is included. You need your own copy of the cartridge dumped to a
 <td><img src="docs/screenshots/black-hole-versus.png" width="360" alt="A Black Hole army in a Versus battle"></td>
 </tr>
 <tr>
-<td align="center">Black Hole on the Teams screen (SELECT)</td>
-<td align="center">Black Hole in battle</td>
+<td align="center">Black Hole against Orange Star, picked with SELECT</td>
+<td align="center">That battle: Black Hole's army and buildings</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/black-hole-4-armies.png" width="360" alt="Black Hole in a four-army game"></td>
 <td><img src="docs/screenshots/black-hole-3-armies-battle.png" width="360" alt="Black Hole in a three-army battle"></td>
 </tr>
 <tr>
-<td align="center">Four armies</td>
-<td align="center">Three armies</td>
+<td align="center">Black Hole as the fourth army</td>
+<td align="center">A three-army battle, starting at Black Hole's HQ</td>
 </tr>
 </table>
 
@@ -104,6 +109,8 @@ Open.
    `Advance Wars 2 - Black Hole Rising (USA)`, CRC32 `5AD0E571`).
 3. That's it. tangoAW2 selects the game and creates a blank save for you
    the first time. Everything is unlocked anyway.
+4. Optional: put your Advance Wars: Dual Strike `.nds` in the same folder
+   to unlock the hidden [Black Crystal and Black Obelisk](#black-crystal-and-black-obelisk).
 
 ## Playing alone
 
@@ -115,6 +122,95 @@ In Versus, change any army's colour on the Teams screen with **SELECT**
 (or **R**, and **L** to go back). Each army starts in the map's own colour.
 For Black Hole's HQ and units too, give the army a Black Hole CO (Flak,
 Lash, Adder, Hawke or Sturm).
+
+## Five armies (5P maps)
+
+Versus has a **5P Maps** tab (press **L** or **LEFT** on the map list's
+tab, it sits just before Classic) with five maps, six with the
+[Dual Strike art](#black-crystal-and-black-obelisk). Its maps have all five armies:
+Orange Star, Blue Moon, Green Earth, Yellow Comet and **Black Hole**.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/five-maps-tab.png" width="360" alt="The 5P Maps tab"></td>
+<td><img src="docs/screenshots/five-teams.png" width="360" alt="The Teams screen with all five armies"></td>
+</tr>
+<tr>
+<td align="center">The 5P Maps tab</td>
+<td align="center">Five armies on the Teams screen</td>
+</tr>
+</table>
+
+| Map | Size | What it is |
+| --- | --- | --- |
+| **Five Seas** | 20 x 40 | A tall sea map. Each army has an island with a port, and starts with a Battleship, Cruiser, Submarine and Lander. Black Hole's island in the middle has Black Cannons facing north and south. |
+| **Iron Crossing** | 30 x 30 | A land war. Four armies hold the corners, walled by mountain ridges with passes; Black Hole holds a fortress in the centre ringed by minicannons. Tanks, Artillery, Recons and Infantry. |
+| **Magma Crown** | 30 x 30 | A ring island round an inner sea. Black Hole holds the central isle and its **Volcano**, which rains fire on the map. Landers and Cruisers carry the fight across the water. |
+| **Skyreach** | 32 x 36 | An air war. Five plateaus cut off by mountains; every army has three airports and starts with a Fighter, a Bomber, two Battle Copters, Anti-Air and Missiles. Black Cannons guard Black Hole's plateau. |
+| **The Citadel** | 28 x 27 | A siege. Black Hole's fortress has a **Black Factory**, the **Deathray** covering the approach, a laser and a row of minicannons. The other four armies start along the bottom and storm it. |
+| **Black Monolith** (with the Dual Strike art) | 30 x 30 | Four armies in the corners, Black Hole in the middle round a **Black Obelisk**, with four Black Crystals and a minicannon on each side. See [below](#black-crystal-and-black-obelisk). |
+
+**Teams.** All five armies are on the Teams screen. Pick each army's CO
+with **UP/DOWN**, and move to the marker in its corner to switch it
+between a person (**1P** to **5P**) and the computer (**CP**). On the next
+screen, alliances go from **A** to **E Team**. Black Hole plays with its
+own units, HQ and buildings; the army colours are fixed on 5P maps.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/five-teams-5p.png" width="360" alt="Black Hole set to a person, 5P"></td>
+<td><img src="docs/screenshots/five-alliance.png" width="360" alt="Alliances with E Team"></td>
+</tr>
+<tr>
+<td align="center">Black Hole played by a person (5P)</td>
+<td align="center">Alliances: A to E Team</td>
+</tr>
+</table>
+
+**Playing.** Turns go Orange Star, Blue Moon, Green Earth, Yellow Comet,
+Black Hole. Several people can share one console (hot seat), each playing
+their own army's turn. The map menu's **CO** screen and
+**Intel** show all five armies. There is no **Save** in a 5-army battle
+(a suspended game holds four armies); everything else, fog of war,
+weather, CO Powers, capture and turn limits, works as usual.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/five-seas.png" width="360" alt="Five Seas at the start"></td>
+<td><img src="docs/screenshots/five-iron-crossing.png" width="360" alt="Iron Crossing"></td>
+</tr>
+<tr>
+<td align="center">Five Seas</td>
+<td align="center">Iron Crossing</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/five-magma-crown.png" width="360" alt="Magma Crown and its Volcano"></td>
+<td><img src="docs/screenshots/five-skyreach.png" width="360" alt="Skyreach"></td>
+</tr>
+<tr>
+<td align="center">Magma Crown</td>
+<td align="center">Skyreach</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/five-citadel.png" width="360" alt="The Citadel"></td>
+<td><img src="docs/screenshots/five-black-hole-turn.png" width="360" alt="Black Hole's turn, with Flak's funds panel"></td>
+</tr>
+<tr>
+<td align="center">The Citadel</td>
+<td align="center">Hot seat: Black Hole's turn</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/five-co-screen.png" width="360" alt="The CO screen with five armies"></td>
+<td><img src="docs/screenshots/five-intel.png" width="360" alt="Intel with five armies"></td>
+</tr>
+<tr>
+<td align="center">The CO screen: all five</td>
+<td align="center">Intel: all five</td>
+</tr>
+</table>
+
+**Online.** 5P maps work online like any other map: player 1 moves armies
+1, 3 and 5, player 2 armies 2 and 4, and the rest can be the computer.
 
 ## Design Room: Black Hole and its inventions
 
@@ -403,95 +499,6 @@ played out the same on both screens from the first frame to the last.
 </tr>
 </table>
 
-## Five armies (5P maps)
-
-Versus has a **5P Maps** tab (press **L** or **LEFT** on the map list's
-tab, it sits just before Classic) with five maps, six with the
-[Dual Strike art](#black-crystal-and-black-obelisk). Its maps have all five armies:
-Orange Star, Blue Moon, Green Earth, Yellow Comet and **Black Hole**.
-
-<table>
-<tr>
-<td><img src="docs/screenshots/five-maps-tab.png" width="360" alt="The 5P Maps tab"></td>
-<td><img src="docs/screenshots/five-teams.png" width="360" alt="The Teams screen with all five armies"></td>
-</tr>
-<tr>
-<td align="center">The 5P Maps tab</td>
-<td align="center">Five armies on the Teams screen</td>
-</tr>
-</table>
-
-| Map | Size | What it is |
-| --- | --- | --- |
-| **Five Seas** | 20 x 40 | A tall sea map. Each army has an island with a port, and starts with a Battleship, Cruiser, Submarine and Lander. Black Hole's island in the middle has Black Cannons facing north and south. |
-| **Iron Crossing** | 30 x 30 | A land war. Four armies hold the corners, walled by mountain ridges with passes; Black Hole holds a fortress in the centre ringed by minicannons. Tanks, Artillery, Recons and Infantry. |
-| **Magma Crown** | 30 x 30 | A ring island round an inner sea. Black Hole holds the central isle and its **Volcano**, which rains fire on the map. Landers and Cruisers carry the fight across the water. |
-| **Skyreach** | 32 x 36 | An air war. Five plateaus cut off by mountains; every army has three airports and starts with a Fighter, a Bomber, two Battle Copters, Anti-Air and Missiles. Black Cannons guard Black Hole's plateau. |
-| **The Citadel** | 28 x 27 | A siege. Black Hole's fortress has a **Black Factory**, the **Deathray** covering the approach, a laser and a row of minicannons. The other four armies start along the bottom and storm it. |
-| **Black Monolith** (with the Dual Strike art) | 30 x 30 | Four armies in the corners, Black Hole in the middle round a **Black Obelisk**, with four Black Crystals and a minicannon on each side. See [below](#black-crystal-and-black-obelisk). |
-
-**Teams.** All five armies are on the Teams screen. Pick each army's CO
-with **UP/DOWN**, and move to the marker in its corner to switch it
-between a person (**1P** to **5P**) and the computer (**CP**). On the next
-screen, alliances go from **A** to **E Team**. Black Hole plays with its
-own units, HQ and buildings; the army colours are fixed on 5P maps.
-
-<table>
-<tr>
-<td><img src="docs/screenshots/five-teams-5p.png" width="360" alt="Black Hole set to a person, 5P"></td>
-<td><img src="docs/screenshots/five-alliance.png" width="360" alt="Alliances with E Team"></td>
-</tr>
-<tr>
-<td align="center">Black Hole played by a person (5P)</td>
-<td align="center">Alliances: A to E Team</td>
-</tr>
-</table>
-
-**Playing.** Turns go Orange Star, Blue Moon, Green Earth, Yellow Comet,
-Black Hole. Several people can share one console (hot seat), each playing
-their own army's turn. The map menu's **CO** screen and
-**Intel** show all five armies. There is no **Save** in a 5-army battle
-(a suspended game holds four armies); everything else, fog of war,
-weather, CO Powers, capture and turn limits, works as usual.
-
-<table>
-<tr>
-<td><img src="docs/screenshots/five-seas.png" width="360" alt="Five Seas at the start"></td>
-<td><img src="docs/screenshots/five-iron-crossing.png" width="360" alt="Iron Crossing"></td>
-</tr>
-<tr>
-<td align="center">Five Seas</td>
-<td align="center">Iron Crossing</td>
-</tr>
-<tr>
-<td><img src="docs/screenshots/five-magma-crown.png" width="360" alt="Magma Crown and its Volcano"></td>
-<td><img src="docs/screenshots/five-skyreach.png" width="360" alt="Skyreach"></td>
-</tr>
-<tr>
-<td align="center">Magma Crown</td>
-<td align="center">Skyreach</td>
-</tr>
-<tr>
-<td><img src="docs/screenshots/five-citadel.png" width="360" alt="The Citadel"></td>
-<td><img src="docs/screenshots/five-black-hole-turn.png" width="360" alt="Black Hole's turn, with Flak's funds panel"></td>
-</tr>
-<tr>
-<td align="center">The Citadel</td>
-<td align="center">Hot seat: Black Hole's turn</td>
-</tr>
-<tr>
-<td><img src="docs/screenshots/five-co-screen.png" width="360" alt="The CO screen with five armies"></td>
-<td><img src="docs/screenshots/five-intel.png" width="360" alt="Intel with five armies"></td>
-</tr>
-<tr>
-<td align="center">The CO screen: all five</td>
-<td align="center">Intel: all five</td>
-</tr>
-</table>
-
-**Online.** 5P maps work online like any other map: player 1 moves armies
-1, 3 and 5, player 2 armies 2 and 4, and the rest can be the computer.
-
 ## Black Crystal and Black Obelisk
 
 > **Hidden feature.** These only appear if you choose to load your own
@@ -656,6 +663,10 @@ Then:
    the other side's fog.
 5. Play. Player 1 moves army 1 (and armies 3 and 5 on bigger maps);
    player 2 moves army 2 (and army 4).
+
+The Black Crystal and Black Obelisk maps show online only when both of you
+have loaded the Dual Strike art; otherwise they are hidden for both of you
+and everything else plays as usual.
 
 ## Running two copies on one computer
 
