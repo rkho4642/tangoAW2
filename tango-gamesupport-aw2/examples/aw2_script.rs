@@ -16,6 +16,8 @@
 //!   watch8 ADDR          print the byte every time it changes
 //!   sticky8 ADDR VAL     write a byte before every later frame; `unstick` stops
 //!   peek ADDR LEN        print LEN bytes at ADDR (hex)
+//!   goto AX AY X Y       walk a cursor whose position bytes are at AX/AY to
+//!                        (X, Y) with the arrows
 //!   stepuntil8 ADDR [N]  single-step until the byte changes (at most N
 //!                        instructions), then print the last 400 PCs
 //!   steplog N            single-step N instructions, printing every
@@ -78,13 +80,14 @@ impl tango_backend_mgba::SharedGame for Traced {
                 Box::new(move |core: &mut mgba::core::Core| {
                     let cpu = core.gba().cpu();
                     println!(
-                        "trap {addr:08x} @{} lr={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x}",
+                        "trap {addr:08x} @{} lr={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x} r12={:08x}",
                         FRAME.load(std::sync::atomic::Ordering::Relaxed),
                         cpu.gpr(14),
                         cpu.gpr(0),
                         cpu.gpr(1),
                         cpu.gpr(2),
-                        cpu.gpr(3)
+                        cpu.gpr(3),
+                        cpu.gpr(12)
                     );
                 }),
             ));
@@ -210,6 +213,30 @@ fn main() {
         let parts: Vec<&str> = line.split_whitespace().collect();
         match parts[0] {
             "wait" => run(&mut link, &sticky, &mut watch, &mut frame, 0, parts[1].parse().unwrap()),
+            "goto" => {
+                // Walk a cursor to (X, Y) with the arrows: ADDR_X/ADDR_Y hold
+                // its position as bytes (e.g. the Design Room's 0200B008 and
+                // 0200B00A, the battle map's 030033E4 and 030033E6).
+                let (ax, ay) = (hex(parts[1]), hex(parts[2]));
+                let (x, y): (i32, i32) = (parts[3].parse().unwrap(), parts[4].parse().unwrap());
+                for _ in 0..200 {
+                    let cx = link.core(0).raw_read_8(ax, -1) as i32;
+                    let cy = link.core(0).raw_read_8(ay, -1) as i32;
+                    let k = if cx < x {
+                        "RIGHT"
+                    } else if cx > x {
+                        "LEFT"
+                    } else if cy < y {
+                        "DOWN"
+                    } else if cy > y {
+                        "UP"
+                    } else {
+                        break;
+                    };
+                    run(&mut link, &sticky, &mut watch, &mut frame, key_bits(k), 6);
+                    run(&mut link, &sticky, &mut watch, &mut frame, 0, 10);
+                }
+            }
             "press" => {
                 let n = parts.get(2).map(|n| n.parse().unwrap()).unwrap_or(2);
                 run(&mut link, &sticky, &mut watch, &mut frame, key_bits(parts[1]), n);

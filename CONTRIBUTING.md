@@ -49,7 +49,9 @@ screen; `aw2_colour_matrix` picks every colour, Black Hole included, on
 and reads the battle's armies back from both peers. `aw2_script` runs a
 `gba_probe` script (presses, screenshots, RAM dumps and pokes) on the
 console with tangoAW2's patches, which is how the Design Room support was
-built and checked.
+built and checked; `goto AX AY X Y` walks a cursor with the arrows, and
+`AW2_TRACE`, `stepuntil8`, `steplog` and `stepreads` find the game code
+behind a behaviour (used with the aw2bhr decompilation as a map).
 
 For wider native coverage, including the upstream games the workspace
 still carries, use:
