@@ -14,6 +14,10 @@ pub mod branding;
 pub mod design;
 pub mod design_bar;
 pub mod factory;
+pub mod five;
+mod five_map;
+mod five_map_data;
+mod five_patches;
 pub mod invention_art;
 pub mod pvp;
 

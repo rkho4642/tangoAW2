@@ -435,7 +435,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
     /// turns) both seats share the pad.
     fn merge(&self, core: &Core, inputs: [u32; 2]) -> u32 {
         let current = core.raw_read_8(CURRENT_PLAYER, -1);
-        if in_versus(core) && in_battle(core) && (1..=4).contains(&current) && !turn_ended(core) {
+        if in_versus(core) && in_battle(core) && (1..=5).contains(&current) && !turn_ended(core) {
             inputs[seat_of(current)]
         } else {
             inputs[0] | inputs[1]
@@ -450,7 +450,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         let current = core.raw_read_8(CURRENT_PLAYER, -1);
         in_battle(core)
             && core.raw_read_8(FOG, -1) != 0
-            && (1..=4).contains(&current)
+            && (1..=5).contains(&current)
             && seat_of(current) != seat
             && !turn_ended(core)
     }
@@ -464,6 +464,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         set_bits(core, BATTLE_MAPS);
         set_bits(core, COS_AND_EDITS);
 
+        crate::five::sync(core);
         crate::branding::tick(core);
         crate::design_bar::patch_rom(core);
 
@@ -485,7 +486,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         // L cycle the highlighted army through the five armies, Black Hole
         // included. Campaign and War Room never reach this screen, so their
         // story armies are untouched.
-        if in_versus(core) && on_teams_screen(core) {
+        if in_versus(core) && on_teams_screen(core) && !crate::five::active(core) {
             let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
             first_teams_frame(core, armies);
             let pressed = keys & !prev;
@@ -515,7 +516,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
             for slot in 0..armies {
                 let colour = core.raw_read_8(TEAMS_COLOUR + slot, -1);
                 if (1..=5).contains(&colour) {
-                    core.raw_write_8(PLAYER_BLOCK + PLAYER_STRIDE * slot + COLOUR, -1, colour);
+                    core.raw_write_8(crate::five::players(core) + PLAYER_STRIDE * (slot + 1) + COLOUR, -1, colour);
                 }
             }
             if DESIGN_MAPS.contains(&core.raw_read_8(MAP_ID, -1)) {

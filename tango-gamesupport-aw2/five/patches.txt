@@ -1,0 +1,396 @@
+# tangoAW2: five armies. Every patch the 5-army Versus map needs, applied to
+# the ROM image in memory only while that map is being played (and removed
+# otherwise, so every other game runs the untouched code).
+#
+# Unit ids are one byte. The game gives army a the ids (a-1)*64 + 1..50 and
+# recovers the army with id >> 6. For five armies tangoAW2 gives army a the
+# ids (a-1)*51 + 1..50 (1..254 in all) and replaces each place that encodes or
+# decodes the army. A0(x) = x / 51 (0-based army of an id or block base),
+# B(x) = A0(x) * 51, S(x) = x - B(x).
+#
+# Lines (| then the original instruction, checked against the ROM):
+#   imm  ADDR NEW              new immediate for cmp/movs/adds/subs
+#   hook ADDR KIND DST SRC     replace the instruction: DST = KIND(SRC)
+#   fn   ADDR NAME             replace the whole function (entry)
+#   pre  ADDR NAME             run NAME, then the instruction
+#   word ADDR TABLE            literal word -> tangoAW2's table (old value checked)
+#   half ADDR OLD NEW          raw halfword
+
+# ---- players: gPlayers moves to free EWRAM with room for army 5 ----
+word 08499598 PLAYERS
+word 080171F4 PLAYERS
+word 08017588 PLAYERS
+
+# ---- same-team helpers (21 callers) ----
+fn 08026F5C same_team_current   | push {r4, lr}
+fn 08026F9C same_team_ids       | lsls r0, r0, #0x10
+fn 08026FD0 same_team_property  | lsls r0, r0, #0x10
+
+# ---- the current army's first id ((army-1) << 6 -> *51) ----
+hook 08017264 mul51 r0 r0 | lsls r0, r0, #6
+hook 0801972E mul51 r0 r0 | lsls r0, r0, #6
+hook 080197FE mul51 r0 r0 | lsls r0, r0, #6
+hook 080267C6 mul51 r0 r0 | lsls r0, r0, #6
+hook 0803D296 mul51 r1 r1 | lsls r1, r1, #6
+
+# ---- unit pointer -> army ((p - gUnits) / 12 >> 6, shift sees id*4) ----
+hook 08020204 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08020234 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 080202C8 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 080202FA a0_id4 r0 r0 | asrs r0, r0, #8
+hook 0802037C a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08020D74 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08021252 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08024A7A a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08024AEC a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08024C8A a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08024D02 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08024D72 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08024D9C a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08024FE8 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08025112 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08025130 a0_id4 r1 r1 | asrs r1, r1, #8
+hook 08025162 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08025180 a0_id4 r1 r1 | asrs r1, r1, #8
+hook 0802A5EC a0_id4 r0 r0 | asrs r0, r0, #8
+hook 0802A678 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 0802AAE0 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 0802AD86 a0_id4 r1 r1 | asrs r1, r1, #8
+hook 0802ADB2 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 0802AF08 a0_id4 r2 r2 | asrs r2, r2, #8
+hook 0802B71A a0_id4 r2 r2 | asrs r2, r2, #8
+hook 080355AC a0_id4_hi16 r2 r2 | lsls r2, r2, #8
+hook 08038CD6 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08038D24 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 0803A9B2 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 080419B6 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 080419D4 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08041B0C a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08041B36 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08041D6A a0_id4 r1 r1 | asrs r1, r1, #8
+hook 08041D92 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 0804200C a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08042058 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 080427FC a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08043322 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 0804336A a0_id4 r0 r0 | asrs r0, r0, #8
+hook 080433A8 a0_id4 r0 r0 | asrs r0, r0, #8
+hook 08045D6E a0_id4 r1 r1 | asrs r1, r1, #8
+
+# ---- unit pointer -> id, then & 0xC0 ----
+hook 08025FEA b r1 r1      | ands r1, r3
+hook 08026002 b r0 r0      | ands r0, r3
+hook 08029828 a0_shl6 r2 r2 | ands r2, r3
+hook 0802A22A b r0 r0      | ands r0, r1
+hook 0802A61E b r1 r1      | ands r1, r0
+hook 0804275C a0_shl6 r3 r3 | ands r3, r4
+hook 080427BA a0_shl6 r0 r0 | ands r0, r1
+hook 080605CE a0_shl6 r2 r2 | ands r2, r3
+hook 08060638 a0_shl6 r2 r2 | ands r2, r3
+hook 08074346 b r0 r0      | ands r0, r1
+hook 08025632 a0_hi16 r1 r2 | lsrs r1, r2, #0x16
+
+# ---- byte id -> army ----
+hook 08021268 a0 r5 r5      | lsrs r5, r5, #6
+hook 0802251A a0 r0 r4      | lsrs r0, r4, #6
+hook 080255BE a0_hi16 r1 r0 | lsrs r1, r0, #0x16
+hook 08025D78 a0 r4 r4      | asrs r4, r4, #6
+hook 08026A16 a0_hi16 r0 r2 | asrs r0, r2, #0x16
+hook 080286C2 a0 r2 r4      | lsrs r2, r4, #6
+hook 0802DF60 a0 r0 r2      | lsrs r0, r2, #6
+hook 0802E3E8 a0 r0 r0      | lsrs r0, r0, #6
+hook 0802E5AC a0 r0 r0      | lsrs r0, r0, #6
+hook 0802E876 a0 r2 r2      | lsrs r2, r2, #6
+hook 08037AD2 a0 r0 r0      | lsrs r0, r0, #6
+hook 08038760 a0 r1 r1      | lsrs r1, r1, #6
+hook 080388AA a0 r1 r1      | lsrs r1, r1, #6
+hook 08038B8C a0 r0 r0      | lsrs r0, r0, #6
+hook 08038E2E a0 r1 r1      | lsrs r1, r1, #6
+hook 0803D098 a0 r0 r3      | lsrs r0, r3, #6
+hook 0803E70C a0 r1 r3      | asrs r1, r3, #6
+hook 0803E8E0 a0_hi24 r1 r1 | lsrs r1, r1, #0x1e
+hook 08045C02 a0 r0 r0      | asrs r0, r0, #6
+hook 08045CFA a0 r0 r0      | asrs r0, r0, #6
+hook 08045DC8 a0 r1 r0      | asrs r1, r0, #6
+hook 08045E08 a0 r1 r0      | asrs r1, r0, #6
+hook 08045E42 a0 r1 r0      | asrs r1, r0, #6
+hook 08045E7E a0 r1 r0      | asrs r1, r0, #6
+hook 08059C72 a0 r0 r0      | lsrs r0, r0, #6
+hook 0805C44A a0 r1 r1      | lsrs r1, r1, #6
+hook 0805C682 a0 r1 r1      | lsrs r1, r1, #6
+hook 0805C8A4 a0 r1 r1      | lsrs r1, r1, #6
+# movement: enemy-blocks-path mask per army (a 4-entry table): 1 << A0
+hook 0801F794 a0_hi24 r1 r0 | lsrs r1, r0, #0x1e
+hook 0801F79E bitidx r0 r5  | ldrb r0, [r0]
+
+# ---- the unit icon drawer: army code, palette table, facing ----
+hook 080221C8 a0_hi16 r0 r3 | lsrs r0, r3, #0x16
+hook 080221DC a0 r4 r2      | lsrs r4, r2, #6
+hook 080221EE parity r0 r2  | cmp r2, #0
+word 080221C0 ICON_PALETTES
+word 08022228 ICON_PALETTES
+
+# ---- id & 0xC0: the block of an id ----
+hook 080224CA b r3 r4 | ands r3, r4
+hook 08025EFA b r1 r1 | ands r1, r2
+hook 08025EFE b r0 r0 | ands r0, r2
+hook 0802E758 b r3 r0 | ands r3, r0
+hook 0802E776 b r2 r2 | ands r2, r4
+hook 080420DC b r0 r2 | ands r0, r2
+hook 08059F86 b r0 r2 | ands r0, r2
+hook 0805A06A b r0 r2 | ands r0, r2
+hook 0805A424 b r0 r2 | ands r0, r2
+hook 0805E4A6 b r0 r5 | ands r0, r5
+hook 080614BA b r0 r2 | ands r0, r2
+hook 08061544 b r0 r2 | ands r0, r2
+hook 08061590 b r0 r2 | ands r0, r2
+
+# ---- army -> first id table ----
+word 08021304 BASES
+word 080258AC BASES
+word 08027230 BASES
+word 08028838 BASES
+word 08044EC8 BASES
+word 08045020 BASES
+word 08045170 BASES
+word 08045D38 BASES
+# these three index the table with the current army's base (a bug in the
+# game); give them the base they meant
+hook 08045932 cur_base r0 r0 | ldrh r0, [r0]
+hook 080459FA cur_base r0 r0 | ldrh r0, [r0]
+hook 08045A92 cur_base r0 r0 | ldrh r0, [r0]
+
+# ---- walks over one army's 64 ids -> 51 ----
+imm 08057F0C 0x33 | adds r3, #0x40
+imm 08057F60 0x33 | adds r3, #0x40
+imm 08057FB4 0x33 | adds r3, #0x40
+imm 080586D6 0x33 | adds r4, #0x40
+imm 0805A29A 0x33 | adds r1, #0x40
+imm 0805A368 0x33 | adds r0, #0x40
+imm 0805A528 0x33 | adds r1, #0x40
+imm 0805A5B4 0x33 | adds r0, #0x40
+imm 0805A5FE 0x33 | adds r0, #0x40
+imm 0805A6A8 0x33 | adds r0, #0x40
+imm 0805A6E6 0x33 | adds r0, #0x40
+imm 0805A71C 0x33 | adds r0, #0x40
+imm 0805AC08 0x33 | adds r0, #0x40
+imm 0805C0B6 0x33 | adds r2, #0x40
+imm 0805C21C 0x33 | adds r3, #0x40
+imm 0805CA78 0x33 | adds r0, #0x40
+imm 0805CAC2 0x33 | adds r0, #0x40
+imm 0805CB34 0x33 | adds r0, #0x40
+imm 0805CB7E 0x33 | adds r0, #0x40
+imm 0805CBE4 0x33 | adds r0, #0x40
+imm 0805CC2E 0x33 | adds r0, #0x40
+imm 0805CC9E 0x33 | adds r0, #0x40
+imm 0805CCE0 0x33 | adds r0, #0x40
+imm 0805CD4C 0x33 | adds r0, #0x40
+imm 0805CD96 0x33 | adds r0, #0x40
+imm 0805CE68 0x33 | adds r0, #0x40
+imm 0805CEB2 0x33 | adds r0, #0x40
+imm 0805CF24 0x33 | adds r0, #0x40
+imm 0805CF6E 0x33 | adds r0, #0x40
+imm 0805CFD4 0x33 | adds r0, #0x40
+imm 0805D01E 0x33 | adds r0, #0x40
+imm 0805D090 0x33 | adds r0, #0x40
+imm 0805D0DA 0x33 | adds r0, #0x40
+imm 0805D14C 0x33 | adds r0, #0x40
+imm 0805D196 0x33 | adds r0, #0x40
+imm 0805D208 0x33 | adds r0, #0x40
+imm 0805D252 0x33 | adds r0, #0x40
+imm 0805D2B6 0x33 | adds r0, #0x40
+imm 0805D2F0 0x33 | adds r0, #0x40
+imm 0805EA8A 0x33 | adds r1, #0x40
+imm 0805EB02 0x33 | adds r0, #0x40
+imm 0805FC32 0x33 | adds r1, #0x40
+imm 0805FD3A 0x33 | adds r0, #0x40
+imm 08060740 0x33 | adds r4, #0x40
+imm 08061EB0 0x33 | adds r0, #0x40
+imm 08061F0C 0x33 | adds r0, #0x40
+
+# ---- walks over every army's block (AI): i << 6 -> i * 51, 4 armies -> 5 ----
+hook 08058014 mul51 r2 r4 | lsls r2, r4, #6
+hook 0805828C mul51 r3 r2 | lsls r3, r2, #6
+hook 08058350 mul51 r3 r2 | lsls r3, r2, #6
+hook 08058412 mul51 r3 r2 | lsls r3, r2, #6
+hook 080584BC mul51 r3 r5 | lsls r3, r5, #6
+hook 08058560 mul51 r3 r5 | lsls r3, r5, #6
+hook 08059C9E mul51 r1 r3 | lsls r1, r3, #6
+hook 0805C320 mul51 r2 r2 | lsls r2, r2, #6
+hook 0805C558 mul51 r7 r2 | lsls r7, r2, #6
+hook 0805C764 mul51 r2 r2 | lsls r2, r2, #6
+hook 0806284C mul51 r2 r3 | lsls r2, r3, #6
+hook 08062CE6 mul51 r4 r5 | lsls r4, r5, #6
+hook 08062D34 mul51 r4 r5 | lsls r4, r5, #6
+hook 08062586 mul51 r6 r0 | lsls r6, r0, #6
+hook 080626FE mul51 r0 r3 | lsls r0, r3, #6
+imm 08058018 0x33 | adds r3, #0x40
+imm 08058290 0x33 | adds r4, #0x40
+imm 08058354 0x33 | adds r4, #0x40
+imm 08058416 0x33 | adds r4, #0x40
+imm 080584C0 0x33 | adds r4, #0x40
+imm 08058564 0x33 | adds r4, #0x40
+imm 08059CA4 0x33 | adds r0, #0x40
+imm 08059DD0 0x33 | adds r0, #0x40
+imm 0805C326 0x33 | adds r0, #0x40
+imm 0805C4E6 0x33 | adds r0, #0x40
+imm 0805C55C 0x33 | adds r0, #0x40
+imm 0805C6F4 0x33 | adds r0, #0x40
+imm 0805C76A 0x33 | adds r0, #0x40
+imm 0805C94A 0x33 | adds r0, #0x40
+imm 08062850 0x33 | adds r0, #0x40
+imm 08062ABE 0x33 | adds r0, #0x40
+imm 08062CEA 0x33 | adds r3, #0x40
+imm 08062D38 0x33 | adds r1, #0x40
+imm 08062700 0x33 | adds r0, #0x40
+imm 0805803E 4 | cmp r4, #3
+imm 080582EC 4 | cmp r2, #3
+imm 080583B0 4 | cmp r2, #3
+imm 08058462 4 | cmp r2, #3
+imm 0805850C 4 | cmp r5, #3
+imm 080585B0 4 | cmp r5, #3
+imm 08059DDA 4 | cmp r3, #3
+imm 0805A94A 4 | cmp r4, #3
+imm 0805C4F0 4 | cmp r2, #3
+imm 0805C6FE 4 | cmp r2, #3
+imm 0805C954 4 | cmp r2, #3
+imm 08062AC8 4 | cmp r3, #3
+imm 08062D7A 4 | cmp r5, #3
+
+# ---- unit list menu: slots 1..63 -> 1..50 ----
+imm 08047262 0x32 | cmp r4, #0x3f
+imm 08047408 0x32 | cmp r4, #0x3f
+
+# ---- one army's units by byte offset (a * 0x300 -> a * 612) ----
+hook 08025316 mul612 r1 r0 | lsls r1, r1, #8
+word 0802533C COUNT_UNITS_OFFSET
+hook 080260DC mul612 r0 r1 | lsls r0, r0, #8
+imm 080260E2 0x32 | movs r4, #0x3f
+fn 08026040 unsupported_redeal | push {r4, r5, r6, r7, lr}
+
+# ---- slot of an id (& 0x3F) for the AI's per-slot counters ----
+hook 08059FA4 s r2 r2 | ands r2, r0
+hook 0805A088 s r2 r2 | ands r2, r0
+hook 0805A556 s r1 r5 | ands r1, r5
+hook 0805AA26 s r1 r2 | ands r1, r2
+hook 0805AC3A s r0 r1 | ands r0, r1
+hook 0805E216 s r0 r1 | ands r0, r1
+hook 0805EE0C s r0 r1 | ands r0, r1
+
+# ---- the AI unit queue's end marker was id 0x40, a real unit now ----
+imm 0805CDF4 0xff | movs r0, #0x40
+imm 0805CE24 0xff | movs r0, #0x40
+imm 0805D466 0xff | cmp r0, #0x40
+imm 0805D548 0xff | cmp r0, #0x40
+imm 0805D572 0xff | cmp r0, #0x40
+
+# ---- no suspend saves in a 5-army game (the save holds four armies) ----
+fn 08016D30 no_save | push {r4, r5, r6, r7, lr}
+fn 08016DB8 no_load | push {lr}
+
+# ---- army -> property owner bits, army bits, capture tiles ----
+word 0802139C OWNERS
+word 08028658 OWNERS
+word 08028744 OWNERS
+half 08090A88 0x0008 0x1008
+fn 080240B4 capture_tile | push {r4, r5, r6, r7, lr}
+fn 0802419C hq_to_city   | push {r4, r5, r6, r7, lr}
+pre 08021996 property_census | pop {r3, r4, r5}
+
+# ---- building sprites: army 5 on OBJ palette 13, fog grey moves to 14 ----
+word 0803FAF8 BASE_SPRITES
+word 0803FB10 BASE_SPRITES
+word 0803FB44 HQ_SPRITES
+imm 0803F952 0xe0 | movs r3, #0xd0
+imm 0803F836 0x16 | adds r1, #0x15
+imm 0803F848 4    | movs r5, #3
+# Black Hole's unit palette on BG palette 1 (only pipes use it; this map has
+# none), after each of the game's palette loads
+pre 080234B8 unit_palette | pop {r4, r5, r6}
+pre 080248C8 unit_palette | pop {r4, r5}
+pre 08035042 unit_palette | pop {r4}
+
+# ---- turn order ----
+imm 08026710 6 | cmp r4, #5
+imm 0802673C 6 | cmp r4, #5
+imm 08026776 6 | cmp r0, #5
+
+# ---- vision sharing between allies ----
+imm 08020870 5 | cmp r4, #4
+imm 0802087C 5 | subs r0, r4, #4
+imm 08020890 5 | cmp r4, #4
+imm 080208A0 5 | subs r0, r4, #4
+imm 080208BC 4 | cmp r5, #3
+imm 0802096E 5 | cmp r4, #4
+imm 080209B2 5 | cmp r4, #4
+imm 08020A00 5 | cmp r0, #4
+imm 08020A04 5 | subs r0, #4
+imm 08020A54 5 | cmp r0, #4
+imm 08020A58 5 | subs r0, #4
+imm 08020A94 5 | cmp r4, #4
+imm 08020AAC 5 | subs r0, r4, #4
+imm 08020AC0 5 | cmp r4, #4
+imm 08020AD0 5 | subs r0, r4, #4
+imm 08020A30 4 | cmp r4, #3
+imm 08020AE6 4 | cmp r6, #3
+imm 08020AF0 4 | cmp r4, #3
+imm 08020AF8 5 | cmp r4, #4
+imm 08020B62 6 | cmp r4, #5
+
+# ---- match setup ----
+imm 08026C34 5 | cmp r4, #4
+pre 08026B28 setup_army5 | push {r4, r5, r6, r7, lr}
+imm 08026B8A 5 | cmp r4, #4
+imm 08026B92 5 | cmp r5, #4
+imm 08026CE8 5 | movs r5, #4
+imm 08026D7E 5 | movs r5, #4
+imm 080219D6 5 | movs r6, #4
+imm 080354E4 5 | cmp r5, #4
+imm 0803D6BA 5 | movs r1, #4
+imm 0803D6E8 5 | cmp r2, #4
+
+# ---- victory, defeat, results ----
+imm 08028C06 5 | cmp r5, #4
+imm 08028C62 5 | cmp r4, #4
+imm 08028C68 5 | cmp r5, #4
+imm 08028CAC 5 | cmp r4, #4
+imm 08028CC6 5 | cmp r5, #4
+imm 08028AE0 5 | cmp r0, #4
+imm 08028B64 5 | cmp r0, #4
+imm 08028B9E 5 | cmp r1, #4
+imm 08028A58 5 | cmp r4, #4
+imm 08019988 5 | cmp r4, #4
+imm 08034996 5 | cmp r4, #4
+imm 080349C8 5 | cmp r4, #4
+imm 08027168 5 | cmp r5, #4
+imm 0802716E 5 | cmp r4, #4
+imm 080270E4 5 | cmp r3, #4
+imm 08027110 5 | cmp r2, #4
+imm 080271C0 5 | cmp r3, #4
+imm 0803492A 5 | cmp r4, #4
+imm 08038654 5 | cmp r4, #4
+imm 08037FFC 5 | cmp r6, #4
+imm 080380CC 5 | cmp r4, #4
+imm 080380DE 5 | cmp r6, #4
+imm 080380EE 4 | movs r6, #3
+imm 08038200 5 | cmp r1, #4
+imm 080382CC 5 | cmp r4, #4
+imm 08026576 5 | cmp r5, #4
+imm 08026478 5 | cmp r4, #4
+
+# ---- CO powers, weather, AI ----
+imm 08044E52 5 | cmp r1, #4
+imm 08044F7A 5 | cmp r5, #4
+imm 080450BE 5 | cmp r5, #4
+imm 080350B2 5 | cmp r4, #4
+imm 08035106 5 | cmp r4, #4
+imm 08062078 5 | cmp r4, #4
+
+# ---- the AI's threat maps: 0xC00 bytes per army from 0x02029ED8, indexed
+# 1..4, with another buffer right after; move them to free RAM with 6 slots ----
+word 0805B53C THREAT
+word 0805B638 THREAT
+word 0805B710 THREAT
+word 080620F4 THREAT
+word 08062308 THREAT
+word 08062328 THREAT64

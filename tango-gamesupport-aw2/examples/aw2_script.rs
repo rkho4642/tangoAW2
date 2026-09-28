@@ -16,6 +16,7 @@
 //!   watch8 ADDR          print the byte every time it changes
 //!   sticky8 ADDR VAL     write a byte before every later frame; `unstick` stops
 //!   peek ADDR LEN        print LEN bytes at ADDR (hex)
+//!   regs                 print the CPU registers
 //!   goto AX AY X Y       walk a cursor whose position bytes are at AX/AY to
 //!                        (X, Y) with the arrows
 //!   stepuntil8 ADDR [N]  single-step until the byte changes (at most N
@@ -280,6 +281,11 @@ fn main() {
                 link.core(0).raw_read_range(hex(parts[1]), -1, &mut buf);
                 let s: Vec<String> = buf.iter().map(|b| format!("{b:02x}")).collect();
                 println!("{} @{frame}: {}", parts[1], s.join(" "));
+            }
+            "regs" => {
+                let cpu = link.core(0).gba().cpu();
+                let r: Vec<String> = (0..16).map(|i| format!("r{i}={:08x}", cpu.gpr(i) as u32)).collect();
+                println!("regs @{frame}: {}", r.join(" "));
             }
             "stepuntil8" => {
                 // Single-step the CPU until the byte changes, then print

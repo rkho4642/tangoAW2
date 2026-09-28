@@ -36,7 +36,6 @@ const DETOUR: u32 = 0x0203_FFFC;
 
 const CURRENT_ARMY: u32 = 0x0300_33EC;
 /// Player blocks, indexed by the 1-based army number in [`CURRENT_ARMY`].
-const PLAYER_BLOCK: u32 = 0x0202_3284;
 const PLAYER_SIZE: u32 = 0x3C;
 const BLACK_HOLE: u8 = 5;
 const HUMAN: u8 = 1;
@@ -60,7 +59,7 @@ fn at_turn_start(core: &mut Core) {
         return;
     }
     let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
-    let block = PLAYER_BLOCK + PLAYER_SIZE * army;
+    let block = crate::five::players(core) + PLAYER_SIZE * army;
     if core.raw_read_8(block + 0x1A, -1) != BLACK_HOLE || core.raw_read_8(block + 0x1B, -1) != HUMAN {
         return;
     }
@@ -79,10 +78,11 @@ fn at_turn_start(core: &mut Core) {
 }
 
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
-    vec![
+    let mut traps: Vec<(u32, Box<dyn Fn(&mut Core)>)> = vec![
         (AI_TABLE_STORED, Box::new(after_ai_table_stored)),
         (TURN_START, Box::new(at_turn_start)),
         (crate::branding::SPRITE_FLUSH, Box::new(crate::branding::flush)),
+        (crate::five_map::MAP_NAME, Box::new(crate::five_map::map_name)),
         (crate::design::EDITOR_FRAME, Box::new(crate::design::editor_frame)),
         (crate::design_bar::LIST_BUILT, Box::new(crate::design_bar::list_built)),
         (crate::design_bar::ICON_LOADER, Box::new(crate::design_bar::icon_loader)),
@@ -91,5 +91,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
             crate::design_bar::ICON_PALETTE,
             Box::new(crate::design_bar::icon_palette),
         ),
-    ]
+    ];
+    traps.extend(crate::five::traps());
+    traps
 }
