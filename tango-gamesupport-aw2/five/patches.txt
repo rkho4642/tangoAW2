@@ -287,6 +287,9 @@ imm 0805D572 0xff | cmp r0, #0x40
 # ---- no suspend saves in a 5-army game (the save holds four armies) ----
 fn 08016D30 no_save | push {r4, r5, r6, r7, lr}
 fn 08016DB8 no_load | push {lr}
+# The map menu's Save item (menu table entry 0849AB64: hide test, then
+# on-select 0802CFC0, text 0x90B) hides in link games; hide it here too.
+fn 0802C644 hide_save | ldr r0, [pc, #0xc]
 
 # ---- army -> property owner bits, army bits, capture tiles ----
 word 0802139C OWNERS
@@ -316,6 +319,10 @@ pre 08035042 unit_palette | pop {r4}
 imm 08026710 6 | cmp r4, #5
 imm 0802673C 6 | cmp r4, #5
 imm 08026776 6 | cmp r0, #5
+
+# ---- fog of war: vision is added army by army with four unrolled calls
+# (sub_080212AC(1..4)); after the fourth, detour through sub_080212AC(5) ----
+pre 0802147C vision_army5 | movs r0, #0
 
 # ---- vision sharing between allies ----
 imm 08020870 5 | cmp r4, #4

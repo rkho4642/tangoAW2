@@ -70,6 +70,8 @@ const ARMY5_CONTROL: u32 = 0x0203_0200; // 1 human, 2 computer
 const ARMY5_CO: u32 = 0x0203_0201; // CO id + 1 (0: not picked yet)
 const ARMY5_TEAM: u32 = 0x0203_0202; // team + 1
 const LABEL_PENDING: u32 = 0x0203_0204;
+/// Set while the vision detour for army 5 runs.
+const VISION_DETOUR: u32 = 0x0203_0205;
 const FLAK: u8 = 11;
 const KANBEI: u8 = 6;
 
@@ -124,6 +126,7 @@ pub enum Routine {
     UnsupportedRedeal,
     NoSave,
     NoLoad,
+    HideSave,
     CaptureTile,
     HqToCity,
     PropertyCensus,
@@ -135,6 +138,7 @@ pub enum Routine {
     Label5pTiles,
     TeamE,
     TeamsCommit,
+    VisionArmy5,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -388,6 +392,8 @@ fn routine(core: &mut Core, r: Routine) -> Option<u32> {
             Some((t != 0 && team(core, army(r0)) == team(core, t)) as u32)
         }
         Routine::UnsupportedRedeal | Routine::NoSave | Routine::NoLoad => None,
+        // The map menu's Save item hides when its test returns nonzero.
+        Routine::HideSave => Some(1),
         Routine::CaptureTile => Some(capture_tile(core, r0 as i16, r1 as i16, r2 as u8, false)),
         Routine::HqToCity => Some(capture_tile(core, r0 as i16, r1 as i16, r2 as u8, true)),
         Routine::PropertyCensus => {
@@ -457,6 +463,20 @@ fn routine(core: &mut Core, r: Routine) -> Option<u32> {
                 let cpu = core.gba_mut().cpu_mut();
                 cpu.set_gpr(0, 0xC0);
                 cpu.set_gpr(3, offset as i32);
+            }
+            None
+        }
+        Routine::VisionArmy5 => {
+            // First time here: call sub_080212AC(5), returning to this
+            // instruction (r0..r3 are free after the calls before it).
+            if core.raw_read_8(VISION_DETOUR, -1) == 0 {
+                core.raw_write_8(VISION_DETOUR, -1, 1);
+                let cpu = core.gba_mut().cpu_mut();
+                cpu.set_gpr(0, 5);
+                cpu.set_gpr(14, (0x0802_147C | 1) as i32);
+                cpu.set_thumb_pc(0x0802_12AC);
+            } else {
+                core.raw_write_8(VISION_DETOUR, -1, 0);
             }
             None
         }

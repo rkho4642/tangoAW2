@@ -36,6 +36,8 @@ def decode(h):
         off = ((h >> 6) & 31) * kind[2]
         rb, rd = REGS[(h >> 3) & 7], REGS[h & 7]
         return f'{op} {rd}, [{rb}]' if off == 0 else f'{op} {rd}, [{rb}, {imm(off)}]'
+    if h & 0xF800 == 0x4800:
+        return f'ldr {REGS[(h >> 8) & 7]}, [pc, {imm((h & 0xFF) * 4)}]'
     if h & 0xF600 == 0xB400:
         lst = [REGS[i] for i in range(8) if h >> i & 1]
         if h & 0x100:
