@@ -329,3 +329,15 @@ playback-priming-elapsed = { $secs } s
 playback-priming-failed = Die Spiele haben ihren Kampf nicht erreicht.
 settings-data-folder = Datenordner
 settings-data-folder-change = Ändern…
+
+input-key-mic = Ins Mikrofon pusten
+input-key-x = X
+input-key-y = Y
+settings-ds-primary-screen = Primärer Bildschirm
+settings-ds-primary-screen-touch = Touchscreen
+settings-ds-primary-screen-upper = Oberer Bildschirm
+settings-ds-screen-stacking = Anordnung
+settings-ds-screen-stacking-horizontal = Horizontal
+settings-ds-screen-stacking-primary-only = Nur primärer Bildschirm
+settings-ds-screen-stacking-vertical = Vertikal
+settings-group-ds = Nintendo DS

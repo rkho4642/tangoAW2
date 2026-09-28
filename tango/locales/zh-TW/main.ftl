@@ -336,3 +336,15 @@ rescan = 重新掃描
 # Game names live in games.ftl — same Fluent attribute scheme the
 # legacy app uses (game-<family> = base name; .variant-N for each
 # regional/colour variant; .match-type-X-Y for per-mode labels).
+
+input-key-mic = 對著麥克風吹氣
+input-key-x = X
+input-key-y = Y
+settings-ds-primary-screen = 主螢幕
+settings-ds-primary-screen-touch = 觸控螢幕
+settings-ds-primary-screen-upper = 上螢幕
+settings-ds-screen-stacking = 螢幕排列
+settings-ds-screen-stacking-horizontal = 水平
+settings-ds-screen-stacking-primary-only = 僅主螢幕
+settings-ds-screen-stacking-vertical = 垂直
+settings-group-ds = 任天堂DS

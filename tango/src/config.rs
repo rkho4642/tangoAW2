@@ -129,6 +129,34 @@ pub enum AccentColor {
     Purple,
 }
 
+/// How a two-screen console's screens are arranged in the emulator
+/// pane. Pure presentation: the session always composes its frame the
+/// same way, and the frontend re-lays it out at draw time — which is
+/// what lets this switch take effect mid-session.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum DsScreenStacking {
+    /// The console's own arrangement, one screen above the other. The
+    /// default: it's the shape players know the games by.
+    #[default]
+    Vertical,
+    /// Side by side.
+    Horizontal,
+    /// Only the primary screen (see [`DsPrimaryScreen`]), full pane.
+    PrimaryOnly,
+}
+
+/// Which DS screen leads the arrangement — sits on the left of a
+/// horizontal pair, or on top of a vertical stack. Presentation only,
+/// like [`DsScreenStacking`].
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum DsPrimaryScreen {
+    /// The console's upper screen.
+    #[default]
+    Upper,
+    /// The touch screen.
+    Touch,
+}
+
 /// Whether matchmaking connections may/must go through the TURN
 /// relay. `Auto` lets ICE pick the best route (direct when possible,
 /// relay as fallback); `Always` forces every candidate through the
@@ -189,6 +217,16 @@ pub struct Config {
     /// no bilinear shimmer at non-integer scales.
     #[serde(default)]
     pub fractional_scaling: bool,
+    /// How a DS game's two screens stack in the emulator pane.
+    /// Applied at draw time, so switching it mid-session re-lays the
+    /// pane out immediately. Ignored for single-screen consoles.
+    #[serde(default)]
+    pub ds_screen_stacking: DsScreenStacking,
+    /// Which DS screen leads the arrangement (left of a horizontal
+    /// pair, top of a vertical stack). Applied at draw time like
+    /// [`ds_screen_stacking`](Self::ds_screen_stacking).
+    #[serde(default)]
+    pub ds_primary_screen: DsPrimaryScreen,
     /// When true, replay playback shows the input display overlay:
     /// one pad chip per side with the recorded buttons lit at the
     /// playhead. Toggled from the replay transport bar.
@@ -313,6 +351,8 @@ impl Default for Config {
             accent: AccentColor::default(),
             video_filter: String::new(),
             fractional_scaling: false,
+            ds_screen_stacking: DsScreenStacking::default(),
+            ds_primary_screen: DsPrimaryScreen::default(),
             show_replay_inputs: false,
             opponent_view: OpponentView::Off,
             pvp_setup_pane_widths: default_setup_pane_widths(),
@@ -506,6 +546,8 @@ mod tests {
             "patch_repo": "https://example.invalid/patches",
             "video_filter": "hq3x",
             "fractional_scaling": true,
+            "ds_screen_stacking": "Horizontal",
+            "ds_primary_screen": "Touch",
             "show_replay_inputs": true,
             "opponent_view": "StackVertically",
             "pvp_setup_pane_widths": [300.0, 512.5],
@@ -609,16 +651,14 @@ mod tests {
         assert!(json.get("show_opponent_pip").is_none());
     }
 
-    /// Settings later builds dropped (the patch autoupdater, the DS
-    /// screen layout, the Legacy Collection border, the opponent-setup
-    /// drawer) are ignored when an old config still carries them.
+    /// Settings later builds dropped (the patch autoupdater, the Legacy
+    /// Collection border, the opponent-setup drawer) are ignored when an
+    /// old config still carries them.
     #[test]
     fn dropped_settings_are_ignored() {
         let config: Config = serde_json::from_value(serde_json::json!({
             "nickname": "someone",
             "enable_patch_autoupdate": true,
-            "ds_screen_stacking": "Horizontal",
-            "ds_primary_screen": "Touch",
             "hide_emulator_border": true,
             "show_opponent_setup": true,
         }))
@@ -626,7 +666,7 @@ mod tests {
         assert_eq!(config.nickname.as_deref(), Some("someone"));
         let json = serde_json::to_value(config).unwrap();
         assert!(json.get("enable_patch_autoupdate").is_none());
-        assert!(json.get("ds_screen_stacking").is_none());
+        assert!(json.get("hide_emulator_border").is_none());
     }
 
     #[test]

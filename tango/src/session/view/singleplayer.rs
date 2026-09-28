@@ -10,6 +10,7 @@ pub(crate) fn view(ctx: Ctx<'_>) -> Element<'_, SessionMessage> {
     let now = iced::time::Instant::now();
     let frame = framebuffer_view(
         ctx,
+        None,
         iced::alignment::Horizontal::Center,
         iced::alignment::Vertical::Center,
     );

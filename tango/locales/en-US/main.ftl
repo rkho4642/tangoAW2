@@ -356,3 +356,15 @@ rescan = Rescan
 # Game names live in games.ftl — same Fluent attribute scheme the
 # legacy app uses (game-<family> = base name; .variant-N for each
 # regional/colour variant; .match-type-X-Y for per-mode labels).
+
+input-key-mic = Blow into mic
+input-key-x = X
+input-key-y = Y
+settings-ds-primary-screen = Primary screen
+settings-ds-primary-screen-touch = Touch screen
+settings-ds-primary-screen-upper = Upper screen
+settings-ds-screen-stacking = Stacking
+settings-ds-screen-stacking-horizontal = Horizontal
+settings-ds-screen-stacking-primary-only = Primary screen only
+settings-ds-screen-stacking-vertical = Vertical
+settings-group-ds = Nintendo DS

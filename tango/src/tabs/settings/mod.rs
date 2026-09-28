@@ -152,6 +152,11 @@ pub enum Message {
     DataFolderPicked(Option<std::path::PathBuf>),
     VideoFilterChanged(String),
     ToggleFractionalScaling(bool),
+    /// New DS screen arrangement picked. Applied at draw time, so an
+    /// active session re-lays out immediately.
+    DsScreenStackingChanged(config::DsScreenStacking),
+    /// New DS primary screen picked — same draw-time application.
+    DsPrimaryScreenChanged(config::DsPrimaryScreen),
     ToggleFullscreen(bool),
     /// New windowed size picked, as `(width, height)`.
     ResolutionChanged((f32, f32)),
@@ -210,6 +215,8 @@ pub enum ConfigChange {
     DataPath(std::path::PathBuf),
     VideoFilter(String),
     FractionalScaling(bool),
+    DsScreenStacking(config::DsScreenStacking),
+    DsPrimaryScreen(config::DsPrimaryScreen),
     Fullscreen(bool),
     Resolution(f32, f32),
     UiScale(f32),
@@ -287,6 +294,8 @@ impl State {
             Message::DataFolderPicked(None) => None,
             Message::VideoFilterChanged(s) => Some(ConfigChange::VideoFilter(s)),
             Message::ToggleFractionalScaling(b) => Some(ConfigChange::FractionalScaling(b)),
+            Message::DsScreenStackingChanged(s) => Some(ConfigChange::DsScreenStacking(s)),
+            Message::DsPrimaryScreenChanged(s) => Some(ConfigChange::DsPrimaryScreen(s)),
             Message::ToggleFullscreen(b) => Some(ConfigChange::Fullscreen(b)),
             Message::ResolutionChanged((w, h)) => Some(ConfigChange::Resolution(w, h)),
             Message::UiScaleChanged(s) => Some(ConfigChange::UiScale(s)),

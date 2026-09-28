@@ -61,6 +61,8 @@ impl App {
             }
             C::VideoFilter(s) => self.config.video_filter = s,
             C::FractionalScaling(b) => self.config.fractional_scaling = b,
+            C::DsScreenStacking(s) => self.config.ds_screen_stacking = s,
+            C::DsPrimaryScreen(s) => self.config.ds_primary_screen = s,
             C::Fullscreen(b) => {
                 self.config.fullscreen = b;
                 self.persist_config();

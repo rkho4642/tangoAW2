@@ -8,7 +8,7 @@
   Mad-Man-Dan, Veslyquix and contributors; used as a map of the game's code,
   none of it is copied), and the [libretro cheat database](https://github.com/libretro/libretro-database)
   for the Advance Wars 2 CodeBreaker list.
-- Emulation: [endrift](https://twitter.com/endrift) (mGBA).
+- Emulation: [endrift](https://twitter.com/endrift) (mGBA), [Arisotura](https://github.com/Arisotura) (melonDS).
 
 Advance Wars is a trademark of Nintendo. tangoAW2 is not affiliated with
 Nintendo or Intelligent Systems.

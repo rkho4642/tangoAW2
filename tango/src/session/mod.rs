@@ -13,6 +13,7 @@ mod launch;
 mod recording;
 mod results;
 mod runtime;
+mod stylus;
 pub use launch::{build_playback, spawn_pvp, spawn_singleplayer, spawn_training, Launch};
 pub use runtime::PrefetchStatsFeed;
 
@@ -36,6 +37,7 @@ use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Ren
 use lucide_icons::Icon;
 use pvp::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use results::{capture_results, MatchResults};
+use stylus::{Stylus, StylusEvent};
 use unic_langid::LanguageIdentifier;
 use update::pvp::{MetricSample, PvpPanes, METRIC_HISTORY_LEN};
 use update::replay::Scrub;
@@ -87,6 +89,10 @@ pub struct State {
     /// the input event stream; the user's Mapping resolves it
     /// into GBA joyflags each event.
     pub input_held: crate::platform::input::HeldState,
+    /// Pointer-as-stylus state over the emulator surface, for the DS's
+    /// touch screen. Fed by the framebuffer widget's mouse area; folded
+    /// into the session input alongside the joyflags.
+    pub stylus: Stylus,
     /// Last value of `mapping.speed_up_held(...)` so we can
     /// detect the falling/rising edge and only call set_speed
     /// when it actually flips.
@@ -181,6 +187,7 @@ impl Default for State {
             opponent_panel: anim::Overlay::new(false),
             self_panel: anim::Overlay::new(false),
             input_held: crate::platform::input::HeldState::default(),
+            stylus: Stylus::default(),
             speed_up_engaged: false,
             settings: anim::Overlay::new(false),
             disconnect: anim::Overlay::new(false),
@@ -263,6 +270,11 @@ pub enum Message {
     /// session. Live-session speed-up uses the same mechanism
     /// (edge-detected); replay transport keys are decoded before it.
     Input(crate::platform::input::Event),
+    /// Pointer event over the emulator surface of a console with a
+    /// touch screen, already mapped into that screen's pixels by the
+    /// framebuffer widget. Folded into the same session input push as
+    /// [`Input`](Self::Input).
+    Stylus(StylusEvent),
     /// Replay-view messages (transport, scrubber, display toggles) —
     /// defined + handled in [`update::replay`].
     Replay(update::replay::Message),
@@ -414,14 +426,14 @@ impl State {
     }
 
     /// Push the local player's whole current input — the mapping's
-    /// resolution of everything held — to the active
+    /// resolution of everything held, plus the stylus — to the active
     /// session. Every input-shaped event ends here, so the session
     /// always holds the latest complete picture.
     fn push_input(&self, mapping: &crate::platform::input::Mapping) {
         if let Some(s) = self.active.as_ref() {
             s.set_input(tango_session::HostInput {
                 keys: mapping.to_joyflags(&self.input_held),
-                touch: None,
+                touch: self.stylus.touch(),
             });
         }
     }
@@ -447,6 +459,10 @@ impl State {
                         s.set_speed(factor);
                     }
                 }
+            }
+            Message::Stylus(ev) => {
+                self.stylus.apply(ev);
+                self.push_input(mapping);
             }
             // Kind-specific view messages — defined + handled beside
             // the views that emit them.

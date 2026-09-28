@@ -453,10 +453,13 @@ impl Mapping {
             MappedKey::Right => &self.right,
             MappedKey::A => &self.a,
             MappedKey::B => &self.b,
+            MappedKey::X => &self.x,
+            MappedKey::Y => &self.y,
             MappedKey::L => &self.l,
             MappedKey::R => &self.r,
             MappedKey::Start => &self.start,
             MappedKey::Select => &self.select,
+            MappedKey::Mic => &self.mic,
             MappedKey::SpeedUp => &self.speed_up,
         }
     }
@@ -469,10 +472,13 @@ impl Mapping {
             MappedKey::Right => &mut self.right,
             MappedKey::A => &mut self.a,
             MappedKey::B => &mut self.b,
+            MappedKey::X => &mut self.x,
+            MappedKey::Y => &mut self.y,
             MappedKey::L => &mut self.l,
             MappedKey::R => &mut self.r,
             MappedKey::Start => &mut self.start,
             MappedKey::Select => &mut self.select,
+            MappedKey::Mic => &mut self.mic,
             MappedKey::SpeedUp => &mut self.speed_up,
         }
     }
@@ -523,10 +529,14 @@ pub enum MappedKey {
     Right,
     A,
     B,
+    X,
+    Y,
     L,
     R,
     Start,
     Select,
+    /// DS only: white noise on the microphone.
+    Mic,
     SpeedUp,
 }
 

@@ -9,6 +9,7 @@ members = [
     "tango-net",
     "tango-platform",
     "tango-match",
+    "tango-backend-melonds",
     "tango-backend-mgba",
     "tango-replay",
     "tango-replay-renderer",

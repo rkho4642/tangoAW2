@@ -1,6 +1,39 @@
-//! Graphics pane: window and emulator display.
+//! Graphics pane: window, emulator display, DS screen arrangement.
 
 use super::*;
+
+fn ds_screen_stacking_choice(
+    lang: &LanguageIdentifier,
+    stacking: config::DsScreenStacking,
+) -> Choice<config::DsScreenStacking> {
+    Choice::new(
+        stacking,
+        match stacking {
+            config::DsScreenStacking::Horizontal => t!(lang, "settings-ds-screen-stacking-horizontal"),
+            config::DsScreenStacking::Vertical => t!(lang, "settings-ds-screen-stacking-vertical"),
+            config::DsScreenStacking::PrimaryOnly => t!(lang, "settings-ds-screen-stacking-primary-only"),
+        },
+    )
+}
+
+fn ds_primary_screen_choice(
+    lang: &LanguageIdentifier,
+    primary: config::DsPrimaryScreen,
+) -> Choice<config::DsPrimaryScreen> {
+    Choice::new(
+        primary,
+        match primary {
+            config::DsPrimaryScreen::Upper => t!(lang, "settings-ds-primary-screen-upper"),
+            config::DsPrimaryScreen::Touch => t!(lang, "settings-ds-primary-screen-touch"),
+        },
+    )
+}
+
+/// Whether any registered game runs on the DS (its console has X and Y).
+fn has_ds_game() -> bool {
+    let ds = tango_match::keys::X | tango_match::keys::Y;
+    tango_library::game::GAMES.iter().any(|g| g.pvp.keys_mask() & ds != 0)
+}
 
 /// A window resolution as a pick_list [`Choice`]. PartialEq is exact
 /// f32 — fine since the values come straight from
@@ -51,7 +84,7 @@ pub(super) fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a co
         .iter()
         .find(|c| (c.value - config.ui_scale).abs() < f32::EPSILON)
         .cloned();
-    let groups: Vec<Element<'a, Message>> = vec![
+    let mut groups: Vec<Element<'a, Message>> = vec![
         settings_group(
             t!(lang, "settings-group-window"),
             vec![
@@ -89,6 +122,36 @@ pub(super) fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a co
             ],
         ),
     ];
+    // Only a DS game has a second screen: the group shows once one is
+    // registered (a console with X/Y buttons).
+    if has_ds_game() {
+        groups.push(settings_group(
+            t!(lang, "settings-group-ds"),
+            vec![
+                option_row::<Message>(t!(lang, "settings-ds-screen-stacking"), {
+                    let options = vec![
+                        ds_screen_stacking_choice(lang, config::DsScreenStacking::Vertical),
+                        ds_screen_stacking_choice(lang, config::DsScreenStacking::Horizontal),
+                        ds_screen_stacking_choice(lang, config::DsScreenStacking::PrimaryOnly),
+                    ];
+                    let selected = options.iter().find(|c| c.value == config.ds_screen_stacking).cloned();
+                    widgets::picker(options, selected, |c: Choice<config::DsScreenStacking>| {
+                        Message::DsScreenStackingChanged(c.value)
+                    })
+                }),
+                option_row::<Message>(t!(lang, "settings-ds-primary-screen"), {
+                    let options = vec![
+                        ds_primary_screen_choice(lang, config::DsPrimaryScreen::Upper),
+                        ds_primary_screen_choice(lang, config::DsPrimaryScreen::Touch),
+                    ];
+                    let selected = options.iter().find(|c| c.value == config.ds_primary_screen).cloned();
+                    widgets::picker(options, selected, |c: Choice<config::DsPrimaryScreen>| {
+                        Message::DsPrimaryScreenChanged(c.value)
+                    })
+                }),
+            ],
+        ));
+    }
     sweeten::widget::Column::with_children(groups)
         .spacing(24)
         .padding(style::PANE_PADDING)

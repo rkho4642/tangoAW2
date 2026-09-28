@@ -1,9 +1,9 @@
 # Match engine
 
 `tango-match` coordinates deterministic simulation over emulator-independent
-interfaces. Advance Wars 2 runs on `tango-backend-mgba`. A game's
-registration supplies a `Backend`, so sessions and replay consumers use
-the same engine API whatever the emulator.
+interfaces. GBA games (Advance Wars 2) use `tango-backend-mgba`; DS games
+use `tango-backend-melonds`. A game's registration supplies a `Backend`, so
+sessions and replay consumers use the same engine API for either console.
 
 The crate owns no network connection, UI, audio device, or drive thread.
 The host advances the simulation and decides how to pace it. See

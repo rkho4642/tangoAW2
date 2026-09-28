@@ -86,6 +86,7 @@ def check_boundaries(root: Path) -> list[str]:
         "tango-net": {"tango-platform", "tango-net-protocol"},
         "tango-lobby": {"tango-net", "tango-platform", "tango-net-protocol"},
         "tango-backend-mgba": {"tango-match"},
+        "tango-backend-melonds": {"tango-match"},
         "tango-replay-renderer": {"tango-match"},
         "tango-gamesupport": {"tango-match"},
         "tango-gamesupport-common-dataview": {"tango-gamesupport"},

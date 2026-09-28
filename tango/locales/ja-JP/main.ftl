@@ -336,3 +336,15 @@ playback-priming-elapsed = { $secs }秒
 playback-priming-failed = ゲームがバトルまで到達しませんでした。
 settings-data-folder = データフォルダ
 settings-data-folder-change = 変更…
+
+input-key-mic = マイクに息をふきかける
+input-key-x = X
+input-key-y = Y
+settings-ds-primary-screen = メイン画面
+settings-ds-primary-screen-touch = タッチ画面
+settings-ds-primary-screen-upper = 上画面
+settings-ds-screen-stacking = 画面の配置
+settings-ds-screen-stacking-horizontal = 横並び
+settings-ds-screen-stacking-primary-only = メイン画面のみ
+settings-ds-screen-stacking-vertical = 縦並び
+settings-group-ds = ニンテンドーDS

@@ -75,6 +75,8 @@ impl App {
                 fractional_scaling: self.config.fractional_scaling,
                 show_replay_inputs: self.config.show_replay_inputs,
                 opponent_view: self.config.opponent_view,
+                ds_screen_stacking: self.config.ds_screen_stacking,
+                ds_primary_screen: self.config.ds_primary_screen,
                 clip_export_scale: self.replays.export_settings.scale,
                 clip_job,
                 queued: self.replays.queue.len(),

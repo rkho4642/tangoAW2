@@ -50,6 +50,12 @@ pub struct Ctx<'a> {
     /// How modes with two perspectives present the auxiliary surface.
     /// Read live from config so replay and training switch immediately.
     pub opponent_view: crate::config::OpponentView,
+    /// How a DS session's two screens stack in the pane. Read live
+    /// from config, so the switch re-lays out an active session.
+    pub ds_screen_stacking: crate::config::DsScreenStacking,
+    /// Which DS screen leads the arrangement — live from config, like
+    /// the stacking.
+    pub ds_primary_screen: crate::config::DsPrimaryScreen,
     /// Quality mode used by replay exports: `0` is raw output at native
     /// resolution; `1..=10` is lossy at that integer upscale. Owned by
     /// the replays tab, but surfaced in the replay clip strip too.

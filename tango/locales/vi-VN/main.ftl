@@ -323,3 +323,15 @@ playback-priming-elapsed = { $secs } giây
 playback-priming-failed = Các game không đến được trận chiến.
 settings-data-folder = Thư mục dữ liệu
 settings-data-folder-change = Thay đổi…
+
+input-key-mic = Thổi vào micrô
+input-key-x = X
+input-key-y = Y
+settings-ds-primary-screen = Màn hình chính
+settings-ds-primary-screen-touch = Màn hình cảm ứng
+settings-ds-primary-screen-upper = Màn hình trên
+settings-ds-screen-stacking = Bố cục màn hình
+settings-ds-screen-stacking-horizontal = Ngang
+settings-ds-screen-stacking-primary-only = Chỉ màn hình chính
+settings-ds-screen-stacking-vertical = Dọc
+settings-group-ds = Nintendo DS

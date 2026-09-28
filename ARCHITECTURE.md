@@ -34,7 +34,7 @@ flowchart TD
     Library --> Protocol
     Library --> Model[headless save models and validation]
     Library --> Games[per-game registrations]
-    Games --> Backends[tango-backend-mgba]
+    Games --> Backends[mgba / melonDS backends]
     Backends --> Match
 ```
 

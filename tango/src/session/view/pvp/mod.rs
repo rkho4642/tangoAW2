@@ -62,6 +62,7 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
     let now = iced::time::Instant::now();
     let frame = framebuffer_view(
         ctx,
+        None,
         iced::alignment::Horizontal::Center,
         iced::alignment::Vertical::Center,
     );
