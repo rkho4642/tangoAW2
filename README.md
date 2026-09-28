@@ -19,6 +19,15 @@ No game is included. You need your own copy of the cartridge dumped to a
 </tr>
 </table>
 
+## New in 0.2.1
+
+- **Black Rampart**, a new 5P map in the campaign's style: Black Hole's
+  fortress at the top behind a pipe wall, with a Black Factory,
+  minicannons and a Deathray in the middle of the top edge that fires
+  down the whole map. See [Five armies](#five-armies-5p-maps).
+- **Black Monolith** (with the Dual Strike art) gets more cities for every
+  army, more neutral cities, neutral airports and roads.
+
 ## New in 0.2.0
 
 - **Five armies on one map.** A **5P Maps** tab in Versus: Orange Star,
