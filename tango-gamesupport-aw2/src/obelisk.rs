@@ -14,6 +14,11 @@ use mgba::core::Core;
 
 use crate::obelisk_art::{CRYSTAL, CRYSTAL_NAME, OBELISK, OBELISK_NAME, OBELISK_SMALL};
 
+/// The Obelisk's three sprites' tiles (see `install`).
+pub const OBELISK_MIDDLE: &[u8] = OBELISK.split_at(1024).0;
+pub const OBELISK_LEFT: &[u8] = OBELISK.split_at(1024).1.split_at(128).0;
+pub const OBELISK_RIGHT: &[u8] = OBELISK.split_at(1152).1;
+
 pub const CRYSTAL_TILE: u16 = 0x192;
 pub const OBELISK_TILE: u16 = 0x193;
 /// Their terrain classes: minicannon facing down, Black Cannon facing down.
@@ -44,12 +49,12 @@ pub const OBELISK_NAME_AT: u32 = DATA + 0x200;
 const CRYSTAL_PICTURE_AT: u32 = DATA + 0x300;
 const OBELISK_PICTURE_AT: u32 = DATA + 0x400;
 const DATA_SENTINEL: u32 = DATA + 0xFFC;
-const DATA_MAGIC: u32 = 0x4B4C_424F; // "OBLK"
+const DATA_MAGIC: u32 = 0x324B_4C42; // "BLK2" (bump when the data changes)
 
 /// OBJ tiles for the sprites in battle (no screen of the battle map writes
-/// 0x176..0x1A5): the Obelisk's 32 tiles, then the Crystal's 8.
+/// 0x176..0x1A5): the Obelisk's 40 tiles, then the Crystal's 8.
 const OBELISK_OBJ_TILE: u32 = 0x176;
-const CRYSTAL_OBJ_TILE: u32 = 0x196;
+const CRYSTAL_OBJ_TILE: u32 = 0x19E;
 /// Which structure's name the terrain panel is showing (1 Crystal, 2 Obelisk).
 const PANEL: u32 = 0x0203_0207;
 
@@ -69,10 +74,24 @@ pub fn install(core: &mut Core) {
         }
     }
     // Sprite definitions: count, then attr0/attr1/attr2 (tile relative to
-    // 0x48, priority 3). The Obelisk is one 32x64 sprite over its 3x3 rect
-    // (drawn from the rect's corner), the Crystal a 16x32 one.
-    let obelisk_def = [0x0001u16, 0x80F0, 0xC008, 0x0C00 | (OBELISK_OBJ_TILE - 0x48) as u16];
-    let crystal_def = [0x0001u16, 0x80F0, 0x8000, 0x0C00 | (CRYSTAL_OBJ_TILE - 0x48) as u16];
+    // 0x48, priority 3), drawn from the structure's top-left corner. The
+    // Obelisk is a 32x64 sprite over the middle of its 3x3 rect, rising a
+    // tile above it, and two 8x32 strips for the platform's sides; the
+    // Crystal a 16x32 one.
+    let tile = |t: u32| 0x0C00 | (t - 0x48) as u16;
+    let obelisk_def: &[u16] = &[
+        0x0003,
+        0x80F0,
+        0xC008,
+        tile(OBELISK_OBJ_TILE),
+        0x8010,
+        0x4000,
+        tile(OBELISK_OBJ_TILE + 32),
+        0x8010,
+        0x4028,
+        tile(OBELISK_OBJ_TILE + 36),
+    ];
+    let crystal_def: &[u16] = &[0x0001, 0x80F0, 0x8000, tile(CRYSTAL_OBJ_TILE)];
     for (at, def) in [(OBELISK_DEF, obelisk_def), (CRYSTAL_DEF, crystal_def)] {
         for (i, h) in def.iter().enumerate() {
             core.raw_write_16(at + 2 * i as u32, -1, *h);

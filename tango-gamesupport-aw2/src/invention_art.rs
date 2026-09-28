@@ -98,7 +98,11 @@ const FACTORY: &[Piece] = &[
 const VOLCANO_ART: &[Piece] = &[piece(0, 0, 64, 64, Src::Lz(VOLCANO, 0))];
 /// Drawn as the battle draws them (`crate::obelisk`'s sprite definitions).
 const CRYSTAL: &[Piece] = &[piece(0, -16, 16, 32, Src::Own(&crate::obelisk_art::CRYSTAL))];
-const OBELISK: &[Piece] = &[piece(8, -16, 32, 64, Src::Own(&crate::obelisk_art::OBELISK))];
+const OBELISK: &[Piece] = &[
+    piece(8, -16, 32, 64, Src::Own(crate::obelisk::OBELISK_MIDDLE)),
+    piece(0, 16, 8, 32, Src::Own(crate::obelisk::OBELISK_LEFT)),
+    piece(40, 16, 8, 32, Src::Own(crate::obelisk::OBELISK_RIGHT)),
+];
 
 /// Per invention, in `design::INVENTIONS` order: its pieces and whether it
 /// uses the Volcano's palette.
