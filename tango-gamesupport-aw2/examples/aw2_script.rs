@@ -17,6 +17,8 @@
 //!   sticky8 ADDR VAL     write a byte before every later frame; `unstick` stops
 //!   peek ADDR LEN        print LEN bytes at ADDR (hex)
 //!   regs                 print the CPU registers
+//!   stepwatch32 ADDR N   single-step N instructions, printing each change
+//!                        of the word at ADDR
 //!   goto AX AY X Y       walk a cursor whose position bytes are at AX/AY to
 //!                        (X, Y) with the arrows
 //!   stepuntil8 ADDR [N]  single-step until the byte changes (at most N
@@ -81,14 +83,15 @@ impl tango_backend_mgba::SharedGame for Traced {
                 Box::new(move |core: &mut mgba::core::Core| {
                     let cpu = core.gba().cpu();
                     println!(
-                        "trap {addr:08x} @{} lr={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x} r12={:08x}",
+                        "trap {addr:08x} @{} lr={:08x} r0={:08x} r1={:08x} r2={:08x} r3={:08x} r12={:08x} sp={:08x}",
                         FRAME.load(std::sync::atomic::Ordering::Relaxed),
                         cpu.gpr(14),
                         cpu.gpr(0),
                         cpu.gpr(1),
                         cpu.gpr(2),
                         cpu.gpr(3),
-                        cpu.gpr(12)
+                        cpu.gpr(12),
+                        cpu.gpr(13)
                     );
                 }),
             ));
@@ -327,13 +330,31 @@ fn main() {
                         let pc = cpu.thumb_pc();
                         if core.raw_read_16(pc, -1) & 0xff00 == 0xb500 {
                             println!(
-                                "  fn {pc:08x} lr={:08x} r0={:08x}",
+                                "  fn {pc:08x} lr={:08x} r0={:08x} sp={:08x}",
                                 core.gba().cpu().gpr(14),
-                                core.gba().cpu().gpr(0)
+                                core.gba().cpu().gpr(0),
+                                core.gba().cpu().gpr(13)
                             );
                         }
                     }
                     core.step();
+                }
+            }
+            "stepwatch32" => {
+                // Single-step N instructions, printing each change of the
+                // word at ADDR with the instruction that made it.
+                let addr = hex(parts[1]);
+                let n: u64 = parts[2].parse().unwrap();
+                let core = link.core_mut(0);
+                let mut last = core.raw_read_32(addr, -1);
+                for _ in 0..n {
+                    let pc = core.gba().cpu().gpr(15) as u32;
+                    core.step();
+                    let v = core.raw_read_32(addr, -1);
+                    if v != last {
+                        println!("  {addr:08x}: {last:08x} -> {v:08x} near pc={pc:08x} lr={:08x}", core.gba().cpu().gpr(14));
+                        last = v;
+                    }
                 }
             }
             "stepreads" => {

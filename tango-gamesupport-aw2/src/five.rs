@@ -112,6 +112,7 @@ pub enum Op {
     B,
     S,
     Mul51,
+    Mul102,
     Mul612,
     CurBase,
     Bitidx,
@@ -354,6 +355,7 @@ fn set(core: &mut Core, addr: u32, op: Op, dst: usize, src: usize) {
         Op::B => a0(v) * 51,
         Op::S => (v & 0xFF) - a0(v & 0xFF) * 51,
         Op::Mul51 => v.wrapping_mul(51),
+        Op::Mul102 => v.wrapping_mul(102),
         Op::Mul612 => v.wrapping_mul(612),
         Op::CurBase => core.raw_read_16(CURRENT_BASE, -1) as u32,
         // r0 points into a 4-entry table of army bits, at the army's index

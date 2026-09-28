@@ -224,6 +224,17 @@ hook 08062CE6 mul51 r4 r5 | lsls r4, r5, #6
 hook 08062D34 mul51 r4 r5 | lsls r4, r5, #6
 hook 08062586 mul51 r6 r0 | lsls r6, r0, #6
 hook 080626FE mul51 r0 r3 | lsls r0, r3, #6
+# ...and each loop's unit pointer: the compiler builds &gUnits[u] (3u words)
+# as (t*128 + u)*4, which holds for u = t*64; for u = t*51 it needs t*102
+hook 08058022 mul102 r0 r4 | lsls r0, r4, #7
+hook 080582A2 mul102 r0 r2 | lsls r0, r2, #7
+hook 08058366 mul102 r0 r2 | lsls r0, r2, #7
+hook 08058428 mul102 r0 r2 | lsls r0, r2, #7
+hook 080584D4 mul102 r0 r5 | lsls r0, r5, #7
+hook 08058578 mul102 r0 r5 | lsls r0, r5, #7
+hook 08059CB2 mul102 r0 r3 | lsls r0, r3, #7
+hook 08062CF6 mul102 r0 r5 | lsls r0, r5, #7
+hook 08062D48 mul102 r0 r5 | lsls r0, r5, #7
 imm 08058018 0x33 | adds r3, #0x40
 imm 08058290 0x33 | adds r4, #0x40
 imm 08058354 0x33 | adds r4, #0x40

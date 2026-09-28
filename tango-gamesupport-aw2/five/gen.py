@@ -56,7 +56,7 @@ def encode_imm(h, new):
     raise ValueError(f'no immediate in {h:04x}')
 
 
-KINDS = ['a0', 'a0_id4', 'a0_id4_hi16', 'a0_hi16', 'a0_hi24', 'a0_shl6', 'b', 's', 'mul51', 'mul612', 'cur_base', 'bitidx', 'parity']
+KINDS = ['a0', 'a0_id4', 'a0_id4_hi16', 'a0_hi16', 'a0_hi24', 'a0_shl6', 'b', 's', 'mul51', 'mul102', 'mul612', 'cur_base', 'bitidx', 'parity']
 
 
 def camel(s):
