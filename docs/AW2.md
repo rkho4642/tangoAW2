@@ -247,6 +247,17 @@ original instruction against the ROM and writes `src/five_patches.rs`.
   `five/map.py` builds them (sea edges from the Design Room's table
   `0x08485DC4`). The AI keeps a row pointer per map row in a 40-entry stack
   array, so maps are at most 40 rows.
+- **More map ids.** The game's map table (`0x085C77A0`, 0xC0 entries of
+  0x5C bytes) is copied to `0x08650000` with room for more; its 37
+  literal-pool pointers (the table, and +0x3C/+0x40 of entry 0) are
+  repointed, and the two loops that walk it (`sub_080206B0`, find a map by
+  its tiles; the map list builder at `0x08037482`) go up to 0xC0 instead
+  of 0xBF. Black Rampart is id 0xC0.
+- **Terrain in `five/map.py`.** Roads, pipes and pipe seams pick their
+  tile from which neighbours connect, as the game's own maps do (learned
+  from every built-in map): roads have straights, bends, T-junctions,
+  crossroads and shaded variants; pipes have straights, bends and end caps
+  (no junctions).
 - **Switching.** A RAM flag set when a 5P map is picked (trap on
   `sub_0803BCD0`) decides; each frame the ROM is switched to match, so
   rollback (which restores RAM, not ROM) stays deterministic. Resuming a

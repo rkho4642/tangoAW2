@@ -10,7 +10,58 @@ use mgba::core::Core;
 
 use crate::five_map_data::MAPS;
 
-const MAP_TABLE: u32 = 0x085C_77A0;
+/// The game's map table: 0xC0 entries of 0x5C bytes, one per map id.
+const GAME_MAP_TABLE: u32 = 0x085C_77A0;
+const GAME_MAP_IDS: u32 = 0xC0;
+const ENTRY: u32 = 0x5C;
+/// tangoAW2 copies it to free space in the ROM image with room for more,
+/// and gives the game the copy: every literal-pool word pointing at the
+/// table (or at a field of its first entry: +0x3C, +0x40), and the two
+/// loops that walk it (`sub_080206B0`, find a map by its tiles, and the
+/// map list builder at `0x08037482`), which stop after id 0xBF.
+const MAP_TABLE: u32 = 0x0865_0000;
+const MAP_IDS: u32 = 0xC1;
+const TABLE_POINTERS: [(u32, u32); 37] = [
+    (0x0801_96EC, 0x00),
+    (0x0802_06E0, 0x00),
+    (0x0802_4814, 0x00),
+    (0x0802_492C, 0x00),
+    (0x0802_4970, 0x00),
+    (0x0802_49B8, 0x00),
+    (0x0802_63E8, 0x00),
+    (0x0802_6AE4, 0x00),
+    (0x0802_6D38, 0x00),
+    (0x0802_C678, 0x00),
+    (0x0802_C7D4, 0x00),
+    (0x0802_C814, 0x00),
+    (0x0803_4750, 0x40),
+    (0x0803_477C, 0x00),
+    (0x0803_500C, 0x00),
+    (0x0803_6600, 0x3C),
+    (0x0803_74D4, 0x00),
+    (0x0803_BD4C, 0x00),
+    (0x0803_C1D0, 0x40),
+    (0x0803_E404, 0x00),
+    (0x0803_FDCC, 0x00),
+    (0x0804_3650, 0x00),
+    (0x0806_17E0, 0x00),
+    (0x0806_ADC4, 0x00),
+    (0x0806_AF64, 0x00),
+    (0x0807_73A8, 0x00),
+    (0x0807_7558, 0x00),
+    (0x0807_7B68, 0x40),
+    (0x0807_8E8C, 0x00),
+    (0x0807_B900, 0x00),
+    (0x0807_BA5C, 0x00),
+    (0x0807_C5C4, 0x00),
+    (0x0807_F6D4, 0x00),
+    (0x0808_7C04, 0x3C),
+    (0x0809_0A6C, 0x00),
+    (0x0809_0D68, 0x00),
+    (0x0809_0EC0, 0x00),
+];
+/// `cmp rN, #0xBF` in the two loops -> `#0xC0` (the last id, [`MAP_IDS`] - 1).
+const TABLE_LOOPS: [(u32, u16, u16); 2] = [(0x0802_06C8, 0x29BF, 0x29C0), (0x0803_74B4, 0x2CBF, 0x2CC0)];
 /// Each map's tiles and units: 4 KiB apiece from here.
 const MAP_DATA: u32 = 0x0862_2000;
 const MAP_DATA_SIZE: u32 = 0x1000;
@@ -41,10 +92,10 @@ const TAB_BOUNDS: [(u32, u16, u16); 6] = [
 ];
 pub const CATEGORY: u16 = 9;
 /// Each map's id, in five/maps.txt's order: map-table entry 0 (a dummy the
-/// game never lists) and design-map ids 0xB8..0xBF (the Design Room has three
+/// game never lists), design-map ids 0xB8..0xBF (the Design Room has three
 /// slots, 0xB4..0xB6, and a suspend copy, 0xB7; the rest serve only
-/// multi-cartridge link play).
-pub const IDS: [u8; 9] = [0, 0xBC, 0xBD, 0xBE, 0xBF, 0xB8, 0xB9, 0xBA, 0xBB];
+/// multi-cartridge link play), and 0xC0, one past the game's own table.
+pub const IDS: [u8; 10] = [0, 0xBC, 0xBD, 0xBE, 0xBF, 0xB8, 0xB9, 0xBA, 0xBB, 0xC0];
 
 /// Map ids 0xB4..0xBF are design maps to the game. These make 0xB8..0xBF
 /// ordinary maps (header blob, name, unit list, preview): (address,
@@ -125,7 +176,22 @@ pub fn install(core: &mut Core) {
             core.raw_write_16(addr, -1, new);
         }
     }
+    // The map table, moved (see MAP_TABLE).
+    let mut table = vec![0u8; (GAME_MAP_IDS * ENTRY) as usize];
+    core.raw_read_range(GAME_MAP_TABLE, -1, &mut table);
+    core.raw_write_range(MAP_TABLE, -1, &table);
+    for (at, field) in TABLE_POINTERS {
+        if core.raw_read_32(at, -1) == GAME_MAP_TABLE + field {
+            core.raw_write_32(at, -1, MAP_TABLE + field);
+        }
+    }
+    for (at, old, new) in TABLE_LOOPS {
+        if core.raw_read_16(at, -1) == old {
+            core.raw_write_16(at, -1, new);
+        }
+    }
     assert_eq!(MAPS.len(), IDS.len());
+    assert!(IDS.iter().all(|&id| (id as u32) < MAP_IDS));
     for (k, (map, &id)) in MAPS.iter().zip(IDS.iter()).enumerate() {
         let tiles = MAP_DATA + MAP_DATA_SIZE * k as u32;
         let units = tiles + map.tiles.len() as u32;

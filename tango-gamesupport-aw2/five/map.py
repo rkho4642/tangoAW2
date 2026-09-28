@@ -9,6 +9,7 @@ Each map in maps.txt is a `map NAME` line, an `armies N TAB COLOURS...` line
 starting colour: 1 Orange Star .. 5 Black Hole), `units ARMY TYPE...` lines,
 then its rows, one character per tile:
   ~ sea   r reef   . plain   f wood   ^ mountain
+  R road (straights, bends, junctions)   I pipe   Z pipe seam (in a straight)
   1..5    the HQ of army 1..5 (Orange Star, Blue Moon, Green Earth,
           Yellow Comet, Black Hole)
   B C A P base, city, airport, port of the army whose HQ is nearest
@@ -42,6 +43,18 @@ PROPS = {
     'P': [0x1C4, 0x1C9, 0x1CE, 0x1D3, 0x1D8, 0x1B8],
 }
 PLAIN, PLAIN_SHADE, WOOD, MOUNTAIN, SEA, REEF = 0x001, 0x021, 0x086, 0x022, 0x02A, 0x168
+# Tiles by which neighbours (N, E, S, W; bit 3 is N) connect, as the game's
+# own maps use them. Roads: straights, bends, T-junctions, crossroads, and a
+# shaded straight/bend when something tall stands to the left (as plain).
+ROAD = {0b0101: 0x61, 0b0001: 0x61, 0b0100: 0x61, 0b0000: 0x61, 0b1010: 0x40, 0b1000: 0x40, 0b0010: 0x40,
+        0b0110: 0x41, 0b0011: 0x42, 0b1100: 0x60, 0b1001: 0x62,
+        0b0111: 0xE0, 0b1011: 0xC1, 0b1101: 0xC0, 0b1110: 0xE1, 0b1111: 0x100}
+ROAD_SHADED = {0x61: 0xA1, 0x40: 0x80, 0x41: 0x81, 0x60: 0xA0}
+# Pipes: straights, bends, end caps; the game has no pipe junctions. Seams
+# (the breakable piece) sit in a straight run.
+PIPE = {0b0101: 0x142, 0b1010: 0x143, 0b0110: 0x140, 0b0011: 0x141, 0b1100: 0x160, 0b1001: 0x161,
+        0b0001: 0x121, 0b0100: 0x120, 0b0010: 0x102, 0b1000: 0x103}
+SEAM_ACROSS, SEAM_DOWN = 0x162, 0x163
 UNDERLAY, RIM = 0x1A4, 0x1A5
 # anchor char -> (rows of tiles, anchor column, anchor row)
 INVENTIONS = {
@@ -59,6 +72,8 @@ INVENTIONS = {
     'O': ([[UNDERLAY] * 3, [UNDERLAY, 0x193, UNDERLAY], [UNDERLAY] * 3], 1, 1),
 }
 WATER = set('~r')
+# What casts a shadow on the plain (or road) to its right.
+TALL = 'f^HBCAPbcap12345#SNWELvnFVDXOIZ'
 SHIPS = {21, 22, 23, 24}
 AIR = {16, 17, 19, 20}
 
@@ -117,6 +132,21 @@ def build(m, edge):
                 tiles[y][x] = WOOD
             elif c == '^':
                 tiles[y][x] = MOUNTAIN
+            elif c == 'R':
+                link = (ch(x, y - 1) == 'R') << 3 | (ch(x + 1, y) == 'R') << 2 | (ch(x, y + 1) == 'R') << 1 | (ch(x - 1, y) == 'R')
+                t = ROAD[link]
+                if ch(x - 1, y) in TALL:
+                    t = ROAD_SHADED.get(t, t)
+                tiles[y][x] = t
+            elif c in 'IZ':
+                pipe = lambda X, Y: ch(X, Y) in 'IZ'
+                link = pipe(x, y - 1) << 3 | pipe(x + 1, y) << 2 | pipe(x, y + 1) << 1 | pipe(x - 1, y)
+                if c == 'Z':
+                    assert link in (0b0101, 0b1010), (m['name'], 'seam not in a straight pipe', x, y)
+                    tiles[y][x] = SEAM_ACROSS if link == 0b0101 else SEAM_DOWN
+                else:
+                    assert link in PIPE, (m['name'], 'pipe junction', x, y)
+                    tiles[y][x] = PIPE[link]
             elif c in '12345':
                 tiles[y][x] = PROPS['H'][int(c)]
                 counts[int(c)] += 1
@@ -131,7 +161,7 @@ def build(m, edge):
                 tiles[y][x] = UNDERLAY
             else:
                 assert c == '.', (m['name'], c, x, y)
-                shaded = ch(x - 1, y) in 'f^HBCAPbcap12345#SNWELvnFVDXO'
+                shaded = ch(x - 1, y) in TALL
                 tiles[y][x] = PLAIN_SHADE if shaded else PLAIN
     for y in range(H):
         for x in range(W):

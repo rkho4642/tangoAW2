@@ -23,8 +23,9 @@ No game is included. You need your own copy of the cartridge dumped to a
 
 - **Five armies on one map.** A **5P Maps** tab in Versus: Orange Star,
   Blue Moon, Green Earth, Yellow Comet and Black Hole all at once, each a
-  person or the computer, offline and online. Five new maps: a sea war, a
-  land war, a volcano, an air war and a siege. See
+  person or the computer, offline and online. Six new maps: a sea war, a
+  land war, a volcano, an air war, a siege, and Black Rampart, a
+  campaign-style fortress with a Deathray firing down the middle. See
   [Five armies](#five-armies-5p-maps).
 - **Hidden feature: the Black Crystal and Black Obelisk** from Advance
   Wars: Dual Strike. Black Hole structures that heal and resupply Black
@@ -126,13 +127,13 @@ Lash, Adder, Hawke or Sturm).
 ## Five armies (5P maps)
 
 Versus has a **5P Maps** tab (press **L** or **LEFT** on the map list's
-tab, it sits just before Classic) with five maps, six with the
+tab, it sits just before Classic) with six maps, seven with the
 [Dual Strike art](#black-crystal-and-black-obelisk). Its maps have all five armies:
 Orange Star, Blue Moon, Green Earth, Yellow Comet and **Black Hole**.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/five-maps-tab.png" width="360" alt="The 5P Maps tab"></td>
+<td><img src="docs/screenshots/five-maps-tab.png" width="360" alt="The 5P Maps tab with Black Rampart"></td>
 <td><img src="docs/screenshots/five-teams.png" width="360" alt="The Teams screen with all five armies"></td>
 </tr>
 <tr>
@@ -148,7 +149,8 @@ Orange Star, Blue Moon, Green Earth, Yellow Comet and **Black Hole**.
 | **Magma Crown** | 30 x 30 | A ring island round an inner sea. Black Hole holds the central isle and its **Volcano**, which rains fire on the map. Landers and Cruisers carry the fight across the water. |
 | **Skyreach** | 32 x 36 | An air war. Five plateaus cut off by mountains; every army has three airports and starts with a Fighter, a Bomber, two Battle Copters, Anti-Air and Missiles. Black Cannons guard Black Hole's plateau. |
 | **The Citadel** | 28 x 27 | A siege. Black Hole's fortress has a **Black Factory**, the **Deathray** covering the approach, a laser and a row of minicannons. The other four armies start along the bottom and storm it. |
-| **Black Monolith** (with the Dual Strike art) | 30 x 30 | Four armies in the corners, Black Hole in the middle round a **Black Obelisk**, with four Black Crystals and a minicannon on each side. See [below](#black-crystal-and-black-obelisk). |
+| **Black Rampart** | 25 x 36 | A campaign-style fortress map. Black Hole holds the top behind a **pipe wall** with two breakable seams and two gates, with a **Black Factory**, a Black Cannon and minicannons facing down over the wall. Its **Deathray** sits in the middle of the top edge and fires straight down the central road to the bottom. Green Earth and Yellow Comet attack from the flanks, Orange Star and Blue Moon from the bottom corners. |
+| **Black Monolith** (with the Dual Strike art) | 30 x 30 | Four armies in the corners, Black Hole in the middle round a **Black Obelisk**, with four Black Crystals and a minicannon on each side. Every army has five cities (Black Hole four), roads run from each corner round the fortress, and 36 neutral cities and four airports are up for grabs. See [below](#black-crystal-and-black-obelisk). |
 
 **Teams.** All five armies are on the Teams screen. Pick each army's CO
 with **UP/DOWN**, and move to the marker in its corner to switch it
@@ -198,6 +200,14 @@ weather, CO Powers, capture and turn limits, works as usual.
 <tr>
 <td align="center">The Citadel</td>
 <td align="center">Hot seat: Black Hole's turn</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/five-black-rampart.png" width="360" alt="Black Rampart: Black Hole's fortress with the Black Factory and the Deathray"></td>
+<td><img src="docs/screenshots/five-black-rampart-wall.png" width="360" alt="Black Rampart: a seam in the pipe wall blown open, armies at the gate"></td>
+</tr>
+<tr>
+<td align="center">Black Rampart: the Factory and the Deathray at the top</td>
+<td align="center">The pipe wall: one seam blown open</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/five-co-screen.png" width="360" alt="The CO screen with five armies"></td>
