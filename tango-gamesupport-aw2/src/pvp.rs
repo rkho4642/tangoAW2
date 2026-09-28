@@ -422,7 +422,7 @@ fn set_bits(core: &mut Core, (start, len): (u32, u32)) {
 
 impl tango_backend_mgba::SharedGame for Aw2 {
     fn sim_version(&self) -> u16 {
-        11
+        12
     }
 
     fn traps(&self) -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
@@ -455,13 +455,6 @@ impl tango_backend_mgba::SharedGame for Aw2 {
             && !turn_ended(core)
     }
 
-    fn overlay(&self, core: &Core, mode: Option<(u8, u8)>, _seat: usize, rgba: &mut [u8]) {
-        crate::branding::overlay(core, rgba);
-        if mode.is_none() {
-            crate::design::overlay(core, rgba);
-        }
-    }
-
     fn before_tick(&self, core: &mut Core, mode: Option<(u8, u8)>, keys: u32) -> u32 {
         // Everything unlocked: every CO (Sturm and Hachi included), every
         // CO colour edit, every Battle Map, Hard Campaign and the Sound
@@ -470,6 +463,9 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         core.raw_write_8(SOUND_ROOM, -1, 1);
         set_bits(core, BATTLE_MAPS);
         set_bits(core, COS_AND_EDITS);
+
+        crate::branding::tick(core);
+        crate::design_bar::patch_rom(core);
 
         let prev = core.raw_read_16(PREV_KEYS, -1) as u32;
         core.raw_write_16(PREV_KEYS, -1, keys as u16);

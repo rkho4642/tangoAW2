@@ -1,11 +1,12 @@
-//! A "tangoAW2" badge on the title screen and the mode menu.
+//! A "tangoAW2" badge on the title screen and the Select Mode menu, drawn
+//! by the game's own sprite hardware.
 //!
-//! Drawn over the finished picture ([`overlay`]), like the Design Room's
-//! labels: nothing in the game's memory changes, so it can't affect a
-//! match or a save, and the ROM file stays untouched.
-//!
-//! The screens are found the way the game finds them, by the process
-//! scripts running (the aw2bhr decompilation's names).
+//! While either screen is up (found by its process script, names from the
+//! aw2bhr decompilation), the badge's tiles go into unused OBJ VRAM and its
+//! colours into an unused OBJ palette, and a trap on the game's VBlank
+//! sprite flush appends the badge's sprites to that frame's sprite list.
+//! It is part of the game's own picture; the ROM file is untouched, and it
+//! runs inside the emulated frame, so both netplay peers draw it alike.
 
 use mgba::core::Core;
 
@@ -17,6 +18,21 @@ const PROC_SIZE: u32 = 0x6C;
 const TITLE_SCREEN: u32 = 0x0858_1CF8;
 /// `ProcScr_MainMenu`: the SELECT MODE menu.
 const MAIN_MENU: u32 = 0x0849_E818;
+
+/// The VBlank flush of the frame's sprites (shadow OAM -> OAM, then clear).
+pub const SPRITE_FLUSH: u32 = 0x0801_BBC4;
+/// Where the next sprite of the frame goes, and the flushed area's
+/// descriptor (source, destination, halfword pair count at + 0xA).
+const NEXT_SPRITE: u32 = 0x0300_2F2C;
+const FLUSH_AREA: u32 = 0x0300_0268;
+
+/// OBJ tiles (1D mapping) and palette nothing on these screens uses.
+const TITLE_TILES: u32 = 928;
+const MENU_TILES: u32 = 992;
+const PALETTE: u32 = 15;
+const OBJ_VRAM: u32 = 0x0601_0000;
+const PAL_BUFFER: u32 = 0x0300_20C0;
+const PAL_RAM: u32 = 0x0500_0000;
 
 fn running(core: &Core, script: u32) -> bool {
     (PROCS..PROCS_END)
@@ -39,36 +55,42 @@ fn glyph(c: char) -> [&'static str; 7] {
     }
 }
 
-const NAVY: [u8; 3] = [24, 40, 104];
-const WHITE: [u8; 3] = [248, 248, 248];
-const YELLOW: [u8; 3] = [248, 208, 48];
-const SHADOW: [u8; 3] = [8, 16, 48];
+/// Palette indices: 0 transparent, then navy, white, yellow, shadow.
+const NAVY: u8 = 1;
+const WHITE: u8 = 2;
+const YELLOW: u8 = 3;
+const SHADOW: u8 = 4;
+const COLOURS: [u16; 5] = [
+    0,
+    bgr(24, 40, 104),
+    bgr(248, 248, 248),
+    bgr(248, 208, 48),
+    bgr(8, 16, 48),
+];
+
+const fn bgr(r: u16, g: u16, b: u16) -> u16 {
+    (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10)
+}
+
 const TEXT: &str = "tangoAW2";
 
-fn put(rgba: &mut [u8], x: i32, y: i32, c: [u8; 3]) {
-    if (0..240).contains(&x) && (0..160).contains(&y) {
-        let i = ((y * 240 + x) * 4) as usize;
-        rgba[i..i + 3].copy_from_slice(&c);
-        rgba[i + 3] = 0xff;
-    }
-}
-
-/// Width of the badge at `scale`.
-fn badge_width(scale: i32) -> i32 {
-    TEXT.len() as i32 * 6 * scale - scale + 6
-}
-
-/// Draws the badge with its top-left corner at (x0, y0).
-fn badge(rgba: &mut [u8], x0: i32, y0: i32, scale: i32) {
-    let (w, h) = (badge_width(scale), 7 * scale + 6);
-    for y in 0..h {
-        for x in 0..w {
-            let corner = (x == 0 || x == w - 1) && (y == 0 || y == h - 1);
-            if corner {
-                continue;
+/// The badge at `scale` on a `w` x `h` canvas of palette indices.
+fn badge(scale: usize, w: usize, h: usize) -> Vec<u8> {
+    let mut px = vec![0u8; w * h];
+    let bw = TEXT.len() * 6 * scale - scale + 6;
+    let bh = 7 * scale + 6;
+    let mut put = |x: usize, y: usize, c: u8| {
+        if x < w && y < h {
+            px[y * w + x] = c;
+        }
+    };
+    for y in 0..bh {
+        for x in 0..bw {
+            let corner = (x == 0 || x == bw - 1) && (y == 0 || y == bh - 1);
+            if !corner {
+                let edge = x == 0 || x == bw - 1 || y == 0 || y == bh - 1;
+                put(x, y, if edge { WHITE } else { NAVY });
             }
-            let edge = x == 0 || x == w - 1 || y == 0 || y == h - 1;
-            put(rgba, x0 + x, y0 + y, if edge { WHITE } else { NAVY });
         }
     }
     for pass in 0..2 {
@@ -81,12 +103,12 @@ fn badge(rgba: &mut [u8], x0: i32, y0: i32, scale: i32) {
                     }
                     for dy in 0..scale {
                         for dx in 0..scale {
-                            let x = x0 + 3 + i as i32 * 6 * scale + c as i32 * scale + dx;
-                            let y = y0 + 3 + r as i32 * scale + dy;
+                            let x = 3 + i * 6 * scale + c * scale + dx;
+                            let y = 3 + r * scale + dy;
                             if pass == 0 {
-                                put(rgba, x + 1, y + 1, SHADOW);
+                                put(x + 1, y + 1, SHADOW);
                             } else {
-                                put(rgba, x, y, colour);
+                                put(x, y, colour);
                             }
                         }
                     }
@@ -94,14 +116,112 @@ fn badge(rgba: &mut [u8], x0: i32, y0: i32, scale: i32) {
             }
         }
     }
+    px
 }
 
-pub fn overlay(core: &Core, rgba: &mut [u8]) {
-    if running(core, TITLE_SCREEN) {
-        // Under the Advance Wars 2 logo, right-aligned with it.
-        badge(rgba, 240 - badge_width(2) - 6, 66, 2);
-    } else if running(core, MAIN_MENU) {
-        // Beside the SELECT MODE heading.
-        badge(rgba, 150, 8, 1);
+/// One sprite's tiles (1D mapping: its 8x8 tiles row by row), 4bpp, cut
+/// from the canvas at (x0, y0).
+fn sprite_tiles(px: &[u8], w: usize, x0: usize, y0: usize, sw: usize, sh: usize) -> Vec<u8> {
+    let mut out = Vec::new();
+    for ty in 0..sh / 8 {
+        for tx in 0..sw / 8 {
+            for y in 0..8 {
+                for x in (0..8).step_by(2) {
+                    let at = |dx: usize| px[(y0 + ty * 8 + y) * w + x0 + tx * 8 + x + dx];
+                    out.push(at(0) | (at(1) << 4));
+                }
+            }
+        }
     }
+    out
+}
+
+/// A badge's sprites: (x, y) on screen, 64x32 each, tiles from `first`.
+struct Layout {
+    first: u32,
+    scale: usize,
+    sprites: usize,
+    x: i32,
+    y: i32,
+}
+
+const TITLE: Layout = Layout {
+    first: TITLE_TILES,
+    scale: 2,
+    sprites: 2,
+    x: 240 - 102 - 6,
+    y: 66,
+};
+const MENU: Layout = Layout {
+    first: MENU_TILES,
+    scale: 1,
+    sprites: 1,
+    x: 150,
+    y: 8,
+};
+
+fn active(core: &Core) -> Option<&'static Layout> {
+    if running(core, TITLE_SCREEN) {
+        Some(&TITLE)
+    } else if running(core, MAIN_MENU) {
+        Some(&MENU)
+    } else {
+        None
+    }
+}
+
+/// Every frame: while a badge screen is up, keep its tiles and palette in
+/// place (the screen may have loaded over them since).
+pub fn tick(core: &mut Core) {
+    let Some(l) = active(core) else { return };
+    let w = 64 * l.sprites;
+    let px = badge(l.scale, w, 32);
+    for s in 0..l.sprites {
+        let tiles = sprite_tiles(&px, w, 64 * s, 0, 64, 32);
+        let at = OBJ_VRAM + (l.first + 32 * s as u32) * 32;
+        let mut now = vec![0u8; tiles.len()];
+        core.raw_read_range(at, -1, &mut now);
+        if now != tiles {
+            core.raw_write_range(at, -1, &tiles);
+        }
+    }
+    let mut pal = [0u8; 32];
+    for (i, c) in COLOURS.iter().enumerate() {
+        pal[i * 2..i * 2 + 2].copy_from_slice(&c.to_le_bytes());
+    }
+    for base in [PAL_BUFFER, PAL_RAM] {
+        core.raw_write_range(base + 0x200 + PALETTE * 32, -1, &pal);
+    }
+}
+
+/// Trap at [`SPRITE_FLUSH`]: append tangoAW2's sprites (the badge, the
+/// Design Room's inventions) to the frame's sprite list just before it is
+/// copied to OAM.
+pub fn flush(core: &mut Core) {
+    let start = core.raw_read_32(FLUSH_AREA, -1);
+    let end = start + core.raw_read_16(FLUSH_AREA + 0xA, -1) as u32 * 8;
+    let mut at = core.raw_read_32(NEXT_SPRITE, -1);
+    if !(start..=end).contains(&at) {
+        return;
+    }
+    at = crate::design::flush_sprites(core, at, end);
+    if let Some(l) = active(core) {
+        for s in 0..l.sprites {
+            if at + 8 > end {
+                break;
+            }
+            let x = (l.x + 64 * s as i32) as u16 & 0x1FF;
+            let y = l.y as u16 & 0xFF;
+            // 64x32: shape wide (1 << 14), size 3 (3 << 14 in attr1).
+            let attr0 = y | (1 << 14);
+            let attr1 = x | (3 << 14);
+            // Priority 0, so it shows over the backgrounds.
+            let attr2 = (l.first as u16 + 32 * s as u16) | ((PALETTE as u16) << 12);
+            core.raw_write_16(at, -1, attr0);
+            core.raw_write_16(at + 2, -1, attr1);
+            core.raw_write_16(at + 4, -1, attr2);
+            at += 8;
+        }
+    }
+    core.raw_write_32(NEXT_SPRITE, -1, at);
 }

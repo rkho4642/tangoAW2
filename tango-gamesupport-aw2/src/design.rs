@@ -10,7 +10,8 @@
 //! Inventions are ordinary terrain tiles (their battle sprites come from
 //! scanning the map when a battle loads), so placing one is writing its
 //! footprint into the editor's map. The editor has no graphics for them,
-//! so tangoAW2 labels them on screen ([`overlay`]).
+//! so tangoAW2 draws them with the battle's own sprites
+//! ([`crate::invention_art`]).
 //!
 //! Addresses and the tile/footprint tables come from the aw2bhr
 //! decompilation and runtime probing; see docs/AW2.md.
@@ -36,13 +37,15 @@ const E_TERRAIN_SLOT: u32 = EDITOR + 0x2E; // 0..=4
 /// or 3 (units) further on, wrapping around the list.
 const E_TERRAIN_WINDOW: u32 = EDITOR + 0x36;
 const E_UNIT_WINDOW: u32 = EDITOR + 0x38;
-const TERRAIN_ENTRIES: u32 = 17;
+/// The terrain bar's length: 17 in the game, 27 with the inventions
+/// (see [`crate::design_bar`]).
+const TERRAIN_ENTRIES: u32 = crate::design_bar::ENTRIES;
 const UNIT_ENTRIES: u32 = 20;
 /// The unit bar's "Del" (eraser) entry.
 const UNIT_DELETE_INDEX: u32 = 2;
 /// The open bar's entries: (word, tile) pairs; word is the terrain class
 /// byte (terrain bar) or the unit word (unit bar).
-const BAR_LIST: u32 = 0x0200_B224;
+const BAR_LIST: u32 = crate::design_bar::LIST;
 const E_UNIT_SLOT: u32 = EDITOR + 0x2F; // 1..=4
 
 /// The editor's map: size, camera (pixels), tile IDs, class plane, unit
@@ -68,9 +71,6 @@ const BLACK_HOLE_SLOT: u8 = 4;
 /// Editor player blocks (slot n at + 0x3C * n), colour at + 0x1A.
 const EDITOR_PLAYERS: u32 = 0x0202_3284;
 
-/// tangoAW2's Design Room state, in unused EWRAM: which invention the Silo
-/// entry currently stands for (0 = the Silo itself).
-const VARIANT: u32 = 0x0203_FFF4;
 /// Slot 4's own CO while it is shown as Black Hole (0 = not swapped).
 const SAVED_CO: u32 = 0x0203_FFFD;
 
@@ -90,7 +90,6 @@ const HQ_SPRITES: u32 = 0x080D_16C4;
 const PLAIN_TILE: u16 = 0x001;
 const UNDERLAY: u16 = 0x1A4;
 const VOLCANO_RIM: u16 = 0x1A5;
-const SILO_CLASS: u8 = 0x11;
 const FACTORY_ANCHOR: u16 = 0x18D;
 const VOLCANO_ANCHOR: u16 = 0x1A7;
 /// The game registers at most 16 inventions per map; keep one spare.
@@ -104,10 +103,8 @@ const KEY_DOWN: u32 = 1 << 7;
 /// One placeable invention: its label, the tile carrying its class (the
 /// anchor), and its footprint rows starting at (anchor.x + dx, anchor.y + dy).
 struct Invention {
-    label: &'static str,
     /// What the editor writes on the placed structure (the full label is
     /// shown while it is selected).
-    short: &'static str,
     anchor: u16,
     dx: i32,
     dy: i32,
@@ -116,64 +113,48 @@ struct Invention {
 
 const INVENTIONS: &[Invention] = &[
     Invention {
-        label: "MINICANNON v",
-        short: "MINI v",
         anchor: 0x182,
         dx: 0,
         dy: 0,
         rows: &[&[0x182]],
     },
     Invention {
-        label: "MINICANNON ^",
-        short: "MINI ^",
         anchor: 0x183,
         dx: 0,
         dy: 0,
         rows: &[&[0x183]],
     },
     Invention {
-        label: "MINICANNON <",
-        short: "MINI <",
         anchor: 0x184,
         dx: 0,
         dy: 0,
         rows: &[&[0x184]],
     },
     Invention {
-        label: "MINICANNON >",
-        short: "MINI >",
         anchor: 0x185,
         dx: 0,
         dy: 0,
         rows: &[&[0x185]],
     },
     Invention {
-        label: "LASER",
-        short: "LASER",
         anchor: 0x181,
         dx: 0,
         dy: 0,
         rows: &[&[0x181]],
     },
     Invention {
-        label: "BLACK CANNON v",
-        short: "BLACK CANNON v",
         anchor: 0x187,
         dx: -1,
         dy: -1,
         rows: &[&[UNDERLAY; 3], &[0x186, 0x187, 0x188], &[UNDERLAY; 3]],
     },
     Invention {
-        label: "BLACK CANNON ^",
-        short: "BLACK CANNON ^",
         anchor: 0x18A,
         dx: -1,
         dy: -1,
         rows: &[&[UNDERLAY; 3], &[0x189, 0x18A, 0x18B], &[UNDERLAY; 3]],
     },
     Invention {
-        label: "BLACK FACTORY",
-        short: "FACTORY",
         anchor: 0x18D,
         dx: -1,
         dy: -2,
@@ -185,8 +166,6 @@ const INVENTIONS: &[Invention] = &[
         ],
     },
     Invention {
-        label: "VOLCANO",
-        short: "VOLCANO",
         anchor: 0x1A7,
         dx: -1,
         dy: -2,
@@ -198,14 +177,20 @@ const INVENTIONS: &[Invention] = &[
         ],
     },
     Invention {
-        label: "DEATHRAY",
-        short: "DEATHRAY",
         anchor: 0x190,
         dx: -1,
         dy: -1,
         rows: &[&[UNDERLAY; 3], &[0x18F, 0x190, 0x191], &[UNDERLAY; 3]],
     },
 ];
+
+/// The Design Room's map editor is loaded, whatever it is showing (its
+/// bars and menus included).
+pub fn in_map_editor(core: &Core) -> bool {
+    core.raw_read_8(GAME_MODE, -1) == DESIGN_ROOM
+        && core.raw_read_8(SUB_MODE, -1) == MAP_EDITOR
+        && core.raw_read_32(EDITOR_PTR, -1) == EDITOR
+}
 
 pub fn in_editor(core: &Core) -> bool {
     core.raw_read_8(GAME_MODE, -1) == DESIGN_ROOM
@@ -341,7 +326,7 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     let bar_open = core.raw_read_8(E_STATE, -1) == 2;
     // In a tool bar SELECT only repeated L/R (switch bars); tangoAW2 makes
     // it "next army" like UP, as on Versus' Teams screen: Yellow Comet ->
-    // Black Hole included, and on the Silo entry the next invention.
+    // Black Hole included.
     if bar_open && pressed & KEY_SELECT != 0 {
         keys = (keys & !KEY_SELECT) | KEY_UP;
         pressed = (pressed & !KEY_SELECT) | KEY_UP;
@@ -360,20 +345,7 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     let marker = core.raw_read_8(MARKER, -1);
 
     if bar_open {
-        if terrain_bar && class == SILO_CLASS {
-            // Up/down on the Silo entry walk the inventions.
-            let n = INVENTIONS.len() as i32 + 1;
-            let v = core.raw_read_8(VARIANT, -1) as i32 % n;
-            let step = if pressed & KEY_UP != 0 {
-                1
-            } else if pressed & KEY_DOWN != 0 {
-                -1
-            } else {
-                0
-            };
-            core.raw_write_8(VARIANT, -1, (v + step).rem_euclid(n) as u8);
-            keys &= !(KEY_UP | KEY_DOWN);
-        } else {
+        {
             // The colour arrows: Yellow Comet and Black Hole share slot 4.
             let (slot_addr, coloured) = if terrain_bar {
                 (E_TERRAIN_SLOT, is_property_class(class))
@@ -406,15 +378,18 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
                 }
             }
         }
-    } else if pressed & KEY_A != 0 && terrain_bar && class == SILO_CLASS {
-        let v = core.raw_read_8(VARIANT, -1) as usize;
-        if (1..=INVENTIONS.len()).contains(&v) {
-            stamp(core, v - 1);
+    } else if pressed & KEY_A != 0 && terrain_bar {
+        // An invention picked from the terrain bar: A on the map places its
+        // whole footprint (the game alone would place just one tile).
+        if let Some(i) = crate::design_bar::invention_of(class) {
+            stamp(core, i);
             keys &= !KEY_A;
         }
     }
 
     clear_orphans(core);
+    let volcano_on_map = placed(core).iter().any(|&(i, _, _)| i == VOLCANO_INDEX);
+    crate::invention_art::tick(core, volcano_on_map);
     show_slot4_as(
         core,
         if core.raw_read_8(MARKER, -1) == BLACK_HOLE_SLOT {
@@ -493,119 +468,35 @@ fn show_slot4_as(core: &mut Core, country: u8) {
     }
 }
 
-// ---------- On-screen labels ----------
+// ---------- The inventions' own pictures ----------
 
-const FONT_W: usize = 4;
-const FONT_H: usize = 5;
-
-/// 3x5 glyphs (one u16 per glyph, rows top to bottom, 3 bits each).
-fn glyph(c: char) -> u16 {
-    match c {
-        'A' => 0b010_101_111_101_101,
-        'B' => 0b110_101_110_101_110,
-        'C' => 0b011_100_100_100_011,
-        'D' => 0b110_101_101_101_110,
-        'E' => 0b111_100_110_100_111,
-        'F' => 0b111_100_110_100_100,
-        'H' => 0b101_101_111_101_101,
-        'I' => 0b111_010_010_010_111,
-        'K' => 0b101_101_110_101_101,
-        'L' => 0b100_100_100_100_111,
-        'M' => 0b101_111_111_101_101,
-        'N' => 0b110_101_101_101_101,
-        'O' => 0b010_101_101_101_010,
-        'R' => 0b110_101_110_101_101,
-        'S' => 0b011_100_010_001_110,
-        'T' => 0b111_010_010_010_010,
-        'V' => 0b101_101_101_101_010,
-        'v' => 0b000_000_101_111_010,
-        'Y' => 0b101_101_010_010_010,
-        'Z' => 0b111_001_010_100_111,
-        'G' => 0b011_100_101_101_011,
-        'U' => 0b101_101_101_101_111,
-        'W' => 0b101_101_111_111_101,
-        'P' => 0b110_101_110_100_100,
-        '^' => 0b010_111_101_000_000,
-        '<' => 0b001_010_100_010_001,
-        '>' => 0b100_010_001_010_100,
-        ':' => 0b000_010_000_010_000,
-        _ => 0,
-    }
-}
-
-fn put(rgba: &mut [u8], x: i32, y: i32, c: [u8; 3]) {
-    if (0..240).contains(&x) && (0..160).contains(&y) {
-        let i = (y as usize * 240 + x as usize) * 4;
-        rgba[i..i + 3].copy_from_slice(&c);
-    }
-}
-
-fn text(rgba: &mut [u8], x: i32, y: i32, s: &str, fg: [u8; 3], bg: [u8; 3]) {
-    let w = (s.chars().count() * FONT_W) as i32 + 1;
-    for yy in -1..FONT_H as i32 + 1 {
-        for xx in -1..w {
-            put(rgba, x + xx, y + yy, bg);
-        }
-    }
-    for (n, ch) in s.chars().enumerate() {
-        let g = glyph(ch);
-        for row in 0..FONT_H {
-            for col in 0..3 {
-                if g >> ((FONT_H - 1 - row) * 3 + (2 - col)) & 1 == 1 {
-                    put(rgba, x + (n * FONT_W + col) as i32, y + row as i32, fg);
-                }
-            }
-        }
-    }
-}
-
-fn outline(rgba: &mut [u8], x: i32, y: i32, w: i32, h: i32, c: [u8; 3]) {
-    for xx in x..x + w {
-        put(rgba, xx, y, c);
-        put(rgba, xx, y + h - 1, c);
-    }
-    for yy in y..y + h {
-        put(rgba, x, yy, c);
-        put(rgba, x + w - 1, yy, c);
-    }
-}
-
-const PURPLE: [u8; 3] = [148, 72, 200];
-const WHITE: [u8; 3] = [255, 255, 255];
-const DARK: [u8; 3] = [24, 16, 40];
-
-/// Label every placed invention on the editor's map (the editor draws them
-/// as plain ground; their sprites appear in battle), and name the invention
-/// the Silo entry stands for.
-pub fn overlay(core: &Core, rgba: &mut [u8]) {
+/// At the game's VBlank sprite flush: the placed inventions, drawn with the
+/// battle's own sprites.
+pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
     if !in_editor(core) {
-        return;
+        return at;
     }
+    let placed = placed(core);
+    let volcano_on_map = placed.iter().any(|&(i, _, _)| i == VOLCANO_INDEX);
     let cam_x = core.raw_read_16(CAMERA_X, -1) as i32;
     let cam_y = core.raw_read_16(CAMERA_Y, -1) as i32;
-    // Map labels only while the map has the screen, not over an open bar.
-    let bar_open = core.raw_read_8(E_STATE, -1) == 2;
-    for (i, x, y) in placed(core).into_iter().filter(|_| !bar_open) {
+    let mut list = Vec::new();
+    for (i, x, y) in placed {
         let inv = &INVENTIONS[i];
-        let w = inv.rows.iter().map(|r| r.len()).max().unwrap_or(1) as i32;
-        let h = inv.rows.len() as i32;
-        let px = (x + inv.dx) * 16 - cam_x;
-        let py = (y + inv.dy) * 16 - cam_y;
-        outline(rgba, px, py, w * 16, h * 16, PURPLE);
-        outline(rgba, px + 1, py + 1, w * 16 - 2, h * 16 - 2, DARK);
-        text(rgba, px + 2, py + 2, inv.short, WHITE, PURPLE);
+        list.push(crate::invention_art::Placed {
+            i,
+            x: (x + inv.dx) * 16 - cam_x,
+            y: (y + inv.dy) * 16 - cam_y,
+            priority: 3,
+        });
     }
-    let bar_open = core.raw_read_8(E_STATE, -1) == 2;
-    let class = if bar_open && core.raw_read_8(E_BAR, -1) == 0 {
-        highlighted_terrain_class(core)
-    } else {
-        core.raw_read_8(E_TERRAIN, -1) & 0x1F
-    };
-    let v = core.raw_read_8(VARIANT, -1) as usize;
-    let terrain_tool = core.raw_read_8(E_BAR, -1) == 0;
-    if terrain_tool && class == SILO_CLASS && (1..=INVENTIONS.len()).contains(&v) {
-        let label = INVENTIONS[v - 1].label;
-        let x = 238 - (label.chars().count() * FONT_W) as i32;
-        text(rgba, x, 2, label, WHITE, PURPLE);
-    }
+    crate::invention_art::append(core, &list, volcano_on_map, at, end)
+}
+
+const VOLCANO_INDEX: usize = 8;
+
+/// Whether the map being edited has a Volcano (its picture then takes the
+/// free sprite palette).
+pub fn volcano_on_map(core: &Core) -> bool {
+    in_editor(core) && placed(core).iter().any(|&(i, _, _)| i == VOLCANO_INDEX)
 }

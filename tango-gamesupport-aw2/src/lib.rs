@@ -12,7 +12,9 @@ pub mod ui {
 
 pub mod branding;
 pub mod design;
+pub mod design_bar;
 pub mod factory;
+pub mod invention_art;
 pub mod pvp;
 
 use std::sync::LazyLock;
