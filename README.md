@@ -44,11 +44,11 @@ No game is included. You need your own copy of the cartridge dumped to a
   Hole all at once: a sea war, a land war, a volcano, an air war and a
   siege (plus Black Monolith, with the Dual Strike art below). Every army
   can be a person or the computer, offline and online. See [Five armies](#five-armies-5p-maps).
-- **The Black Crystal and Black Obelisk** from Advance Wars: Dual Strike:
+- **Hidden feature: the Black Crystal and Black Obelisk** from Advance Wars: Dual Strike:
   Black Hole structures that heal and resupply Black Hole's units at the
   start of its turn, in the Design Room and on four maps (2, 3, 4 and 5
-  armies), drawn with Dual Strike's own sprites. They need your own Dual
-  Strike ROM once; without it they are hidden. The real minicannons and
+  armies), drawn with Dual Strike's own sprites. They unlock when you load
+  your own Dual Strike `.nds` once; without it they stay hidden. The real minicannons and
   Black Cannons are untouched. See [Black Crystal and Black Obelisk](#black-crystal-and-black-obelisk).
 - **Black Hole in the Design Room.** Build maps with a Black Hole army and
   Black Hole's inventions (minicannons, laser, Black Cannons, Black
@@ -494,6 +494,11 @@ weather, CO Powers, capture and turn limits, works as usual.
 
 ## Black Crystal and Black Obelisk
 
+> **Hidden feature.** These only appear if you choose to load your own
+> Advance Wars: Dual Strike `.nds` file (once; see
+> [below](#getting-them-import-your-dual-strike-rom-once)). Without it,
+> tangoAW2 works exactly as before and none of this shows.
+
 Two Black Hole structures from Advance Wars: Dual Strike, added by
 tangoAW2 and drawn with Dual Strike's own sprites:
 
@@ -612,6 +617,14 @@ Comet) for them to do anything.
 <tr>
 <td align="center">In the terrain bar</td>
 <td align="center">Placed on the map</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/obelisk-design-battle.png" width="360" alt="A design map in battle: a Crystal next to a Black Hole infantry, with Black Cannons and the Black Factory"></td>
+<td></td>
+</tr>
+<tr>
+<td align="center">That design map in battle: the Crystal has healed the infantry to 7 HP</td>
+<td></td>
 </tr>
 </table>
 
