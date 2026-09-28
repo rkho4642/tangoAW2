@@ -5925,7 +5925,6 @@ dependencies = [
  "tango-lobby",
  "tango-match",
  "tango-net-protocol",
- "tango-patch",
  "tango-replay",
  "tango-replay-renderer",
  "tango-session",
@@ -5942,7 +5941,6 @@ dependencies = [
 name = "tango-backend-mgba"
 version = "0.1.0"
 dependencies = [
- "log",
  "mgba",
  "mgba-rollback",
  "num-rational",

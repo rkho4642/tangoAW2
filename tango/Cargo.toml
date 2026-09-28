@@ -43,7 +43,6 @@ discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-lobby = { path = "../tango-lobby" }
 # Reads packages and the index; the app never writes a package.
-tango-patch = { workspace = true, features = ["package", "index"] }
 tango-library = { path = "../tango-library", features = ["ui"] }
 tango-match = { path = "../tango-match" }
 tango-replay = { path = "../tango-replay" }
@@ -114,13 +113,8 @@ libc = "0.2"
 arrayvec = "0.7"
 clap.workspace = true
 
-[dev-dependencies]
-# The app never writes a package, but its patch-scanner tests build one
-# to scan.
-tango-patch = { workspace = true, features = ["package", "index", "bundle"] }
-
 [features]
-# tangoAW2 ships Advance Wars 2 only; `--features gamesupport-all` restores the rest.
+# tangoAW2 supports one game, Advance Wars 2.
 default = ["gamesupport-aw2"]
 gamesupport-aw2 = ["tango-library/gamesupport-aw2"]
 gamesupport-all = [

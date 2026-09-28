@@ -14,7 +14,6 @@ tango-match = { path = "../tango-match" }
 mgba.workspace = true
 mgba-rollback.workspace = true
 thiserror.workspace = true
-log.workspace = true
 
 [lints]
 workspace = true
