@@ -50,8 +50,8 @@ const DATA_MAGIC: u32 = 0x344B_4C42; // "BLK4" (bump when the data changes)
 
 /// OBJ tiles for the sprites in battle (no screen of the battle map writes
 /// 0x176..0x1A5): the Obelisk's 36 tiles, then the Crystal's 8.
-const OBELISK_OBJ_TILE: u32 = 0x176;
-const CRYSTAL_OBJ_TILE: u32 = 0x19A;
+pub const OBELISK_OBJ_TILE: u32 = 0x176;
+pub const CRYSTAL_OBJ_TILE: u32 = 0x19A;
 /// Which structure's name the terrain panel is showing (1 Crystal, 2 Obelisk).
 const PANEL: u32 = 0x0203_0207;
 
@@ -113,7 +113,7 @@ pub fn install(core: &mut Core) {
     core.raw_write_32(DATA_SENTINEL, -1, DATA_MAGIC);
 }
 
-fn tile_at(core: &Core, x: u32, y: u32) -> u16 {
+pub(crate) fn tile_at(core: &Core, x: u32, y: u32) -> u16 {
     let (w, h) = (core.raw_read_16(MAP, -1) as u32, core.raw_read_16(MAP + 2, -1) as u32);
     if x >= w || y >= h {
         return 0;
@@ -189,6 +189,7 @@ fn load_tiles(core: &mut Core) {
         -1,
         art.map_or(&blank[..256], |a| &a.crystal),
     );
+    crate::com_tower::after_sheet(core);
 }
 
 /// sub_0803F908(x, y, def, army, fog) puts a building's or invention's
@@ -207,6 +208,10 @@ fn sprite(core: &mut Core) {
     );
     let new = match lr {
         0x0803_FB93 if tile_at(core, x, y) == CRYSTAL_TILE => CRYSTAL_DEF,
+        0x0803_FB77 if crate::com_tower::tower_at(core, x, y) => match crate::com_tower::sprite_def(core, def) {
+            Some(d) => d,
+            None => return,
+        },
         0x0803_FD09 if matches!(def, 0x0849_FA22 | 0x0849_FA08) && tile_at(core, x + 1, y + 1) == OBELISK_TILE => {
             OBELISK_DEF
         }
@@ -312,13 +317,15 @@ fn heal(core: &mut Core) {
 }
 
 /// The terrain panel (sub_0802A8DC; cell x = r8, y = r5): our structures'
-/// names and pictures instead of "Cannon"'s.
+/// names and pictures instead of "Cannon"'s, and the Com Tower's instead of
+/// the Lab's ([`crate::com_tower`]).
 fn panel_name(core: &mut Core) {
     let cpu = core.gba().cpu();
     let (x, y) = (cpu.gpr(8) as u32, cpu.gpr(5) as u32);
     let (which, name) = match structure_at(core, x, y) {
         Some(Structure::Crystal) => (1, CRYSTAL_NAME_AT),
         Some(Structure::Obelisk) => (2, OBELISK_NAME_AT),
+        None if crate::com_tower::tower_at(core, x, y) => (3, crate::com_tower::NAME_AT),
         None => (0, 0),
     };
     core.raw_write_8(PANEL, -1, which);
@@ -331,6 +338,7 @@ fn panel_picture(core: &mut Core) {
     let picture = match core.raw_read_8(PANEL, -1) {
         1 => CRYSTAL_PICTURE_AT,
         2 => OBELISK_PICTURE_AT,
+        3 => crate::com_tower::PICTURE_AT,
         _ => return,
     };
     core.gba_mut().cpu_mut().set_gpr(0, picture as i32);

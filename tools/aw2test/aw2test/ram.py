@@ -52,14 +52,16 @@ P_TEMP_DEFENCE = 0x28          # s16
 P_FUNDS = 0x00                 # u32 (1000 at the start with Funds 1000)
 
 # --- Versus menus ---------------------------------------------------------------
-TEAMS = 0x02017C50             # Teams record (five-army mode: 0x02030300)
+TEAMS = 0x02017C50             # Teams record (five-army mode: TEAMS_FIVE)
+TEAMS_FIVE = 0x02030300
+FIVE_ON = 0x02030206           # tangoAW2: a five-army game is being set up or played
 T_ARMY_COUNT = 0x08
 T_CONTROLLERS = 0x09           # per army: 1 human, 2 computer
 T_COLOURS = 0x0D
 T_CO_COUNT = 0x17
 T_CO_LIST = 0x18               # u32 pointer to the CO list (0xFF-terminated)
 T_CO_INDEX = 0x1C              # per army: index into the CO list
-RULES_CURSOR = 0x02017C83      # 0 fog .. 6 visuals
+RULES_CURSOR = 0x02017C83      # 0 fog .. 6 visuals (in the Teams record: moves with it)
 PROCS = (0x03001500, 0x03001F00)
 TEAMS_PROC_FN = 0x08064E5D
 RULES_ITEM_FNS = (0x08064739, 0x08064775, 0x080647BD, 0x0806486D, 0x08064919, 0x080649D1)

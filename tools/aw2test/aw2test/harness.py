@@ -65,13 +65,13 @@ class Ctx:
                 m.unit(army, "infantry", x + (1 if x < 15 else -1), y + (1 if y < 10 else -1))
         return m
 
-    def start(self, m, cos, humans=(1,), fog=False, weather="clear", power=True, visuals="off"):
+    def start(self, m, cos, humans=(1,), fog=False, weather="clear", power=True, visuals="off", capt=None):
         save = os.path.join(self.out, "map.sav")
         m.write(paths.base_save(), save)
         e = Emu(save=save, ds=self.ds)
         g = Game(e, self.image)
         self.games.append(g)
-        g.setup(cos, humans=humans, fog=fog, weather=weather, power=power, visuals=visuals)
+        g.setup(cos, humans=humans, fog=fog, weather=weather, power=power, visuals=visuals, capt=capt)
         st = g.playst()
         self.log(f"battle started at frame {e.frame}: {st}")
         self.eq(st["map"], 0xB4, "Versus map is design map 1")
@@ -79,7 +79,7 @@ class Ctx:
         self.eq(st["anim"], {"off": 0, "a": 1, "b": 2, "c": 3}[visuals], "battle animations option")
         if weather != "random":
             self.eq(st["weather"], {"clear": 0, "snow": 1, "rain": 2, "sandstorm": 0}[weather], "weather")
-        for army, co in enumerate(cos, 1):
+        for army, co in enumerate(cos or [], 1):
             self.eq(g.player(army)["co"], romlib.co_id(co), f"army {army} CO")
         return g
 
@@ -90,13 +90,20 @@ class Ctx:
     def side(self, g, u, terrain=None):
         p = g.player(u["army"])
         st = g.playst()
+        # With the Dual Strike pack, a Versus Lab is a Com Tower: +10% firepower
+        # per tower the army owns (gPlayers[a] +0x10), added with tempFirepower.
+        towers = self.towers(g, u["army"]) if self.ds else 0
         return damage.Side(
             type=u["type"], hp=u["hp"], ammo=u["ammo"],
             terrain=(g.terrain_class(u["x"], u["y"]) if terrain is None else terrain) & 0x1F,
             co=p["co"], co_mode=p["co_mode"],
-            temp_firepower=p["temp_firepower"], temp_defence=p["temp_defence"],
+            temp_firepower=p["temp_firepower"] + 10 * towers, temp_defence=p["temp_defence"],
             dived=bool(u["flags"] & 0x20), co_abilities=bool(st["co_abilities"]),
         )
+
+    def towers(self, g, army):
+        """Com Towers (Labs) army owns, counted on the map."""
+        return sum(1 for y in range(20) for x in range(30) if g.terrain_class(x, y) == (army << 5) | 0x14)
 
     def battle_records(self, g):
         def rec(addr):

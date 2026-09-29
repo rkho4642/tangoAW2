@@ -203,7 +203,7 @@ fn colour_map(ds: &[u8]) -> [u8; 16] {
 
 /// GBA 4bpp tiles (1D order within each sprite) of rectangles (x, y, w, h)
 /// of a 4bpp bitmap `width` pixels wide.
-fn tiles(bmp: &[u8], width: usize, rects: &[(usize, usize, usize, usize)]) -> Vec<u8> {
+pub(crate) fn tiles(bmp: &[u8], width: usize, rects: &[(usize, usize, usize, usize)]) -> Vec<u8> {
     let row = width / 2;
     let mut out = Vec::new();
     for &(x0, y0, w, h) in rects {

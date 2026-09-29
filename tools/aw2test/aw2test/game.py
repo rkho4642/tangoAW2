@@ -115,9 +115,13 @@ class Game:
         e.wait(40)
 
     # -- Teams screen ------------------------------------------------------------
+    def teams_addr(self):
+        """The Teams record: tangoAW2 moves it in a five-army game (crate::five)."""
+        return ram.TEAMS_FIVE if self.e.u8(ram.FIVE_ON) == 1 else ram.TEAMS
+
     def teams(self):
         e = self.e
-        rec = e.read(ram.TEAMS, 0x40)
+        rec = e.read(self.teams_addr(), 0x40)
         count = rec[ram.T_CO_COUNT]
         lst = struct.unpack_from("<I", rec, ram.T_CO_LIST)[0]
         co_list = list(e.read(lst, count))
@@ -139,12 +143,21 @@ class Game:
         e = self.e
         t = self.teams()
         n = t["armies"]
+        base = self.teams_addr()
+        if cos is None:
+            # Keep the Teams screen's COs; only the controllers are set.
+            for army in range(min(n, 4)):
+                want = 1 if (army + 1) in humans else 2
+                if e.u8(base + ram.T_CONTROLLERS + army) != want:
+                    e.w8(base + ram.T_CONTROLLERS + army, want)
+            e.wait(4)
+            return
         if len(cos) != n:
             raise NavError(f"map has {n} armies, {len(cos)} COs given")
         for army, co in enumerate(cos):
             co = romlib.co_id(co)
             want = t["co_list"].index(co)
-            addr = ram.TEAMS + ram.T_CO_INDEX + army
+            addr = base + ram.T_CO_INDEX + army
             for _ in range(len(t["co_list"]) + 2):
                 cur = e.u8(addr)
                 if cur == want:
@@ -161,8 +174,8 @@ class Game:
                 e.wait(14)
         for army in range(n):
             want = 1 if (army + 1) in humans else 2
-            if e.u8(ram.TEAMS + ram.T_CONTROLLERS + army) != want:
-                e.w8(ram.TEAMS + ram.T_CONTROLLERS + army, want)
+            if e.u8(base + ram.T_CONTROLLERS + army) != want:
+                e.w8(base + ram.T_CONTROLLERS + army, want)
         e.wait(4)
 
     # -- Rules screen ---------------------------------------------------------------
@@ -178,7 +191,7 @@ class Game:
     def weather_values(self):
         return WEATHER_VALUES
 
-    def set_rules(self, fog=False, weather="clear", power=True, visuals="off"):
+    def set_rules(self, fog=False, weather="clear", power=True, visuals="off", capt=None):
         e = self.e
         items = self.rules_items()
         if len(items) < 7:
@@ -189,13 +202,13 @@ class Game:
         for idx in sorted(wants):
             # cursor to item idx
             for _ in range(10):
-                cur = e.u8(ram.RULES_CURSOR)
+                cur = e.u8(self.teams_addr() + ram.RULES_CURSOR - ram.TEAMS)
                 if cur == idx:
                     break
                 e.press("RIGHT" if cur < idx else "LEFT", 6)
                 e.wait(20)
-            if e.u8(ram.RULES_CURSOR) != idx:
-                raise NavError(f"rules cursor at {e.u8(ram.RULES_CURSOR)}, wanted {idx}")
+            if e.u8(self.teams_addr() + ram.RULES_CURSOR - ram.TEAMS) != idx:
+                raise NavError(f"rules cursor at {e.u8(self.teams_addr() + ram.RULES_CURSOR - ram.TEAMS)}, wanted {idx}")
             proc = self.rules_items()[idx]
             count = e.u8(proc + ram.RULES_ITEM_COUNT)
             for _ in range(count + 2):
@@ -206,6 +219,11 @@ class Game:
                 e.wait(20)
             if e.u8(proc + ram.RULES_ITEM_VALUE) != wants[idx]:
                 raise NavError(f"rules item {RULE_ITEMS[idx]}: value {e.u8(proc + ram.RULES_ITEM_VALUE)}, wanted {wants[idx]}")
+        if capt is not None:
+            # The capture limit's choice (0 off), set directly: stepping
+            # through up to 100 values with the pad takes too long.
+            e.w8(self.rules_items()[4] + ram.RULES_ITEM_VALUE, capt)
+            e.wait(4)
 
     def start_battle(self):
         e = self.e
@@ -218,12 +236,12 @@ class Game:
         if not e.wait_until(lambda: bool(self.procs()), 900, step=5):
             raise NavError("turn start never ran")
 
-    def setup(self, cos, humans=(1,), fog=False, weather="clear", power=True, visuals="off"):
+    def setup(self, cos, humans=(1,), fog=False, weather="clear", power=True, visuals="off", capt=None):
         """Boot, open Versus -> Design Maps -> map 1, pick COs, rules, start."""
         self.boot_to_teams()
         self.set_teams(cos, set(humans))
         self.teams_to_rules()
-        self.set_rules(fog=fog, weather=weather, power=power, visuals=visuals)
+        self.set_rules(fog=fog, weather=weather, power=power, visuals=visuals, capt=capt)
         self.start_battle()
         self.wait_for_input()
 
