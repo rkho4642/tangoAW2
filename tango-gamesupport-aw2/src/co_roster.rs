@@ -447,13 +447,12 @@ const BATTLE_ATTACKER: u32 = 0x0300_13D0;
 const BATTLE_DEFENDER: u32 = 0x0300_13B0;
 const UNITS_POINTER: u32 = 0x0849_9594;
 const UNIT: u32 = 12;
-const ARMY_UNITS: u32 = 64;
 
 /// The army of the unit a battle unit stands for.
 pub fn battle_army(core: &Core, bu: u32) -> u32 {
     let unit = core.raw_read_32(bu, -1);
     let units = core.raw_read_32(UNITS_POINTER, -1);
-    unit.wrapping_sub(units) / UNIT / ARMY_UNITS + 1
+    crate::five::army_of_index(core, unit.wrapping_sub(units) / UNIT)
 }
 
 fn terrain_defence_done(core: &mut Core) {

@@ -199,7 +199,6 @@ const UNITS_POINTER: u32 = 0x0849_9594;
 const PLAYERS_POINTER: u32 = 0x0849_9598;
 const PLAYER: u32 = 0x3C;
 const UNIT: u32 = 12;
-const ARMY_UNITS: u32 = 64;
 const ROWS: u32 = 0x417A;
 const CLASSES: u32 = 0x1432;
 const UNIT_PLANE: u32 = 0x51A;
@@ -252,8 +251,8 @@ fn unit_index_at(core: &Core, x: u32, y: u32) -> u32 {
     core.raw_read_8(m + UNIT_PLANE + row + x, -1) as u32
 }
 
-fn army_of_index(i: u32) -> u32 {
-    i / ARMY_UNITS + 1
+fn army_of_index(core: &Core, i: u32) -> u32 {
+    crate::five::army_of_index(core, i)
 }
 
 /// Firepower % an army's units get on top of their CO's: its Com Towers'
@@ -350,10 +349,10 @@ fn stun(core: &mut Core) {
     let prev = core.raw_read_8(STUN_PREV_ARMY, -1) as u32;
     if army != prev {
         for i in 0..STUN_BYTES * 8 {
-            if army_of_index(i) == army && bit(core, STUN_PENDING, i) {
+            if army_of_index(core, i) == army && bit(core, STUN_PENDING, i) {
                 set_bit(core, STUN_PENDING, i, false);
                 set_bit(core, STUN_ACTIVE, i, true);
-            } else if army_of_index(i) == prev && bit(core, STUN_ACTIVE, i) {
+            } else if army_of_index(core, i) == prev && bit(core, STUN_ACTIVE, i) {
                 // Released: the game cleared its moved flag as its turn
                 // ended, which this tick then set again.
                 set_bit(core, STUN_ACTIVE, i, false);
@@ -477,7 +476,7 @@ fn repair(core: &mut Core) {
         return;
     }
     let units = core.raw_read_32(UNITS_POINTER, -1);
-    let army = army_of_index(u.wrapping_sub(units) / UNIT);
+    let army = army_of_index(core, u.wrapping_sub(units) / UNIT);
     if (1..=5).contains(&army) && army_co(core, army).0 == RACHEL {
         core.gba_mut().cpu_mut().set_gpr(1, hp + 1);
     }
@@ -519,7 +518,7 @@ fn war_bonds(core: &mut Core) {
     let dfd = units + UNIT * d;
     let sides = [(att, BATTLE_ATTACKER, dfd, BATTLE_DEFENDER), (dfd, BATTLE_DEFENDER, att, BATTLE_ATTACKER)];
     for (own, _, foe, foe_record) in sides {
-        let army = army_of_index(own.wrapping_sub(units) / UNIT);
+        let army = army_of_index(core, own.wrapping_sub(units) / UNIT);
         if !(1..=5).contains(&army) || army_co(core, army) != (SASHA, SCOP) {
             continue;
         }

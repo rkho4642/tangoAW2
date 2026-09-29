@@ -201,6 +201,12 @@ fn army(x: u32) -> u32 {
     a0(x) + 1
 }
 
+/// The army (1..5) of a unit by its index in the unit table: 64 ids an
+/// army, 51 in a five-army game.
+pub fn army_of_index(core: &Core, index: u32) -> u32 {
+    if active(core) { index / 51 + 1 } else { index / 64 + 1 }
+}
+
 // ---------- switching ----------
 
 /// Where the game's player table is now (slot 0 = neutral).

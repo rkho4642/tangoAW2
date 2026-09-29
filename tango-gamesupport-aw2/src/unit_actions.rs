@@ -96,7 +96,7 @@ const FULL_HP: u16 = 100;
 const REPAIR_HP: u16 = 10;
 
 /// The unit at a map cell (its record), if any.
-fn unit_at(core: &Core, x: i32, y: i32) -> Option<u32> {
+pub(crate) fn unit_at(core: &Core, x: i32, y: i32) -> Option<u32> {
     let (w, h) = (core.raw_read_16(MAP, -1) as i32, core.raw_read_16(MAP + 2, -1) as i32);
     if x < 0 || y < 0 || x >= w || y >= h {
         return None;
@@ -106,8 +106,8 @@ fn unit_at(core: &Core, x: i32, y: i32) -> Option<u32> {
     (id != 0).then(|| core.raw_read_32(UNITS_POINTER, -1) + UNIT_SIZE * id)
 }
 
-fn army_of(core: &Core, unit: u32) -> u32 {
-    (unit - core.raw_read_32(UNITS_POINTER, -1)) / UNIT_SIZE / 64 + 1
+pub(crate) fn army_of(core: &Core, unit: u32) -> u32 {
+    crate::five::army_of_index(core, (unit - core.raw_read_32(UNITS_POINTER, -1)) / UNIT_SIZE)
 }
 
 /// The Supply command's on-select (`sub_0802D158`): a Black Boat also
@@ -118,6 +118,13 @@ fn supply_selected(core: &mut Core) {
         return;
     }
     let boat = core.raw_read_32(SELECTED, -1);
+    repair_around(core, boat);
+}
+
+/// A Black Boat's Repair where it stands: its army's adjacent units get
+/// 1 HP each (and are resupplied by the Supply command itself), while
+/// funds last.
+pub(crate) fn repair_around(core: &mut Core, boat: u32) {
     let (x, y) = (core.raw_read_8(boat + 2, -1) as i32, core.raw_read_8(boat + 3, -1) as i32);
     let army = army_of(core, boat);
     let funds_at = core.raw_read_32(PLAYERS_POINTER, -1) + PLAYER_SIZE * army;
@@ -172,7 +179,7 @@ fn launch_selected(core: &mut Core) {
 }
 
 const WAIT_SELECTED: u32 = 0x0802_CFFC;
-const DESTROY: u32 = 0x0804_018C;
+pub(crate) const DESTROY: u32 = 0x0804_018C;
 /// Where the moving unit ends up (x, y u16).
 const DESTINATION: u32 = 0x0300_3100;
 const RADIUS: i32 = 3;
@@ -184,21 +191,7 @@ const BOMB_RETURN: u32 = 0x0203_FFC4;
 fn explode_selected(core: &mut Core) {
     let bomb = core.raw_read_32(SELECTED, -1);
     let (bx, by) = (core.raw_read_16(DESTINATION, -1) as i32, core.raw_read_16(DESTINATION + 2, -1) as i32);
-    let (w, h) = (core.raw_read_16(MAP, -1) as i32, core.raw_read_16(MAP + 2, -1) as i32);
-    for y in (by - RADIUS).max(0)..=(by + RADIUS).min(h - 1) {
-        for x in (bx - RADIUS).max(0)..=(bx + RADIUS).min(w - 1) {
-            if (x - bx).abs() + (y - by).abs() > RADIUS {
-                continue;
-            }
-            let Some(u) = unit_at(core, x, y) else { continue };
-            if u == bomb || core.raw_read_8(u, -1) == OOZIUM {
-                continue;
-            }
-            let v = core.raw_read_16(u + 4, -1);
-            let hp = (v & HP_BITS).saturating_sub(BLAST_HP).max(1);
-            core.raw_write_16(u + 4, -1, (v & !HP_BITS) | hp);
-        }
-    }
+    blast(core, bomb, bx, by);
     // Then the game's Wait (the move ends as usual), then its destruction.
     let lr = core.gba().cpu().gpr(14) as u32;
     core.raw_write_32(BOMB, -1, bomb);
@@ -206,6 +199,39 @@ fn explode_selected(core: &mut Core) {
     let cpu = core.gba_mut().cpu_mut();
     cpu.set_gpr(14, (EXPLODE_DONE | 1) as i32);
     cpu.set_thumb_pc(WAIT_SELECTED);
+}
+
+/// The units a Black Bomb at (bx, by) would hit: every unit within
+/// [`RADIUS`] (either army's, but Oozium and the bomb).
+pub(crate) fn blast_targets(core: &Core, bomb: u32, bx: i32, by: i32) -> Vec<u32> {
+    let (w, h) = (core.raw_read_16(MAP, -1) as i32, core.raw_read_16(MAP + 2, -1) as i32);
+    let mut out = Vec::new();
+    for y in (by - RADIUS).max(0)..=(by + RADIUS).min(h - 1) {
+        for x in (bx - RADIUS).max(0)..=(bx + RADIUS).min(w - 1) {
+            if (x - bx).abs() + (y - by).abs() > RADIUS {
+                continue;
+            }
+            let Some(u) = unit_at(core, x, y) else { continue };
+            if u != bomb && core.raw_read_8(u, -1) != OOZIUM {
+                out.push(u);
+            }
+        }
+    }
+    out
+}
+
+/// HP (tenths) a blast takes off a unit with `hp`: 5, never below 1.
+pub(crate) fn blast_loss(hp: u16) -> u16 {
+    hp - hp.saturating_sub(BLAST_HP).max(1)
+}
+
+/// A Black Bomb at (bx, by) explodes: every unit it hits loses 5 HP.
+pub(crate) fn blast(core: &mut Core, bomb: u32, bx: i32, by: i32) {
+    for u in blast_targets(core, bomb, bx, by) {
+        let v = core.raw_read_16(u + 4, -1);
+        let hp = v & HP_BITS;
+        core.raw_write_16(u + 4, -1, (v & !HP_BITS) | (hp - blast_loss(hp)));
+    }
 }
 
 fn explode_done(core: &mut Core) {
@@ -231,6 +257,7 @@ fn behaviour_row(core: &mut Core) {
     if !is_on(core) {
         return;
     }
+    crate::cpu_tactics::cpu_unit(core);
     let u = core.gba().cpu().gpr(4) as u32;
     if let Some(like) = crate::roster::template(core.raw_read_8(u, -1)) {
         let base = core.raw_read_32(CPU_RECORD_POINTER, -1);
@@ -240,11 +267,12 @@ fn behaviour_row(core: &mut Core) {
 
 /// The CPU's record has just been copied for its turn (`sub_08061788`):
 /// the units it may build take their template's row (its build rate, byte
-/// 11, included); the Piperunner (it would need pipes by its base) and the
-/// Black Bomb (the CPU does not explode it) keep none, and the Carrier and
-/// Oozium are past the 24 types the CPU's build code counts.
+/// 11, included; the Black Bomb flies as a Bomber and explodes by
+/// [`crate::cpu_tactics`]); the Piperunner (it would need pipes by its
+/// base) keeps none, and the Carrier and Oozium are past the 24 types the
+/// CPU's build code counts.
 const CPU_RECORD_COPIED: u32 = 0x0806_184E;
-const CPU_BUILDS: [u8; 3] = [crate::roster::MEGATANK, STEALTH, BLACK_BOAT];
+const CPU_BUILDS: [u8; 4] = [crate::roster::MEGATANK, STEALTH, BLACK_BOAT, crate::roster::BLACK_BOMB];
 fn cpu_record_copied(core: &mut Core) {
     if !is_on(core) {
         return;
