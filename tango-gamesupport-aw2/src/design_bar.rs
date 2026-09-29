@@ -18,9 +18,11 @@ use mgba::core::Core;
 pub const LIST: u32 = 0x0203_FF00;
 /// The bar's length: the game's 17 and the ten inventions, and the Black
 /// Crystal and Black Obelisk when their art is there
-/// ([`crate::ds_art::features`]).
+/// ([`crate::ds_art::features`]), and the Wasteland switch with the whole
+/// Dual Strike pack ([`crate::ds_pack::features`]).
 const ENTRIES_BASE: u32 = 27;
 const ENTRIES_ALL: u32 = 29;
+const ENTRIES_DS: u32 = 30;
 const OLD_LIST: u32 = 0x0200_B224;
 const OLD_ENTRIES: u32 = 17;
 
@@ -65,7 +67,7 @@ fn site_value(kind: u32, entries: u32) -> u8 {
 /// The bar's length as the editor's code has it now (27 or 29).
 pub fn entries(core: &Core) -> u32 {
     match core.raw_read_16(LENGTH_SITES[0].0, -1) as u8 as u32 {
-        n @ (ENTRIES_BASE | ENTRIES_ALL) => n,
+        n @ (ENTRIES_BASE | ENTRIES_ALL | ENTRIES_DS) => n,
         _ => ENTRIES_BASE,
     }
 }
@@ -73,8 +75,10 @@ pub fn entries(core: &Core) -> u32 {
 /// The inventions' bar entries: (terrain type, tile placed), in
 /// `design::INVENTIONS` order. The Black Crystal and Black Obelisk are a
 /// minicannon and a Black Cannon to the game (`crate::obelisk`); their words
-/// carry bit 8 ([`OURS`]) so the bar can tell them from the real ones.
-pub const ENTRIES_ADDED: [(u16, u16); 12] = [
+/// carry bit 8 ([`OURS`]) so the bar can tell them from the real ones. The
+/// last, [`WASTE_WORD`], is not placed: it switches the map between Normal
+/// and Wasteland ([`crate::wasteland`]); it shows the mountain's icon.
+pub const ENTRIES_ADDED: [(u16, u16); 13] = [
     (0x15, 0x182),        // minicannon facing down
     (0x16, 0x183),        // up
     (0x17, 0x184),        // left
@@ -87,8 +91,10 @@ pub const ENTRIES_ADDED: [(u16, u16); 12] = [
     (0x1E, 0x190),        // Deathray
     (OURS | 0x15, 0x192), // Black Crystal
     (OURS | 0x1A, 0x193), // Black Obelisk
+    (WASTE_WORD, 0x020),  // Wasteland (shown as a mountain)
 ];
 pub const OURS: u16 = 0x100;
+pub const WASTE_WORD: u16 = OURS | 0x03;
 
 pub fn is_invention_type(class: u8) -> bool {
     (0x15..=0x1E).contains(&class)
@@ -96,25 +102,35 @@ pub fn is_invention_type(class: u8) -> bool {
 
 /// The invention a bar word stands for, in `design::INVENTIONS` order.
 pub fn invention_of(word: u16) -> Option<usize> {
-    ENTRIES_ADDED.iter().position(|&(w, _)| w == word & (OURS | 0x1F))
+    let word = word & (OURS | 0x1F);
+    if word == WASTE_WORD {
+        return None;
+    }
+    ENTRIES_ADDED.iter().position(|&(w, _)| w == word)
 }
 
 /// Every frame: keep the ROM image patched (idempotent; applied from the
 /// first frame, so both netplay peers run the same code), with the Crystal
-/// and Obelisk in the bar when `with_obelisk`.
-pub fn patch_rom(core: &mut Core, with_obelisk: bool) {
+/// and Obelisk in the bar when `with_obelisk`, and the Wasteland switch too
+/// when `with_wasteland`.
+pub fn patch_rom(core: &mut Core, with_obelisk: bool, with_wasteland: bool) {
     for p in LIST_POINTERS {
         if core.raw_read_32(p, -1) == OLD_LIST {
             core.raw_write_32(p, -1, LIST);
         }
     }
-    let n = if with_obelisk { ENTRIES_ALL } else { ENTRIES_BASE };
+    let n = match (with_obelisk, with_wasteland) {
+        (true, true) => ENTRIES_DS,
+        (true, false) => ENTRIES_ALL,
+        _ => ENTRIES_BASE,
+    };
     for (at, kind) in LENGTH_SITES {
         let op = core.raw_read_16(at, -1);
         let known = [
             site_value(kind, OLD_ENTRIES),
             site_value(kind, ENTRIES_BASE),
             site_value(kind, ENTRIES_ALL),
+            site_value(kind, ENTRIES_DS),
         ];
         let want = site_value(kind, n);
         if op as u8 != want && known.contains(&(op as u8)) {
@@ -316,7 +332,7 @@ pub fn icon_palette(core: &mut Core) {
 /// terrain panel's; r3 = the entry's word).
 pub const BAR_NAME: u32 = 0x0800_2998;
 
-/// Trap at [`BAR_NAME`]: the Crystal's and Obelisk's own names.
+/// Trap at [`BAR_NAME`]: the Crystal's, Obelisk's and Wasteland's own names.
 pub fn bar_name(core: &mut Core) {
     if !crate::design::in_map_editor(core) {
         return;
@@ -325,6 +341,7 @@ pub fn bar_name(core: &mut Core) {
     let name = match word {
         CRYSTAL_WORD => crate::obelisk::CRYSTAL_NAME_AT,
         OBELISK_WORD => crate::obelisk::OBELISK_NAME_AT,
+        WASTE_WORD => crate::wasteland::NAME_AT,
         _ => return,
     };
     core.gba_mut().cpu_mut().set_gpr(0, name as i32);

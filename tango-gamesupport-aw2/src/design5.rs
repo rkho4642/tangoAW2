@@ -123,6 +123,9 @@ pub fn sync(core: &mut Core) {
         core.raw_write_range(p5, -1, &buf[4 * PLAYER_SIZE as usize..]);
         core.raw_write_8(p5 + COLOUR, -1, 5);
         core.raw_write_8(p5 + CO, -1, FLAK);
+        // The editor opens on a new map: Normal until one is loaded or
+        // switched (a battle's biome must not carry over).
+        crate::wasteland::set_biome(core, crate::wasteland::NORMAL);
         core.raw_write_8(EDITOR_READY, -1, 1);
     }
     for (at, old, new) in EDITOR_HALVES {

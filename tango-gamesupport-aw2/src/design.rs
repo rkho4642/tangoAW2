@@ -342,6 +342,14 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     // In the bars UP/DOWN (and SELECT) step through the armies: neutral,
     // Orange Star, Blue Moon, Green Earth, Yellow Comet and Black Hole
     // (crate::design5 gives the bars a fifth army).
+    // The Wasteland entry: A on the map switches the map's biome and
+    // places nothing.
+    if !bar_open && terrain_bar && word == crate::design_bar::WASTE_WORD && keys & KEY_A != 0 {
+        if pressed & KEY_A != 0 {
+            crate::wasteland::toggle(core);
+        }
+        keys &= !KEY_A;
+    }
     if !bar_open && pressed & KEY_A != 0 && terrain_bar {
         // An invention picked from the terrain bar: A on the map places its
         // whole footprint (the game alone would place just one tile).
@@ -372,6 +380,7 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     let volcano_on_map = placed(core).iter().any(|&(i, _, _)| i == VOLCANO_INDEX);
     crate::invention_art::tick(core, volcano_on_map);
     crate::design5::editor_tick(core);
+    crate::wasteland::editor_tick(core);
     keys
 }
 
