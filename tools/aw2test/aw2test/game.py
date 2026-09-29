@@ -150,6 +150,9 @@ class Game:
                 want = 1 if (army + 1) in humans else 2
                 if e.u8(base + ram.T_CONTROLLERS + army) != want:
                     e.w8(base + ram.T_CONTROLLERS + army, want)
+            if n >= 5 and self.e.u8(ram.FIVE_ON) == 1:
+                # Black Hole, army 5, has its own controller stop.
+                e.w8(base + ram.T5_ARMY5_CONTROLLER, 1 if 5 in humans else 2)
             e.wait(4)
             return
         if len(cos) != n:

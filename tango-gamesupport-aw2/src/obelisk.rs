@@ -229,7 +229,7 @@ fn sprite(core: &mut Core) {
 /// entry (r2): ours do not fire. On Black Hole's turn, with the Dual
 /// Strike pack's pictures, a structure shows its heal instead, as a cannon
 /// shows its shot: the camera goes to it and the loop waits for Dual
-/// Strike's heal effect there ([`crate::heal_effect`]); then on to the
+/// Strike's heal animation there ([`crate::heal_effect`]); then on to the
 /// next entry (0x0803EE9C, as after a shot). Otherwise it is skipped
 /// (0x0803EEAC).
 const NEXT_AFTER_SHOT: u32 = 0x0803_EE9C;
@@ -245,41 +245,21 @@ fn no_fire(core: &mut Core) {
         core.gba_mut().cpu_mut().set_thumb_pc(NEXT_ENTRY);
         return;
     }
-    let (x, y) = (core.raw_read_8(entry, -1) as i32, core.raw_read_8(entry + 1, -1) as i32);
-    let (source, centre, wait, crystals) = match kind {
-        Structure::Crystal => ((x, y, x, y, 2), (x, y), crate::heal_effect::CRYSTAL_WAIT, vec![(x as u8, y as u8)]),
-        Structure::Obelisk => ((x, y, x + 2, y + 2, 4), (x + 1, y + 1), crate::heal_effect::OBELISK_WAIT, vec![]),
+    let (x, y) = (core.raw_read_8(entry, -1), core.raw_read_8(entry + 1, -1));
+    let (effect, centre) = match kind {
+        Structure::Crystal => (crate::heal_effect::Kind::Crystal, (x, y)),
+        Structure::Obelisk => (crate::heal_effect::Kind::Obelisk, (x + 1, y + 1)),
     };
-    let units = units_near(core, army, source);
     crate::heal_effect::install(core);
-    crate::heal_effect::start(core, &crystals, &units);
+    crate::heal_effect::start(core, effect, x, y);
     let cpu = core.gba_mut().cpu_mut();
     let parent = cpu.gpr(5);
-    cpu.set_gpr(0, centre.0);
-    cpu.set_gpr(1, centre.1);
+    cpu.set_gpr(0, centre.0 as i32);
+    cpu.set_gpr(1, centre.1 as i32);
     cpu.set_gpr(2, parent);
-    cpu.set_gpr(3, wait as i32);
+    cpu.set_gpr(3, crate::heal_effect::WAIT as i32);
     cpu.set_gpr(14, (NEXT_AFTER_SHOT | 1) as i32);
     cpu.set_thumb_pc(crate::heal_effect::SHOW_FN);
-}
-
-/// Where the army's units within `range` of a structure's cells are.
-fn units_near(core: &Core, army: u32, (x0, y0, x1, y1, range): (i32, i32, i32, i32, i32)) -> Vec<(u8, u8)> {
-    let (first, per) = if crate::five::active(core) { ((army - 1) * 51, 51) } else { ((army - 1) * 64, 64) };
-    let mut out = Vec::new();
-    for id in first + 1..first + per.min(51) {
-        let u = UNITS + 12 * id;
-        if core.raw_read_8(u, -1) == 0 {
-            continue;
-        }
-        let (ux, uy) = (core.raw_read_8(u + 2, -1) as i32, core.raw_read_8(u + 3, -1) as i32);
-        let dx = (x0 - ux).max(ux - x1).max(0);
-        let dy = (y0 - uy).max(uy - y1).max(0);
-        if dx + dy <= range {
-            out.push((ux as u8, uy as u8));
-        }
-    }
-    out
 }
 
 /// A on a structure shows its firing range (sub_0803E9F8, entry in r5):
