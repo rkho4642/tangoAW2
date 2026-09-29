@@ -480,10 +480,11 @@ const SMALL: [Small; 9] = [
     // AI: ground unit (from type 1).
     Small { at: 0x0857_67A0, entries: 24, first: 1, refs: &[0x0805_F668, 0x0806_1650],
         values: &[(MEGATANK, 1), (PIPERUNNER, 1), (STEALTH, 0), (BLACK_BOMB, 0), (BLACK_BOAT, 0), (CARRIER, 0), (OOZIUM, 1)] },
-    // Battle scene per unit, for now another unit's (Neotank, Rockets,
-    // Bomber, Bomber, Lander, Battleship, Mech).
+    // Battle scene per unit: the donor whose scene plays (Neotank, Rockets,
+    // Bomber, Bomber, Lander, Cruiser, Tank); `crate::ds_battle` picks it
+    // per battle and draws Dual Strike's unit in it.
     Small { at: 0x0809_131E, entries: 26, first: 0, refs: &[0x0804_1C04],
-        values: &[(MEGATANK, 7), (PIPERUNNER, 10), (STEALTH, 16), (BLACK_BOMB, 16), (BLACK_BOAT, 22), (CARRIER, 20), (OOZIUM, 1)] },
+        values: &[(MEGATANK, 7), (PIPERUNNER, 10), (STEALTH, 16), (BLACK_BOMB, 16), (BLACK_BOAT, 22), (CARRIER, 21), (OOZIUM, 4)] },
 ];
 const SMALL_SIZE: u32 = ROOM_TYPES;
 
