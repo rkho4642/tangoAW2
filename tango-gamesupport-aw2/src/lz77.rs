@@ -70,3 +70,40 @@ mod tests {
         assert_eq!(crate::ds_art::lz10(&compress(&[])).unwrap(), Vec::<u8>::new());
     }
 }
+
+#[cfg(test)]
+mod pack_tests {
+    /// Every new CO picture round-trips (needs `TANGOAW2_DS_ROM`).
+    #[test]
+    #[ignore]
+    fn co_pictures_round_trip() {
+        for ds in crate::ds_co_art::NEW_COS {
+            let a = crate::ds_co_art::co_art(ds).unwrap();
+            for p in [&a.name, &a.body_top, &a.body_bottom, &a.face[0], &a.face[1], &a.face[2]] {
+                assert_eq!(&crate::ds_art::lz10(&super::compress(p)).unwrap(), p, "CO {ds}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod dump_names {
+    #[test]
+    #[ignore]
+    fn dump() {
+        for ds in [23u8, 25] {
+            let a = crate::ds_co_art::co_art(ds).unwrap();
+            let mut s = String::new();
+            for y in 0..16 {
+                for x in 0..48 {
+                    let t = (x / 8) * 2 + y / 8;
+                    let b = a.name[32 * t + 4 * (y % 8) + (x % 8) / 2];
+                    let v = (b >> (4 * (x & 1))) & 15;
+                    s.push(char::from_digit(v as u32, 16).unwrap());
+                }
+                s.push('\n');
+            }
+            println!("{ds}\n{s}");
+        }
+    }
+}

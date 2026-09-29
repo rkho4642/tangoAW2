@@ -175,12 +175,102 @@ fn record_ref(ds: u8, off: u32) -> u32 {
         .unwrap_or(0)
 }
 
+/// AW2's CO page: 6 lines of at most 103 pixels (its own widest), in its
+/// font (`sub_08014D38`: `widths[c]` a character, and 1 between two).
+const PAGE_PIXELS: u32 = 103;
+const PAGE_LINES: usize = 6;
+pub const FONT_WIDTHS: u32 = 0x084C_36E4;
+
+fn pixels(line: &str, widths: &[u8]) -> u32 {
+    line.bytes().map(|c| widths[c as usize] as u32).sum::<u32>() + line.len().saturating_sub(1) as u32
+}
+
+fn wrap_to(paragraphs: &[String], widths: &[u8]) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for p in paragraphs.iter().filter(|p| !p.is_empty()) {
+        let mut line = String::new();
+        for word in p.split(' ') {
+            let longer = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+            if !line.is_empty() && pixels(&longer, widths) > PAGE_PIXELS {
+                lines.push(std::mem::replace(&mut line, word.to_string()));
+            } else {
+                line = longer;
+            }
+        }
+        lines.push(line);
+    }
+    lines
+}
+
+/// Shorter wordings, tried in turn while a page is too long.
+const SHORTER: [(&str, &str); 7] = [
+    ("Adept at making quick decisions, he stores up energy", "He stores up energy"),
+    (" at a faster rate than", " faster than"),
+    (" is greatly increased", " rises greatly"),
+    (" is increased", " rises"),
+    (" are increased", " rise"),
+    ("Damaged units must skip their next turn.", "Units hit skip a turn."),
+    (" HP of damage", " HP damage"),
+];
+
+/// A CO page text wrapped to AW2's page: Dual Strike's line breaks are
+/// dropped but for the ones before "Hit(s):" and "Miss:". If it is still
+/// too long, a few wordings are shortened ([`SHORTER`]); then (a bio) the
+/// last sentences of its first paragraph go, and Hit and Miss share a line.
+pub fn wrap_page(t: &[u8], widths: &[u8]) -> Vec<u8> {
+    let text = String::from_utf8_lossy(t).replace('\r', " ");
+    let mut paragraphs: Vec<String> = vec![String::new()];
+    for word in text.split(' ').filter(|w| !w.is_empty()) {
+        if word.starts_with("Hit") || word.starts_with("Miss:") {
+            paragraphs.push(String::new());
+        }
+        let p = paragraphs.last_mut().unwrap();
+        if !p.is_empty() {
+            p.push(' ');
+        }
+        p.push_str(word);
+    }
+    let mut lines = wrap_to(&paragraphs, widths);
+    for (long, short) in SHORTER {
+        if lines.len() <= PAGE_LINES {
+            break;
+        }
+        for p in paragraphs.iter_mut() {
+            *p = p.replace(long, short);
+        }
+        lines = wrap_to(&paragraphs, widths);
+    }
+    while lines.len() > PAGE_LINES && paragraphs.len() > 1 {
+        let body = &paragraphs[0];
+        let cut = body.trim_end_matches(['.', '!', '?']).rfind(['.', '!', '?']);
+        match cut {
+            Some(i) => {
+                let kept = body[..=i].to_string();
+                paragraphs[0] = kept;
+                lines = wrap_to(&paragraphs, widths);
+            }
+            None => break,
+        }
+    }
+    let n = paragraphs.len();
+    if lines.len() > PAGE_LINES && n >= 2 && paragraphs[n - 2].starts_with("Hit") {
+        let both = format!("{} {}", paragraphs[n - 2], paragraphs[n - 1]);
+        if pixels(&both, widths) <= PAGE_PIXELS {
+            let mut merged = paragraphs[..n - 2].to_vec();
+            merged.push(both);
+            lines = wrap_to(&merged, widths);
+        }
+    }
+    lines.join("\r").into_bytes()
+}
+
 /// A new CO's texts, by [`text_id`] slot.
-fn texts(ds: u8) -> Vec<(u16, Vec<u8>)> {
+fn texts(ds: u8, widths: &[u8]) -> Vec<(u16, Vec<u8>)> {
     let mut out = Vec::new();
     let mut put = |which: u16, off: u32| {
         if let Some(t) = ds_text(record_ref(ds, off)) {
-            out.push((which, t));
+            let page = [T_BIO, T_D2D, T_COP, T_SCOP].contains(&which);
+            out.push((which, if page { wrap_page(&t, widths) } else { t }));
         }
     };
     put(T_NAME, 0x00);
@@ -232,6 +322,7 @@ fn build(core: &Core) -> Option<Built> {
     let mut hud = grown(core, AW2_HUD, HUD_FACE, AW2_COS);
     let mut dossier = grown(core, AW2_DOSSIER, 8, AW2_COS);
     let mut style = grown(core, AW2_BATTLE_STYLE, 1, AW2_COS);
+    let widths = read(core, FONT_WIDTHS, 256);
     let mut pictures: Vec<u8> = Vec::new();
     let mut picture = |data: &[u8], compress: bool| -> u32 {
         let at = PICTURES + pictures.len() as u32;
@@ -280,7 +371,7 @@ fn build(core: &Core) -> Option<Built> {
         }
         let ds_style = crate::ds_pack::pack()?.arm9_at(0x0215_360C + 0x220 * ds as u32 + 0x25, 1)?[0];
         style[co as usize] = ds_style.min(BLACK_HOLE_STYLE);
-        for (which, text) in texts(ds) {
+        for (which, text) in texts(ds, &widths) {
             let at = STRINGS + strings.len() as u32;
             strings.extend_from_slice(&text);
             strings.push(0);
@@ -468,6 +559,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn page_wrap() {
+        let widths = [4u8; 256];
+        let t = wrap_page(b"A Green Earth CO who values chivalry and honor above all else. Often\rcommands his units to charge. Hit: Honor Miss: Retreating", &widths);
+        let t = String::from_utf8(t).unwrap();
+        assert!(t.split('\r').all(|l| pixels(l, &widths) <= PAGE_PIXELS), "{t}");
+        assert!(t.split('\r').count() <= PAGE_LINES, "{t}");
+        assert!(t.ends_with("Miss: Retreating"), "{t}");
+    }
+
+    #[test]
     fn ids_and_room() {
         assert_eq!(ds_id(72), Some(12));
         assert_eq!(ds_id(80), Some(21));
@@ -475,5 +576,28 @@ mod tests {
         assert!((FIRST as u32 + NEW.len() as u32) <= ROOM);
         assert!(TEXT_TABLE + 4 * text_id(80, TEXTS_PER_CO) as u32 <= 0x0863_0000);
         assert!(HUD + HUD_FACE * ROOM <= DOSSIER && PRESENTATION + PRESENTATION_ROW * ROOM <= BODY_PAIRS);
+    }
+}
+
+#[cfg(test)]
+mod pack_tests {
+    use super::*;
+
+    /// Every new CO's CO page texts fit AW2's page (needs `TANGOAW2_DS_ROM`).
+    #[test]
+    #[ignore]
+    fn pages_fit() {
+        for &(ds, _) in NEW.iter() {
+            let widths = std::fs::read(std::env::var("TANGOAW2_AW2_ROM").unwrap()).unwrap()
+                [(FONT_WIDTHS - 0x0800_0000) as usize..][..256]
+                .to_vec();
+            for (which, t) in texts(ds, &widths) {
+                if [T_BIO, T_D2D, T_COP, T_SCOP].contains(&which) {
+                    let t = String::from_utf8(t).unwrap();
+                    println!("{ds} {which}: {}", t.replace('\r', " | "));
+                    assert!(t.split('\r').count() <= PAGE_LINES, "{ds} {which}");
+                }
+            }
+        }
     }
 }

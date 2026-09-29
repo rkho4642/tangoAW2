@@ -47,3 +47,33 @@ def every_new_co_starts(ctx):
         ctx.eq(g.player(1)["co"], romlib.co_id(pair[0]), f"army 1 plays {pair[0]}")
         ctx.eq(g.player(2)["co"], romlib.co_id(pair[1]), f"army 2 plays {pair[1]}")
         ctx.shot(g, f"map_{pair[0]}")
+
+
+@test(modes=("ds",))
+def new_co_screens(ctx):
+    """Screenshots: the Teams screen, the CO page and a power, for a new CO."""
+    m = ctx.map()
+    m.unit(1, "tank", 10, 6).unit(2, "tank", 11, 6)
+    g = ctx.boot_teams(m)
+    g.set_teams(["javier", "kindle"], {1})
+    g.e.wait(30)
+    ctx.shot(g, "teams")
+    g2 = ctx.start(m, ["javier", "kindle"])
+    g2.open_map_menu()
+    g2.choose("CO", g2.MAP_MENU)
+    g2.e.wait(90)
+    for i, k in enumerate(["", "DOWN", "DOWN", "DOWN", "DOWN", "RIGHT"]):
+        if k:
+            g2.e.press(k, 4)
+        g2.e.wait(60)
+        ctx.shot(g2, f"co{i}")
+    for _ in range(6):
+        g2.e.press("B", 4)
+        g2.e.wait(40)
+    g2.wait_for_input()
+    g2.charge_power(1, "power")
+    g2.open_map_menu()
+    g2.choose("Power", g2.MAP_MENU)
+    for i in range(8):
+        g2.e.wait(25)
+        ctx.shot(g2, f"power{i}")
