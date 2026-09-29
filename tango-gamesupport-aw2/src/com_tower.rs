@@ -1,7 +1,8 @@
 //! Dual Strike's Com Tower, with the Dual Strike pack, in Versus.
 //!
 //! Every unit of the army that owns a Com Tower fires 10% harder per tower
-//! it owns; a neutral tower does nothing until it is captured. Towers earn
+//! it owns (its CO's own figure: Javier's is higher, and his units defend
+//! better too, [`crate::co_roster`]); a neutral tower does nothing until it is captured. Towers earn
 //! no funds, and capturing one never ends the battle (a Lab's would).
 //!
 //! AW2 has no free terrain code, but it has the Lab (0x14): a property that
@@ -25,8 +26,7 @@ use crate::ds_weather::is_on;
 pub const LAB: u8 = 0x14;
 const GAME_MODE: u32 = 0x0300_3FC1;
 const VERSUS: u8 = 3;
-/// Firepower per tower, in %.
-const PER_TOWER: i32 = 10;
+const CO_ABILITIES: u32 = 0x0300_3FC8;
 
 /// Whether Labs are Com Towers now: in Versus, and in the Design Room's
 /// map editor, with the pack.
@@ -79,29 +79,40 @@ fn count_towers(core: &mut Core) {
 
 /// `sub_0804334C(battle unit)`, the firepower % added to a side in the
 /// damage formula: the army in r0 just before its abilities are looked up,
-/// and the result in r0 at its return.
+/// and the result in r0 at its return (r4 still the battle unit). With the
+/// pack it gets the CO's firepower on that terrain ([`crate::co_roster`]),
+/// and with the towers on, the army's towers.
 const FIREPOWER_ARMY: u32 = 0x0804_336E;
 const FIREPOWER_DONE: u32 = 0x0804_3380;
 /// The army of the side being worked out (between the two traps).
 const SIDE_ARMY: u32 = 0x0203_FFAA;
+const BATTLE_TERRAIN: u32 = 4;
 
 fn firepower_army(core: &mut Core) {
-    if active(core) {
+    if is_on(core) {
         let army = core.gba().cpu().gpr(0) as u8;
         core.raw_write_8(SIDE_ARMY, -1, army);
     }
 }
 
 fn firepower_done(core: &mut Core) {
-    if !active(core) {
+    if !is_on(core) {
         return;
     }
     let army = core.raw_read_8(SIDE_ARMY, -1) as u32;
-    let n = towers(core, army) as i32;
-    if n > 0 {
+    let bu = core.gba().cpu().gpr(4) as u32;
+    let terrain = core.raw_read_16(bu + BATTLE_TERRAIN, -1) as u8;
+    let mut add = 0;
+    if core.raw_read_8(CO_ABILITIES, -1) != 0 {
+        add += crate::co_roster::terrain_firepower(core, army, terrain);
+    }
+    if active(core) {
+        add += crate::co_roster::tower_attack(core, army) * towers(core, army) as i32;
+    }
+    if add != 0 {
         let cpu = core.gba_mut().cpu_mut();
         let r0 = cpu.gpr(0);
-        cpu.set_gpr(0, r0 + PER_TOWER * n);
+        cpu.set_gpr(0, r0 + add);
     }
 }
 
@@ -150,11 +161,12 @@ fn bar_bonus(core: &mut Core) {
     if !active(core) {
         return;
     }
-    let n = towers(core, core.raw_read_8(BAR_SIDE, -1) as u32) as i32;
-    if n > 0 {
+    let army = core.raw_read_8(BAR_SIDE, -1) as u32;
+    let add = crate::co_roster::tower_attack(core, army) * towers(core, army) as i32;
+    if add != 0 {
         let cpu = core.gba_mut().cpu_mut();
         let r0 = cpu.gpr(0);
-        cpu.set_gpr(0, r0 + PER_TOWER * n);
+        cpu.set_gpr(0, r0 + add);
     }
 }
 

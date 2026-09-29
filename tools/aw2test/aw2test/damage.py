@@ -63,10 +63,33 @@ class Rules:
         return self.image.unit(t)
 
     def co_bonus(self, co, mode, unit_type, which):
+        if self.chart is not None:
+            v = self.chart.co_stat(co, mode, unit_type, which)
+            if v is not None:
+                return v
         return romlib.co_stat(self.image, co, mode, unit_type, which)
 
     def co_mode(self, co, mode):
-        return self.image.co_mode(co, mode)
+        """AW2's CoModeData; with the pack, Dual Strike's luck and counter."""
+        m = dict(self.image.co_mode(co, mode))
+        if self.chart is not None and self.chart.co_block(co, mode) is not None:
+            m["luck"] = self.chart.co_field(co, mode, 0x1C)
+            m["neg_luck"] = self.chart.co_field(co, mode, 0x1E)
+            m["counter"] = self.chart.co_field(co, mode, 0x20)
+        return m
+
+    def terrain_firepower(self, co, mode, terrain):
+        return self.chart.terrain_firepower(co, mode, terrain) if self.chart is not None else 0
+
+    def enemy_terrain_cut(self, co, mode):
+        """Terrain stars the CO's enemies lose (Sonja, Dual Strike)."""
+        v = self.chart.co_field(co, mode, 0x2A) if self.chart is not None else None
+        return max(0, v or 0)
+
+    def tower(self, co, mode, which):
+        """Com Tower % per tower: attack (0) or defence (1)."""
+        v = self.chart.co_field(co, mode, 0x26 + 2 * which) if self.chart is not None else None
+        return (10, 0)[which] if v is None else v
 
     def stars(self, terrain_class):
         return self.image.terrain_stars(terrain_class)
@@ -133,12 +156,7 @@ def choose_weapon(rules, a: Side, b: Side, dist, is_attacker):
 
 
 def range_bonus(rules, a: Side):
-    u = rules.unit(a.type)
-    m = rules.co_mode(a.co, a.co_mode)
-    r = m["stats"][u["unit_class"]][3]
-    if u["unit_class"] == 0:
-        return r
-    return r + m["stats"][romlib._combat_column(u["min_range"])][3]
+    return rules.co_bonus(a.co, a.co_mode, a.type, 3)
 
 
 def terrain_defence(rules, s: Side):
@@ -151,9 +169,11 @@ def terrain_defence(rules, s: Side):
     return d
 
 
-def total_defence(rules, s: Side):
+def total_defence(rules, s: Side, cut=0):
+    """`cut`: terrain stars the other side's CO takes away (Dual Strike's Sonja)."""
     coDef = rules.co_bonus(s.co, s.co_mode, s.type, 1) if s.co_abilities else 0
-    return div(hp_bars(s.hp) * terrain_defence(rules, s), 10) + 100 + coDef + s.temp_defence
+    terrain = max(0, terrain_defence(rules, s) - 10 * cut)
+    return div(hp_bars(s.hp) * terrain, 10) + 100 + coDef + s.temp_defence
 
 
 def strike(rules, a: Side, b: Side, dist, is_attacker, a_hp_now):
@@ -165,9 +185,12 @@ def strike(rules, a: Side, b: Side, dist, is_attacker, a_hp_now):
         acc += m["counter"]
     if a.co_abilities and m["abilities"] & 0x40:
         acc += terrain_defence(rules, a)
+    if a.co_abilities:
+        acc += rules.terrain_firepower(a.co, a.co_mode, a.terrain)
     luck = (m["luck"], m["neg_luck"]) if a.co_abilities else (10, 0)
     dmg0 = div(acc * base, 100)
-    defence = total_defence(rules, b)
+    cut = rules.enemy_terrain_cut(a.co, a.co_mode) if a.co_abilities else 0
+    defence = total_defence(rules, b, cut)
     losses = set()
     if dmg0 == 0:
         rolls = [0]

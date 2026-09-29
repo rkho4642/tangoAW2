@@ -90,14 +90,17 @@ class Ctx:
     def side(self, g, u, terrain=None):
         p = g.player(u["army"])
         st = g.playst()
-        # With the Dual Strike pack, a Versus Lab is a Com Tower: +10% firepower
-        # per tower the army owns (gPlayers[a] +0x10), added with tempFirepower.
+        # With the Dual Strike pack, a Versus Lab is a Com Tower: the CO's tower
+        # firepower (10%; Javier more, and defence too) per tower the army owns,
+        # added with tempFirepower / tempDefence.
         towers = self.towers(g, u["army"]) if self.ds else 0
+        tower_fp = self.rules.tower(p["co"], p["co_mode"], 0) * towers
+        tower_def = self.rules.tower(p["co"], p["co_mode"], 1) * towers
         return damage.Side(
             type=u["type"], hp=u["hp"], ammo=u["ammo"],
             terrain=(g.terrain_class(u["x"], u["y"]) if terrain is None else terrain) & 0x1F,
             co=p["co"], co_mode=p["co_mode"],
-            temp_firepower=p["temp_firepower"] + 10 * towers, temp_defence=p["temp_defence"],
+            temp_firepower=p["temp_firepower"] + tower_fp, temp_defence=p["temp_defence"] + tower_def,
             dived=bool(u["flags"] & 0x20), co_abilities=bool(st["co_abilities"]),
         )
 

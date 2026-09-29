@@ -22,6 +22,7 @@ pub mod ds_weather;
 pub mod sandstorm;
 pub mod wasteland;
 pub mod com_tower;
+pub mod co_roster;
 pub mod roster;
 pub mod unit_names;
 pub mod unit_actions;

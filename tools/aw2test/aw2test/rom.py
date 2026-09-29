@@ -204,6 +204,8 @@ class DualStrike:
         file_id = struct.unpack_from("<I", rom, ovt + 0x18)[0]
         a, b = struct.unpack_from("<II", rom, fat + 8 * file_id)
         self.ov0 = rom[a:b]
+        a9, a9_size = struct.unpack_from("<I", rom, 0x20)[0], struct.unpack_from("<I", rom, 0x2C)[0]
+        self.arm9 = rom[a9:a9 + a9_size]
 
     def record(self, t):
         o = DS_UNITS - DS_OVERLAY0_BASE + DS_RECORD * t
@@ -218,3 +220,55 @@ class DualStrike:
             slot = DS_SUBMERGED_SUB if d == 25 else d
             out.append(0 if slot == 0 else r[base + slot - 1])
         return out
+
+    # -- COs (arm9 0x0215360C + 0x220 * id; blocks d2d/COP/SCOP at +0xA0 + 0x80 * mode)
+    def a9(self, addr, n):
+        o = addr - 0x02000000
+        return self.arm9[o:o + n] if 0 <= o and o + n <= len(self.arm9) else None
+
+    def co_block(self, co, mode):
+        ds = DS_CO_IDS.get(co)
+        if ds is None:
+            return None
+        return self.a9(0x0215360C + 0x220 * ds + 0xA0 + 0x80 * min(mode, 2), 0x80)
+
+    def co_record(self, co):
+        ds = DS_CO_IDS.get(co)
+        return None if ds is None else self.a9(0x0215360C + 0x220 * ds, 0x220)
+
+    def _class_stat(self, b, k):
+        p = struct.unpack_from("<I", b, 0x54 + 4 * k)[0]
+        s = None if p == 0x0216E03C else self.a9(p, 8)
+        return struct.unpack("<4h", s) if s else (0, 0, 0, 0)
+
+    def co_stat(self, co, mode, t, which):
+        """Firepower (0), defence (1), move (2), range (3): the unit's class stat plus
+        its kind-of-combat stat, and +10 firepower in a power. None for Sturm."""
+        b = self.co_block(co, mode)
+        if b is None:
+            return None
+        r = self.record(t)
+        cls, combat = r[0x1C], r[0x20]
+        v = self._class_stat(b, cls)[which] if cls < 7 else 0
+        k = {5: 7, 4: 8, 2: 9, 6: 9, 7: 10}.get(combat)
+        if k is not None:
+            v += self._class_stat(b, k)[which]
+        if which == 0 and mode > 0:
+            v += 10
+        return v
+
+    def co_field(self, co, mode, off):
+        b = self.co_block(co, mode)
+        return None if b is None else struct.unpack_from("<h", b, off)[0]
+
+    def terrain_firepower(self, co, mode, terrain):
+        b = self.co_block(co, mode)
+        if b is None:
+            return 0
+        p = struct.unpack_from("<I", b, 0x2C)[0] - DS_OVERLAY0_BASE
+        return struct.unpack_from("<b", self.ov0, p + (terrain & 0x1F))[0] if 0 <= p < len(self.ov0) - 32 else 0
+
+
+# AW2 CO id -> Dual Strike CO id (Sturm, 10, has none).
+DS_CO_IDS = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9, 9: 10, 11: 26, 12: 13, 13: 27,
+             14: 15, 15: 16, 16: 17, 17: 18, 18: 19}

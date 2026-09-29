@@ -8,7 +8,8 @@ Expected effects are the games' published ones (AW2 manual / CO pages):
   Drake  Tsunami       (COP)  every enemy -1 HP, enemy fuel halved
          Typhoon       (SCOP) every enemy -2 HP, enemy fuel halved, rain
 Powers never destroy a unit (1 internal HP is the floor) and heal up to 10 HP.
-Every power gives its army +10% defence (gPlayers[].tempDefense = 10).
+Every power gives its army +10% defence (gPlayers[].tempDefense = 10), and with
+the Dual Strike pack +10% firepower too (tangoAW2's co_roster, as in Dual Strike).
 After the power an attack is made and checked with the power's stats.
 """
 
@@ -48,14 +49,16 @@ def run_power(ctx, cos, which, own_delta, enemy_delta, halve_fuel=False, weather
 def andy_hyper_repair(ctx):
     g = run_power(ctx, ["andy", "max"], "power", +20, 0, repair=True)
     r = ctx.attack(g, (10, 10), (10, 10), (11, 10))
-    ctx.eq(r["first"].base, TANK[ctx.mode], "Hyper Repair leaves firepower alone")
+    # AW2's powers add only defence; Dual Strike's add 10% firepower too.
+    ctx.eq(r["first"].base, {"aw2": 55, "ds": 60}[ctx.mode], "Hyper Repair's firepower")
 
 
 @test()
 def andy_hyper_upgrade(ctx):
     g = run_power(ctx, ["andy", "max"], "super", +50, 0, repair=True)
     r = ctx.attack(g, (10, 10), (10, 10), (11, 10))
-    ctx.eq(r["first"].base, TANK[ctx.mode] * 120 // 100, "Hyper Upgrade: tank base damage x 120%")
+    ctx.eq(r["first"].base, TANK[ctx.mode] * {"aw2": 120, "ds": 130}[ctx.mode] // 100,
+           "Hyper Upgrade: tank base damage x 120% (Dual Strike: 130%, with the power's 10%)")
 
 
 @test()

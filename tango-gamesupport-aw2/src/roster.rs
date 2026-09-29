@@ -129,7 +129,7 @@ const DS_UNITS: u32 = DS_OVERLAY_BASE + 0x47A58;
 const DS_RECORD: usize = 0x6C;
 const DS_MOVEMENT: u32 = DS_OVERLAY_BASE + 0x471B8;
 
-fn ds_record(t: u8) -> Option<&'static [u8]> {
+pub(crate) fn ds_record(t: u8) -> Option<&'static [u8]> {
     let id = ds_id(t)? as u32;
     crate::ds_pack::pack()?.overlay_at(0, DS_OVERLAY_BASE, DS_UNITS + DS_RECORD as u32 * id, DS_RECORD)
 }
@@ -390,7 +390,7 @@ const CO_COUNT: u32 = 19;
 /// Terrain codes from 21 are AW2's inventions: impassable.
 const INVENTIONS: usize = 21;
 
-fn moved_chart(p: u32) -> u32 {
+pub(crate) fn moved_chart(p: u32) -> u32 {
     if (AW2_CHARTS..AW2_CHARTS + AW2_CHART * CHART_COUNT).contains(&p) {
         CHARTS + CHART * ((p - AW2_CHARTS) / AW2_CHART)
     } else {
@@ -892,6 +892,6 @@ mod tests {
         assert_eq!(ds_id(OOZIUM), Some(26));
         assert_eq!(ds_id(25), None);
         assert_eq!(moved_chart(AW2_CHARTS + AW2_CHART * 2), CHARTS + CHART * 2);
-        assert!(BUILD.len() < 24);
+        assert!((BUILD.len() as u32) < ROOM_TYPES);
     }
 }
