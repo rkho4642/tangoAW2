@@ -272,6 +272,8 @@ const SKILLS: [(usize, u8, u32); 7] = [
     (1, 0x80, 0x40), // terrain stars add firepower
 ];
 const DEFAULT_POWER: u32 = 0x0804_43D9;
+const CPU_POWER_THRESHOLD: u8 = 25;
+const CPU_POWER_CHANCE: u8 = 95;
 const AI_COND_START_OF_TURN: u32 = 0x0805_C1C5;
 
 /// A new CO's row: the CO it takes after for its music and the CPU's power
@@ -289,7 +291,15 @@ fn new_row(rows: &[Vec<u8>], andy: &[u8], co: u8, ds: u8) -> Option<Vec<u8>> {
     row[0x14] = 1;
     row[0x15] = r[0x25].min(4); // property and unit style
     row[0x16] = r[0x26].clamp(1, 5); // army colour
-    row[0x17..0x19].copy_from_slice(&like[0x17..0x19]); // the CPU's power settings
+    // The CPU's power settings: AW2's usual (a CO Power once the meter is
+    // within 25% of it, 95% of the time), or none for a CO without one
+    // (Von Bolt, as Sturm).
+    if r[0x1C] == 0 {
+        row[0x17..0x19].copy_from_slice(&like[0x17..0x19]);
+    } else {
+        row[0x17] = CPU_POWER_THRESHOLD;
+        row[0x18] = CPU_POWER_CHANCE;
+    }
     row[0x1C..0x20].copy_from_slice(&AI_COND_START_OF_TURN.to_le_bytes());
     for q in 0..6u16 {
         let o = 0x20 + 2 * q as usize;
