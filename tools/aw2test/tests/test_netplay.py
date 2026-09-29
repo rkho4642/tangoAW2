@@ -28,3 +28,30 @@ def netplay_tank_battle_and_cpu_turn(ctx):
     ctx.check(identical, "netplay: all identical: true (both peers and the straight replay)")
     for a, v in offline.items():
         ctx.eq(values.get(a, b"").hex(), v.hex(), f"netplay peer 0 RAM at {a:08x} equals the offline run")
+
+
+@test()
+def netplay_com_towers(ctx):
+    """Com Towers over netplay: a tower-boosted attack, a capture and a CPU turn
+    that takes a tower, identical on both peers (with the pack: shared)."""
+    m = ctx.map()
+    m.terrain(2, 2, 0x1DA).terrain(10, 12, 0x1D9).terrain(20, 10, 0x1D9)
+    m.unit(1, "tank", 10, 10).unit(2, "tank", 11, 10).unit(1, "infantry", 10, 12)
+    m.unit(2, "infantry", 21, 10)
+    g = ctx.start(m, ["andy", "andy"])
+    ctx.attack(g, (10, 10), (10, 10), (11, 10))
+    g.select(10, 12)
+    g.move_to(10, 12)
+    g.choose("Capt", g.ACTION_MENU)
+    g.wait_for_input()
+    g.end_turn(human=1)
+    g.end_turn(human=1)
+    units = (g.units_base + ram.UNIT_SIZE * 1, ram.UNIT_SIZE * 127)
+    players = (g.players_base + ram.PLAYER_SIZE, ram.PLAYER_SIZE * 2)
+    offline = {a: g.e.read(a, n) for a, n in (units, players)}
+    g.e.wait(60)
+    identical, values, text = ctx.netplay_replay(g, [units, players])
+    ctx.log("\n".join(l for l in text.splitlines() if not l.startswith("peek")))
+    ctx.check(identical, "netplay: all identical: true (both peers and the straight replay)")
+    for a, v in offline.items():
+        ctx.eq(values.get(a, b"").hex(), v.hex(), f"netplay peer 0 RAM at {a:08x} equals the offline run")

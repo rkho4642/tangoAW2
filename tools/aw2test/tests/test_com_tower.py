@@ -203,3 +203,18 @@ def com_tower_counts_for_capture_limit(ctx):
     ctx.shot(g, "won")
     ctx.eq(caps(1), 3, "the tower counts: Orange Star holds 3")
     ctx.check(g.e.u16(players + 0x3C * 2 + 0x14) != 0, "Blue Moon is defeated (capture limit reached)")
+
+
+@test()
+def cpu_captures_com_tower(ctx):
+    """The CPU goes for towers: its infantry next to a neutral one takes it."""
+    m = ctx.map()
+    m.terrain(20, 10, LAB[0])
+    m.unit(2, "infantry", 21, 10)
+    g = ctx.start(m, ["andy", "andy"], humans=(1,))
+    for _ in range(3):
+        g.end_turn()
+        if g.terrain_class(20, 10) == (2 << 5) | 0x14:
+            break
+    ctx.eq(g.terrain_class(20, 10), (2 << 5) | 0x14, "Blue Moon's CPU captured the tower")
+    ctx.check(not g.battle_over(), "the battle goes on")
