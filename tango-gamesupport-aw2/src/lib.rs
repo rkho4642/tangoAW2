@@ -15,6 +15,7 @@ pub mod design;
 pub mod design5;
 pub mod design_bar;
 pub mod ds_art;
+pub mod ds_pack;
 pub mod factory;
 pub mod five;
 mod five_art;

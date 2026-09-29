@@ -37,8 +37,11 @@ pub struct Art {
 /// Tile ranges of the Obelisk's four sprites within [`Art::obelisk`].
 pub const OBELISK_PIECES: [(usize, usize); 4] = [(0, 16), (16, 24), (24, 32), (32, 36)];
 
-/// The imported art's file in the ROMs folder.
-pub const CACHE_NAME: &str = "Dual Strike Black Obelisk art.tangoaw2";
+/// The file the scan saves next to the ROMs: the whole Dual Strike pack
+/// ([`crate::ds_pack`]), which these pictures are read from. Imports saved
+/// by 0.2 (the pictures alone, `Dual Strike Black Obelisk art.tangoaw2`)
+/// still load.
+pub const CACHE_NAME: &str = crate::ds_pack::CACHE_NAME;
 const MAGIC: &[u8; 8] = b"TAW2DSOB";
 const CRYSTAL_LEN: usize = 8 * 32;
 const OBELISK_LEN: usize = 36 * 32;
@@ -60,8 +63,9 @@ pub fn art() -> Option<&'static Art> {
     DS.get()
 }
 
-/// Bit 7 of the match subtype: set when both netplay peers have the art
-/// (the lobby sets it, and replays record it).
+/// Bit 7 of the match subtype: set when both netplay peers have the Dual
+/// Strike pack (the lobby sets it, and replays record it); the Crystal and
+/// Obelisk go with it online.
 pub const SHARED_ART: u8 = 0x80;
 
 /// Whether the Crystal and Obelisk (their maps, and the Design Room's
@@ -89,9 +93,18 @@ pub enum Offered {
     Import,
 }
 
-/// A file from the ROMs folder: a Dual Strike (USA) ROM, or the art saved
-/// from one earlier.
+/// A file from the ROMs folder: a Dual Strike (USA) ROM, the pack saved
+/// from one earlier, or the art 0.2 saved.
 pub fn offer(buf: &[u8]) -> Offered {
+    if crate::ds_pack::is_saved_pack(buf) {
+        if !crate::ds_pack::offer_saved(buf) {
+            return Offered::No;
+        }
+        if let Some(a) = crate::ds_pack::pack().and_then(|p| extract(&|path| p.file(path))) {
+            let _ = DS.set(a);
+        }
+        return Offered::Import;
+    }
     if buf.len() == 8 + CRYSTAL_LEN + OBELISK_LEN + SMALL_LEN && &buf[..8] == MAGIC {
         let (c, rest) = buf[8..].split_at(CRYSTAL_LEN);
         let (o, s) = rest.split_at(OBELISK_LEN);
@@ -105,7 +118,10 @@ pub fn offer(buf: &[u8]) -> Offered {
     if buf.len() < 0x200 || &buf[0x0C..0x10] != b"AWRE" {
         return Offered::No;
     }
-    let imported = match extract(buf) {
+    if !crate::ds_pack::offer_rom(buf) {
+        return Offered::DsRom { imported: false };
+    }
+    let imported = match crate::ds_pack::pack().and_then(|p| extract(&|path| p.file(path))) {
         Some(a) => {
             let _ = DS.set(a);
             true
@@ -115,22 +131,17 @@ pub fn offer(buf: &[u8]) -> Offered {
     Offered::DsRom { imported }
 }
 
-/// The imported art as a file to keep next to the ROMs.
+/// The imported pack as a file to keep next to the ROMs.
 pub fn cache() -> Option<Vec<u8>> {
-    let a = DS.get()?;
-    let mut out = MAGIC.to_vec();
-    out.extend_from_slice(&a.crystal);
-    out.extend_from_slice(&a.obelisk);
-    out.extend_from_slice(&a.obelisk_small);
-    Some(out)
+    crate::ds_pack::cache()
 }
 
-fn extract(rom: &[u8]) -> Option<Art> {
-    let data = lz10(nds_file(rom, "bmap/015")?)?;
+fn extract<'a>(file: &dyn Fn(&str) -> Option<&'a [u8]>) -> Option<Art> {
+    let data = lz10(file("bmap/015")?)?;
     if data.len() != 20224 {
         return None;
     }
-    let palette = nds_file(rom, "bmap/00e")?.get(0x180..0x1A0)?;
+    let palette = file("bmap/00e")?.get(0x180..0x1A0)?;
     let map = colour_map(palette);
     let recolour = |b: &[u8]| -> Vec<u8> {
         b.iter()
@@ -209,59 +220,8 @@ fn tiles(bmp: &[u8], width: usize, rects: &[(usize, usize, usize, usize)]) -> Ve
 }
 
 /// A file of the DS ROM's file system by path.
-fn nds_file<'a>(rom: &'a [u8], path: &str) -> Option<&'a [u8]> {
-    let u32_at = |o: usize| {
-        rom.get(o..o + 4)
-            .map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize)
-    };
-    let u16_at = |o: usize| {
-        rom.get(o..o + 2)
-            .map(|b| u16::from_le_bytes(b.try_into().unwrap()) as usize)
-    };
-    let (fnt, fat) = (u32_at(0x40)?, u32_at(0x48)?);
-    let mut dir = 0usize;
-    let parts: Vec<&str> = path.split('/').collect();
-    for (i, part) in parts.iter().enumerate() {
-        let sub = fnt + u32_at(fnt + 8 * dir)?;
-        let mut id = u16_at(fnt + 8 * dir + 4)?;
-        let mut p = sub;
-        let mut next = None;
-        loop {
-            let len = *rom.get(p)? as usize;
-            p += 1;
-            if len == 0 {
-                break;
-            }
-            let name = rom.get(p..p + (len & 0x7F))?;
-            p += len & 0x7F;
-            if len & 0x80 != 0 {
-                let child = u16_at(p)? & 0xFFF;
-                p += 2;
-                if name == part.as_bytes() && i + 1 < parts.len() {
-                    next = Some(Err(child));
-                    break;
-                }
-            } else {
-                if name == part.as_bytes() && i + 1 == parts.len() {
-                    next = Some(Ok(id));
-                    break;
-                }
-                id += 1;
-            }
-        }
-        match next? {
-            Err(child) => dir = child,
-            Ok(file) => {
-                let (start, end) = (u32_at(fat + 8 * file)?, u32_at(fat + 8 * file + 4)?);
-                return rom.get(start..end);
-            }
-        }
-    }
-    None
-}
-
 /// LZ77 (type 0x10) as the GBA/DS BIOS decompresses it.
-fn lz10(b: &[u8]) -> Option<Vec<u8>> {
+pub fn lz10(b: &[u8]) -> Option<Vec<u8>> {
     if b.first() != Some(&0x10) || b.len() < 4 {
         return None;
     }
@@ -297,11 +257,14 @@ fn lz10(b: &[u8]) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn saved_import_round_trips() {
+    fn an_import_saved_by_0_2_still_loads() {
         let mut buf = super::MAGIC.to_vec();
         buf.extend((0..(super::CRYSTAL_LEN + super::OBELISK_LEN + super::SMALL_LEN)).map(|i| i as u8));
         assert_eq!(super::offer(&buf), super::Offered::Import);
-        assert_eq!(super::cache().unwrap(), buf);
+        let art = super::art().unwrap();
+        assert_eq!(art.crystal, buf[8..8 + super::CRYSTAL_LEN]);
+        // The pictures alone are not a Dual Strike pack: nothing to save.
+        assert!(super::cache().is_none());
         assert_eq!(super::offer(b"not a rom"), super::Offered::No);
     }
 }
