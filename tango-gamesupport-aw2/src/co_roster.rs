@@ -82,7 +82,7 @@ const DS_IDS: [Option<u8>; AW2_COS as usize] = [
 ];
 
 pub fn ds_co(co: u8) -> Option<u8> {
-    DS_IDS.get(co as usize).copied().flatten()
+    DS_IDS.get(co as usize).copied().flatten().or_else(|| crate::co_new::ds_id(co))
 }
 
 // --- Dual Strike's CO records (arm9) ---------------------------------------
@@ -250,10 +250,81 @@ fn build(core: &Core) -> Option<Vec<u8>> {
     }
     let andy = rows[ANDY as usize].clone();
     let mut out: Vec<u8> = rows.concat();
-    for _ in AW2_COS as u32..ROOM {
-        out.extend_from_slice(&andy);
+    for co in AW2_COS as u32..ROOM {
+        let co = co as u8;
+        match crate::co_new::ds_id(co) {
+            Some(ds) => out.extend_from_slice(&new_row(&rows, &andy, co, ds)?),
+            None => out.extend_from_slice(&andy),
+        }
     }
     Some(out)
+}
+
+/// Dual Strike's skills (block +0x08, +0x09) that are AW2 abilities
+/// (`CoModeData.specialAbilities`): (byte, bit, AW2 bit).
+const SKILLS: [(usize, u8, u32); 7] = [
+    (0, 0x01, 0x01), // hidden HP
+    (0, 0x02, 0x02), // deploys from cities
+    (0, 0x04, 0x04), // strikes first when attacked
+    (0, 0x08, 0x08), // sees into hiding places
+    (0, 0x10, 0x20), // terrain stars doubled
+    (0, 0x40, 0x80), // aircraft use less fuel
+    (1, 0x80, 0x40), // terrain stars add firepower
+];
+const DEFAULT_POWER: u32 = 0x0804_43D9;
+const AI_COND_START_OF_TURN: u32 = 0x0805_C1C5;
+
+/// A new CO's row: the CO it takes after for its music and the CPU's power
+/// settings, Andy's movement and neutral stats, and the rest Dual Strike's.
+fn new_row(rows: &[Vec<u8>], andy: &[u8], co: u8, ds: u8) -> Option<Vec<u8>> {
+    use crate::co_new::*;
+    let r = record(ds)?;
+    let like = &rows[crate::co_new::like(co) as usize];
+    let mut row = andy.to_vec();
+    row[0x04..0x06].copy_from_slice(&like[0x04..0x06]); // music
+    row[0x06..0x0A].fill(0); // weather bringers
+    row[0x00..0x04].copy_from_slice(&(text_id(co, T_NAME) as u32).to_le_bytes());
+    row[0x0C..0x10].copy_from_slice(&(r[0x1C] as u32).to_le_bytes());
+    row[0x10..0x14].copy_from_slice(&(r[0x20] as u32).to_le_bytes());
+    row[0x14] = 1;
+    row[0x15] = r[0x25].min(4); // property and unit style
+    row[0x16] = r[0x26].clamp(1, 5); // army colour
+    row[0x17..0x19].copy_from_slice(&like[0x17..0x19]); // the CPU's power settings
+    row[0x1C..0x20].copy_from_slice(&AI_COND_START_OF_TURN.to_le_bytes());
+    for q in 0..6u16 {
+        let o = 0x20 + 2 * q as usize;
+        row[o..o + 2].copy_from_slice(&text_id(co, T_QUOTES + q).to_le_bytes());
+    }
+    for (i, page) in [T_BIO, T_D2D, T_COP, T_SCOP].iter().enumerate() {
+        row[0x2C + 2 * i..0x2E + 2 * i].copy_from_slice(&text_id(co, *page).to_le_bytes());
+    }
+    row[0x34..0x36].copy_from_slice(&text_id(co, T_VICTORY).to_le_bytes());
+    let neutral_stats = andy[0x38 + 0x24..0x38 + 0x44].to_vec();
+    let charts = andy[0x38 + 0x18..0x38 + 0x24].to_vec();
+    for mode in 0..3u8 {
+        let b = block(ds, mode)?;
+        let at = 0x38 + 0x44 * mode as usize;
+        let name = match mode {
+            0 => 0,
+            1 => text_id(co, T_COP_NAME) as u32,
+            _ => text_id(co, T_SCOP_NAME) as u32,
+        };
+        row[at..at + 4].copy_from_slice(&name.to_le_bytes());
+        row[at + 4..at + 8].copy_from_slice(&DEFAULT_POWER.to_le_bytes());
+        let mut abilities = 0u32;
+        for (byte, bit, aw2) in SKILLS {
+            if b[0x08 + byte] & bit != 0 {
+                abilities |= aw2;
+            }
+        }
+        row[at + 8..at + 12].copy_from_slice(&abilities.to_le_bytes());
+        for (aw2, dso) in [(0x0C, 0x18), (0x0E, 0x1C), (0x10, 0x1E), (0x12, 0x20), (0x14, 0x22), (0x16, 0x24)] {
+            row[at + aw2..at + aw2 + 2].copy_from_slice(&b[dso..dso + 2]);
+        }
+        row[at + 0x18..at + 0x24].copy_from_slice(&charts);
+        row[at + 0x24..at + 0x44].copy_from_slice(&neutral_stats);
+    }
+    Some(row)
 }
 
 static BUILT: OnceLock<Option<Vec<u8>>> = OnceLock::new();

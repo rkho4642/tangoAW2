@@ -585,6 +585,19 @@ class Game:
         self.wait_for_input()
         return m["names"]
 
+    # The CO table as the game reads it now (tangoAW2's copy with the Dual
+    # Strike pack): a literal-pool word of GetCoPriceMultiplier's neighbour.
+    CO_TABLE_POOL = 0x08042DDC
+
+    def co_stars(self, co):
+        a = self.e.u32(self.CO_TABLE_POOL) + romlib.CO_RECORD * co
+        return self.e.u32(a + 0x0C), self.e.u32(a + 0x10)
+
+    def co_cost_percent(self, co, mode):
+        a = self.e.u32(self.CO_TABLE_POOL) + romlib.CO_RECORD * co + 0x38 + 0x44 * mode + 0x14
+        v = self.e.read(a, 2)
+        return int.from_bytes(v, "little", signed=True)
+
     def power(self, which="power"):
         """Activate the CO Power ('power') or Super CO Power ('super') from the map menu."""
         self.open_map_menu()
@@ -614,7 +627,7 @@ class Game:
     def charge_power(self, army, which="super"):
         """Fill army's power meter exactly to the COP or SCOP cost (charge +0x20)."""
         p = self.player(army)
-        cop, scop = self.image.co_stars(p["co"])
+        cop, scop = self.co_stars(p["co"])
         cost = power_star_cost(p["powers_used"]) * (scop if which.lower().startswith("s") else cop)
         self.e.w32(p["addr"] + ram.P_CHARGE, cost)
         return cost

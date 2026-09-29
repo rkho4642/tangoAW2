@@ -38,7 +38,19 @@ CO_NAMES = [
     "Nell", "Andy", "Max", "Olaf", "Sami", "Grit", "Kanbei", "Sonja", "Eagle", "Drake",
     "Sturm", "Flak", "Lash", "Adder", "Hawke", "Hachi", "Colin", "Jess", "Sensei",
 ]
+# Dual Strike's new COs, tangoAW2's ids 72.. with the pack (crate::co_new).
+NEW_CO_NAMES = ["Jugger", "Koal", "Kindle", "Von Bolt", "Grimm", "Javier", "Sasha", "Jake", "Rachel"]
+NEW_CO_DS_IDS = [12, 14, 25, 11, 24, 23, 22, 20, 21]
 CO_IDS = {n.lower(): i for i, n in enumerate(CO_NAMES)}
+CO_IDS.update({n.lower().replace(" ", ""): 72 + k for k, n in enumerate(NEW_CO_NAMES)})
+
+
+def co_name(co):
+    if co < len(CO_NAMES):
+        return CO_NAMES[co]
+    if 72 <= co < 72 + len(NEW_CO_NAMES):
+        return NEW_CO_NAMES[co - 72]
+    return f"CO {co}"
 
 TERRAIN_CLASSES = {
     "plain": 1, "river": 2, "mountain": 3, "wood": 4, "road": 5, "city": 6, "sea": 7,
@@ -58,7 +70,7 @@ def unit_id(name_or_id):
 def co_id(name_or_id):
     if isinstance(name_or_id, int):
         return name_or_id
-    return CO_IDS[name_or_id.lower()]
+    return CO_IDS[name_or_id.lower().replace(" ", "")]
 
 
 class Image:
@@ -270,5 +282,6 @@ class DualStrike:
 
 
 # AW2 CO id -> Dual Strike CO id (Sturm, 10, has none).
-DS_CO_IDS = {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9, 9: 10, 11: 26, 12: 13, 13: 27,
+DS_CO_IDS = {72 + k: d for k, d in enumerate(NEW_CO_DS_IDS)}
+DS_CO_IDS |= {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7, 7: 8, 8: 9, 9: 10, 11: 26, 12: 13, 13: 27,
              14: 15, 15: 16, 16: 17, 17: 18, 18: 19}

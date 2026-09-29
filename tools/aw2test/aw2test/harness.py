@@ -65,6 +65,16 @@ class Ctx:
                 m.unit(army, "infantry", x + (1 if x < 15 else -1), y + (1 if y < 10 else -1))
         return m
 
+    def boot_teams(self, m):
+        """Boot with map `m` and stop on the Teams screen."""
+        save = os.path.join(self.out, "map.sav")
+        m.write(paths.base_save(), save)
+        e = Emu(save=save, ds=self.ds)
+        g = Game(e, self.image)
+        self.games.append(g)
+        g.boot_to_teams()
+        return g
+
     def start(self, m, cos, humans=(1,), fog=False, weather="clear", power=True, visuals="off", capt=None):
         save = os.path.join(self.out, "map.sav")
         m.write(paths.base_save(), save)
@@ -131,7 +141,7 @@ class Ctx:
         ra, rd = self.battle_records(g)
         first, counter = damage.battle(self.rules, a_side, d_side, dist, dfd_hp_after=dfd1["hp"])
         an, dn = romlib.UNIT_NAMES[att0["type"]], romlib.UNIT_NAMES[dfd0["type"]]
-        label = f"{an} ({romlib.CO_NAMES[a_side.co]}, mode {a_side.co_mode}) -> {dn} ({romlib.CO_NAMES[d_side.co]})"
+        label = f"{an} ({romlib.co_name(a_side.co)}, mode {a_side.co_mode}) -> {dn} ({romlib.co_name(d_side.co)})"
         self.log(f"{label} at distance {dist}; attacker {att0['hp']}->{att1['hp']}, defender {dfd0['hp']}->{dfd1['hp']}")
         self.log(f"  expected attack: {first.describe()}")
         self.log(f"  game's records: attacker {ra}")
@@ -167,7 +177,7 @@ class Ctx:
 
         def price(p, t):
             cost = self.image.u16(romlib.UNIT_TABLE + romlib.UNIT_RECORD * t + 6)
-            pct = self.image.s16(romlib.CO_TABLE + romlib.CO_RECORD * p["co"] + 0x38 + 0x44 * p["co_mode"] + 0x14)
+            pct = g.co_cost_percent(p["co"], p["co_mode"])
             return damage.div(cost * (100 + pct), 100)
 
         x1 = (damage.hp_bars(att0["hp"]) - damage.hp_bars(att1["hp"])) * price(pa0, att0["type"])
@@ -176,7 +186,7 @@ class Ctx:
                                   (pd0, pd1, x2 + damage.div(x1, 2), "defender")):
             if p0["co_mode"] != 0 or p1["co_mode"] != 0:
                 continue
-            cap = power_star_cost(p0["powers_used"]) * self.image.co_stars(p0["co"])[1]
+            cap = power_star_cost(p0["powers_used"]) * g.co_stars(p0["co"])[1]
             self.eq(p1["charge"], min(cap, p0["charge"] + gain), f"{label}: {who}'s power meter")
         return {"first": first, "counter": counter, "before": (att0, dfd0), "after": (att1, dfd1),
                 "records": (ra, rd)}

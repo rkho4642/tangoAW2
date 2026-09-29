@@ -71,7 +71,13 @@ class Rules:
 
     def co_mode(self, co, mode):
         """AW2's CoModeData; with the pack, Dual Strike's luck and counter."""
-        m = dict(self.image.co_mode(co, mode))
+        # A new CO (72..) has Andy's row but for what Dual Strike gives it.
+        m = dict(self.image.co_mode(co if co < 19 else 1, mode))
+        if co >= 19 and self.chart is not None:
+            b = self.chart.co_block(co, mode)
+            skills = [(0, 0x01, 0x01), (0, 0x02, 0x02), (0, 0x04, 0x04), (0, 0x08, 0x08), (0, 0x10, 0x20),
+                      (0, 0x40, 0x80), (1, 0x80, 0x40)]
+            m["abilities"] = sum(aw2 for byte, bit, aw2 in skills if b[0x08 + byte] & bit)
         if self.chart is not None and self.chart.co_block(co, mode) is not None:
             m["luck"] = self.chart.co_field(co, mode, 0x1C)
             m["neg_luck"] = self.chart.co_field(co, mode, 0x1E)
