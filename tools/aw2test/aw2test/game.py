@@ -524,6 +524,27 @@ class Game:
             raise NavError("unit still selected after cancelling")
         return m["names"]
 
+    def buy(self, x, y, unit_type):
+        """Build `unit_type` at the property at (x, y) through the build menu."""
+        self.wait_idle()
+        self.goto(x, y)
+        self.e.press("A", 4)
+        self.e.wait(60)
+        ids = []
+        for k in range(30):
+            t = self.e.u8(0x02023830 + 4 * k)
+            if t == 0:
+                break
+            ids.append(t)
+        if unit_type not in ids:
+            raise NavError(f"{unit_type} not in the build menu {ids}")
+        for _ in range(ids.index(unit_type)):
+            self.e.press("DOWN", 4)
+            self.e.wait(8)
+        self.e.press("A", 4)
+        self.wait_for_input()
+        return ids
+
     def empty_cell(self):
         occupied = {(u["x"], u["y"]) for u in self.units()}
         cx, cy = self.cursor()

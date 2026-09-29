@@ -74,8 +74,14 @@ const CLONES: u32 = DATA + 0x3000; // see [`CLONE`]
 const INFO_TEXT: u32 = DATA + 0x6000; // 64 rows of 16 text ids
 const SLOTS: u32 = DATA + 0x6800; // [5][64] u16
 const DESCRIPTIONS: u32 = DATA + 0x6C00; // 0x80 per string
+const ART_MAP: u32 = DATA + 0x8000; // per new unit, 3 idle frames of 4 tiles
+const ART_MOVE: u32 = DATA + 0x9000; // per new unit, an LZ77 moving sheet
+const ART_MOVE_SIZE: u32 = 0x1000;
+const NAME_INDEX: u32 = DATA + 0x7000; // 64 units x 4 bytes
+const NAME_PICTURES: u32 = DATA + 0x10000; // AW2's 19, then the new units'
+const DATA_END: u32 = DATA + 0x12000;
 const DATA_SENTINEL: u32 = DATA + 0x7FFC;
-const DATA_MAGIC: u32 = 0x3355_5344; // "DSU3"
+const DATA_MAGIC: u32 = 0x3555_5344; // "DSU5"
 
 /// The unit table's address as the game reads it now.
 pub fn table(core: &Core) -> u32 {
@@ -509,6 +515,100 @@ const AW2_SLOTS: u32 = 0x0849_9608;
 const SLOTS_REF: u32 = 0x0802_61C4;
 const SLOTS_STRIDE: (u32, u16, u16) = (0x0802_61B2, 0x2132, 0x2180);
 
+// --- Pictures --------------------------------------------------------------------
+
+/// The new units' map pictures ([`crate::ds_unit_art`]) go in map slots
+/// from 59: 4 BG tiles each from 0x235 + 4 * slot = 0x321, tiles no battle
+/// screen uses (the game's sheet ends at 0x2A0, its digits at 0x2B1).
+const FIRST_SLOT: u16 = 59;
+const SHEET_TILE: u32 = 0x235;
+const SHEET_VRAM: u32 = 0x0600_0000 + 32 * SHEET_TILE;
+/// The game's sheet: 3 idle frames of 0x6C tiles, copied to [`SHEET_VRAM`]
+/// by the idle animation.
+const AW2_SHEET: u32 = 0x0810_BE60;
+const SHEET_FRAME: u32 = 0x6C * 32;
+const SLOT_BYTES: u32 = 4 * 32;
+const ART_FRAME: u32 = SLOT_BYTES * NEW.len() as u32;
+
+/// A unit's map pictures: (frame 0, 1, 2), from the pack.
+fn map_art() -> Option<Vec<[u8; 128]>> {
+    let mut out = Vec::new();
+    for f in 0..3 {
+        for n in &NEW {
+            out.push(crate::ds_unit_art::map_tiles(ds_id(n.id)?, f)?);
+        }
+    }
+    Some(out)
+}
+
+/// LZ77 (type 0x10) of `data` with literal blocks only (the game's
+/// decompressor takes any valid stream).
+fn lz77_literal(data: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x10, data.len() as u8, (data.len() >> 8) as u8, (data.len() >> 16) as u8];
+    for block in data.chunks(8) {
+        out.push(0);
+        out.extend_from_slice(block);
+    }
+    while out.len() % 4 != 0 {
+        out.push(0);
+    }
+    out
+}
+
+static SHEET_FRAMES: OnceLock<Vec<Vec<u8>>> = OnceLock::new();
+
+/// Every frame on the battle map: the new units' tiles follow the game's
+/// idle frame (found by comparing its copy with the sheet's frames; on any
+/// other screen those tiles are left alone).
+fn sync_map_art(core: &mut Core) {
+    let frames = SHEET_FRAMES.get_or_init(|| {
+        (0..3)
+            .map(|f| {
+                let mut b = vec![0u8; SHEET_FRAME as usize];
+                core.raw_read_range(AW2_SHEET + SHEET_FRAME * f, -1, &mut b);
+                b
+            })
+            .collect()
+    });
+    let mut now = vec![0u8; SHEET_FRAME as usize];
+    core.raw_read_range(SHEET_VRAM, -1, &mut now);
+    let Some(f) = frames.iter().position(|fr| *fr == now) else {
+        return;
+    };
+    let at = SHEET_VRAM + SLOT_BYTES * FIRST_SLOT as u32;
+    let mut want = vec![0u8; ART_FRAME as usize];
+    core.raw_read_range(ART_MAP + ART_FRAME * f as u32, -1, &mut want);
+    let mut have = vec![0u8; want.len()];
+    core.raw_read_range(at, -1, &mut have);
+    if have != want {
+        core.raw_write_range(at, -1, &want);
+    }
+}
+
+/// The cursor panel copies a unit's 4 tiles from the sheet in ROM
+/// (`sub_0802B91C`, source in r0): the new units' from tangoAW2's.
+const PANEL_ICON: u32 = 0x0802_BA9C;
+fn panel_icon(core: &mut Core) {
+    if !is_on(core) {
+        return;
+    }
+    let src = core.gba().cpu().gpr(0) as u32;
+    let first = AW2_SHEET + SLOT_BYTES * FIRST_SLOT as u32;
+    if (first..first + ART_FRAME).contains(&src) {
+        core.gba_mut().cpu_mut().set_gpr(0, (ART_MAP + (src - first)) as i32);
+    }
+}
+
+/// The unit panel's name pictures (see [`crate::unit_names`]): per unit an
+/// index (u16, then u16) into 256-byte pictures, read by `sub_0802A838`
+/// through two pool words.
+const AW2_NAME_INDEX: u32 = 0x0849_A354;
+const NAME_INDEX_REF: u32 = 0x0802_A854;
+const NAME_PICTURES_REF: u32 = 0x0802_A850;
+const AW2_NAME_PICTURES: u32 = 19;
+/// The panel names, in [`NEW`]'s order (AW2's are short too: "Md Tank").
+const PANEL_NAMES: [&str; 7] = ["Megatnk", "Pipernr", "Stealth", "B Bomb", "B Boat", "Carrier", "Oozium"];
+
 // --- Build menu --------------------------------------------------------------
 
 /// The build menu's order (the game's, 0x081BA054, with the new units),
@@ -613,7 +713,46 @@ fn install(core: &mut Core) -> bool {
         let o = 2 * ROOM_TYPES as usize * country as usize;
         slots[o..o + row.len()].copy_from_slice(&row);
     }
+    // The new units' own pictures, when the pack's are there.
+    if let Some(art) = map_art() {
+        for (k, t) in art.iter().enumerate() {
+            core.raw_write_range(ART_MAP + SLOT_BYTES * k as u32, -1, t);
+        }
+        for country in 0..5 {
+            for (k, n) in NEW.iter().enumerate() {
+                let at = 2 * (ROOM_TYPES as usize * country + n.id as usize);
+                slots[at..at + 2].copy_from_slice(&(FIRST_SLOT + k as u16).to_le_bytes());
+            }
+        }
+        let move_clone = clone_at(0);
+        for (k, n) in NEW.iter().enumerate() {
+            let Some(sheet) = ds_id(n.id).and_then(|d| crate::ds_unit_art::move_sheet(d, n.like)) else {
+                continue;
+            };
+            let lz = lz77_literal(&sheet);
+            let at = ART_MOVE + ART_MOVE_SIZE * k as u32;
+            assert!(lz.len() as u32 <= ART_MOVE_SIZE);
+            core.raw_write_range(at, -1, &lz);
+            for country in 0..5 {
+                core.raw_write_32(move_clone + CLONE[0].stride * n.id as u32 + 4 * country, -1, at);
+            }
+        }
+    }
     core.raw_write_range(SLOTS, -1, &slots);
+    // Panel names: AW2's pictures, then one per new unit.
+    let mut pics = vec![0u8; crate::unit_names::PICTURE * AW2_NAME_PICTURES as usize];
+    core.raw_read_range(crate::unit_names::AW2_PICTURES, -1, &mut pics);
+    core.raw_write_range(NAME_PICTURES, -1, &pics);
+    let mut index = vec![0u8; 4 * ROOM_TYPES as usize];
+    core.raw_read_range(AW2_NAME_INDEX, -1, &mut index[..4 * AW2_TYPES as usize]);
+    for (k, n) in NEW.iter().enumerate() {
+        let i = AW2_NAME_PICTURES + k as u32;
+        let picture = crate::unit_names::picture(core, PANEL_NAMES[k]).unwrap_or([0u8; 256]);
+        core.raw_write_range(NAME_PICTURES + 256 * i, -1, &picture);
+        index[4 * n.id as usize..4 * n.id as usize + 2].copy_from_slice(&(i as u16).to_le_bytes());
+    }
+    core.raw_write_range(NAME_INDEX, -1, &index);
+    let _ = DATA_END;
     let mut list = BUILD.to_vec();
     list.push(0xFF);
     core.raw_write_range(BUILD_LIST, -1, &list);
@@ -672,6 +811,8 @@ pub fn tick(core: &mut Core, on: bool) {
         switch32(core, at, if on { INFO_TEXT } else { INFO_TEXT_AW2 });
     }
     switch32(core, SLOTS_REF, if on { SLOTS } else { AW2_SLOTS });
+    switch32(core, NAME_INDEX_REF, if on { NAME_INDEX } else { AW2_NAME_INDEX });
+    switch32(core, NAME_PICTURES_REF, if on { NAME_PICTURES } else { crate::unit_names::AW2_PICTURES });
     let (at, aw2, ds) = SLOTS_STRIDE;
     let want = if on { ds } else { aw2 };
     let now = core.raw_read_16(at, -1);
@@ -685,6 +826,7 @@ pub fn tick(core: &mut Core, on: bool) {
         core.raw_write_16(at, -1, want);
     }
     if on {
+        sync_map_art(core);
         for k in 0..STRINGS.len() as u32 {
             switch32(core, TEXT_TABLE + 4 * (TEXT_BASE as u32 + k), TEXT_STRINGS + 0x20 * k);
         }
@@ -704,6 +846,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     for at in DIVED_COLUMN {
         t.push((at, Box::new(dived_column)));
     }
+    t.push((PANEL_ICON, Box::new(panel_icon)));
     t
 }
 
