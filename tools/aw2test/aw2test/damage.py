@@ -93,8 +93,9 @@ class Rules:
         return max(0, v or 0)
 
     def indirect_defence(self, co, mode):
-        """Javier's defence against indirect attacks (tangoAW2's co_powers)."""
-        return (20, 40, 60)[min(mode, 2)] if self.chart is not None and co == 77 else 0
+        """Javier's defence against indirect attacks (tangoAW2's co_powers;
+        Dual Strike's 0x020E61D8)."""
+        return (20, 40, 80)[min(mode, 2)] if self.chart is not None and co == 77 else 0
 
     def tower(self, co, mode, which):
         """Com Tower % per tower: attack (0) or defence (1)."""
@@ -186,7 +187,10 @@ def total_defence(rules, s: Side, cut=0, dist=1):
     if s.co_abilities and dist > 1:
         coDef += rules.indirect_defence(s.co, s.co_mode)
     terrain = max(0, terrain_defence(rules, s) - 10 * cut)
-    return div(hp_bars(s.hp) * terrain, 10) + 100 + coDef + s.temp_defence
+    total = div(hp_bars(s.hp) * terrain, 10) + 100 + coDef + s.temp_defence
+    if rules.chart is not None:
+        total = min(total, 200)  # Dual Strike's cap (0x020C34C8), with the pack
+    return total
 
 
 def strike(rules, a: Side, b: Side, dist, is_attacker, a_hp_now):

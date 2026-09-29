@@ -18,7 +18,7 @@
 //!   (Dual Strike's 0x020E1D2C); War Bonds pays her half the value of the
 //!   HP her units take off enemies.
 //! - Rachel: property repairs give one HP more.
-//! - Javier: defence against indirect attacks, +20/+40/+60%.
+//! - Javier: defence against indirect attacks, +20/+40/+80%.
 //! - Eagle: Dual Strike's Lightning Drive lets units move again, as
 //!   Lightning Strike does (his COP takes his SCOP's unit effect).
 
@@ -268,13 +268,23 @@ pub fn extra_firepower(core: &Core, army: u32) -> i32 {
     add
 }
 
-/// Defence % for Javier's units against an indirect attack.
+/// Defence % for Javier's units against an indirect attack: +20 day to
+/// day, +40 in Tower Shield, +80 in Tower of Power.
+///
+/// Dual Strike's numbers, from its code: his power blocks set one skill bit
+/// each (block +0x09 = 0x08 / 0x10 / 0x20, skills 0x0C / 0x0D / 0x0E, which
+/// 0x020E70xx copies into the player's skill words at +0x74), and
+/// 0x020E61D8 adds 0x14 / 0x28 / 0x50 to the defender's defence when the
+/// attacker's unit class is indirect (0x020DF7AC = 8). It goes on top of
+/// the power's standard +10% and the Com Towers', straight into the
+/// defence value (100 + bonuses), which Dual Strike caps at 200 with the
+/// terrain (0x020C34C8; see `co_roster`'s `defence_total`).
 pub fn indirect_defence(core: &Core, army: u32) -> i32 {
     let (co, mode) = army_co(core, army);
     if !is_on(core) || co != JAVIER {
         return 0;
     }
-    [20, 40, 60][mode.min(2) as usize]
+    [20, 40, 80][mode.min(2) as usize]
 }
 
 // --- Stun (Ex Machina) --------------------------------------------------------------

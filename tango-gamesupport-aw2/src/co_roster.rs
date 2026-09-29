@@ -428,6 +428,23 @@ fn defence_done(core: &mut Core) {
     }
 }
 
+/// `sub_08024C58` storing a side's defence (terrain + 100 + CO bonuses +
+/// its own) at 0x08024D12 (r1): Dual Strike caps it at 200 (0x020C34C8),
+/// so no defence turns a hit into healing. AW2 has no cap and never gets
+/// there; Javier's Tower of Power (+80 against indirects) does.
+const DEFENCE_TOTAL: u32 = 0x0802_4D12;
+const DEFENCE_CAP: i16 = 200;
+
+fn defence_total(core: &mut Core) {
+    if !is_on(core) {
+        return;
+    }
+    let cpu = core.gba_mut().cpu_mut();
+    if cpu.gpr(1) as u16 as i16 > DEFENCE_CAP {
+        cpu.set_gpr(1, DEFENCE_CAP as i32);
+    }
+}
+
 /// `CalcDamage(attacker, defender, distance, ...)`: the distance of the
 /// strike being worked out, for defences against indirect attacks.
 const CALC_DAMAGE: u32 = 0x0802_4ABC;
@@ -482,6 +499,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     t.push((DEFENCE_DONE, Box::new(defence_done)));
     t.push((TERRAIN_DEFENCE_DONE, Box::new(terrain_defence_done)));
     t.push((CALC_DAMAGE, Box::new(calc_damage)));
+    t.push((DEFENCE_TOTAL, Box::new(defence_total)));
     t
 }
 

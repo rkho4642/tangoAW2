@@ -137,6 +137,22 @@ def javier_indirect_defence(ctx):
 
 
 @test(modes=DS)
+def javier_tower_of_power_indirect_defence(ctx):
+    """Tower of Power: +80 against indirects on top of the power's +10, and the
+    defence stops at 200 as in Dual Strike (0x020C34C8): no damage, no healing."""
+    m = ctx.map()
+    m.terrain(12, 6, "wood")
+    m.unit(1, "artillery", 10, 6).unit(1, "infantry", 2, 2).unit(2, "tank", 12, 6).unit(2, "infantry", 20, 10)
+    g = ctx.start(m, ["andy", "javier"], humans=(1, 2))
+    g.end_turn(human=2)
+    ctx.power(g, 2, "super")
+    g.end_turn(human=1)
+    r = ctx.attack(g, (10, 6), (10, 6), (12, 6))
+    ctx.eq(r["first"].defence, 200, "Javier's tank in a wood vs artillery (20 + 100 + 10 + 80, capped)")
+    ctx.eq(r["after"][1]["hp"], r["before"][1]["hp"], "no damage and no healing")
+
+
+@test(modes=DS)
 def eagle_lightning_drive_moves_again(ctx):
     m = ctx.map()
     m.unit(1, "tank", 10, 10).unit(1, "infantry", 12, 12).unit(2, "tank", 20, 10)
