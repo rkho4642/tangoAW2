@@ -53,6 +53,10 @@ fn key_bits(s: &str) -> u32 {
         .fold(0, |a, b| a | b)
 }
 
+/// Where the stack's scratch starts, left out of the straight replay's
+/// comparison after setup pokes.
+const STACK_FROM: u32 = 0x0300_7800;
+
 fn hex(s: &str) -> u32 {
     u32::from_str_radix(s.trim_start_matches("0x"), 16).expect("hex number")
 }
@@ -86,6 +90,7 @@ enum Row {
     Keys([u32; 2]),
     Shot(String),
     Peek(u32, usize),
+    Poke(u32, Vec<u8>),
 }
 
 fn main() {
@@ -148,6 +153,7 @@ fn main() {
     let mut jitter = 99u32;
     let mut t = 0usize;
     let mut timeline: Vec<String> = Vec::new();
+    let mut pokes: Vec<(usize, u32, Vec<u8>)> = Vec::new();
 
     fn keys_for(seat: usize, bits: u32) -> [u32; 2] {
         let mut k = [0, 0];
@@ -213,6 +219,15 @@ fn main() {
                 }
                 "shot" => rows.push_back(Row::Shot(p[1].to_string())),
                 "peek" => rows.push_back(Row::Peek(hex(p[1]), p[2].parse().unwrap())),
+                // A test's setup write, on both peers at this tick (and in
+                // the straight replay at the same row), then idle frames so
+                // no rollback reaches back past it.
+                "poke8" | "poke16" | "poke32" => {
+                    let v = hex(p[2]);
+                    let n = match p[0] { "poke8" => 1, "poke16" => 2, _ => 4 };
+                    rows.push_back(Row::Poke(hex(p[1]), v.to_le_bytes()[..n].to_vec()));
+                    (0..20).for_each(|_| rows.push_back(Row::Keys([0, 0])));
+                }
                 other => panic!("unknown command {other}"),
             }
         }
@@ -235,6 +250,13 @@ fn main() {
                 if a != b {
                     println!("peek {addr:08x} @{t} peer1: {}  (differs)", s(&b));
                 }
+                continue;
+            }
+            Row::Poke(addr, bytes) => {
+                for peer in peers.iter() {
+                    peer.with_link(|link| link.poke(addr, &bytes));
+                }
+                pokes.push((t, addr, bytes));
                 continue;
             }
             Row::Keys(k) => k,
@@ -289,7 +311,10 @@ fn main() {
         None,
     )
     .expect("boot");
-    for row in &confirmed {
+    for (i, row) in confirmed.iter().enumerate() {
+        for (_, addr, bytes) in pokes.iter().filter(|p| p.0 == i) {
+            straight.core_mut().raw_write_range(*addr, -1, bytes);
+        }
         straight.tick(*row);
     }
 
@@ -314,13 +339,33 @@ fn main() {
         let b = peek(&peers[1], base, len);
         let mut s = vec![0u8; len];
         straight.peek(base, &mut s);
+        // A test's setup pokes are not inputs: the straight replay writes
+        // them between the same two ticks, but what is left in the unused
+        // part of the stack can differ. Game state is compared in full.
+        let peers_equal = a == b;
+        let peers_differ = a.iter().zip(&b).filter(|(p, q)| p != q).count();
+        let mut a = a;
+        if name == "iwram" && !pokes.is_empty() {
+            for i in STACK_FROM as usize - base as usize..len {
+                a[i] = 0;
+                s[i] = 0;
+            }
+            println!("  (setup pokes: the stack from {STACK_FROM:08x} is left out of the straight comparison)");
+        }
         let diff = |x: &[u8], y: &[u8]| x.iter().zip(y).filter(|(p, q)| p != q).count();
-        println!(
-            "{name}: bytes differing peer0/peer1 {}, peer0/straight {}",
-            diff(&a, &b),
-            diff(&a, &s)
-        );
-        all &= a == b && a == s;
+        println!("{name}: bytes differing peer0/peer1 {peers_differ}, peer0/straight {}", diff(&a, &s));
+        let first: Vec<String> = a
+            .iter()
+            .zip(&s)
+            .enumerate()
+            .filter(|(_, (p, q))| p != q)
+            .take(8)
+            .map(|(i, (p, q))| format!("{:08x}: {p:02x}/{q:02x}", base + i as u32))
+            .collect();
+        if !first.is_empty() {
+            println!("  {name} peer0/straight first differences: {}", first.join(", "));
+        }
+        all &= peers_equal && a == s;
     }
     println!("all identical: {all}");
 }

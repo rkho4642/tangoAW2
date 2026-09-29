@@ -83,6 +83,15 @@ pub trait Link: Send + 'static {
         let _ = (addr, buf);
         false
     }
+
+    /// Write `bytes` into the console's memory at `addr`, for test tools
+    /// that set a game up (a filled power meter) on both peers on the same
+    /// frame. Never part of the simulation: a rollback past it loses it.
+    /// Engines that cannot do it return `false`.
+    fn poke(&mut self, addr: u32, bytes: &[u8]) -> bool {
+        let _ = (addr, bytes);
+        false
+    }
 }
 
 /// One console of a boot, as the seam reads it: everything a console

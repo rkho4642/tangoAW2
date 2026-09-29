@@ -106,9 +106,7 @@ fn firepower_done(core: &mut Core) {
     if core.raw_read_8(CO_ABILITIES, -1) != 0 {
         add += crate::co_roster::terrain_firepower(core, army, terrain);
     }
-    if active(core) {
-        add += crate::co_roster::tower_attack(core, army) * towers(core, army) as i32;
-    }
+    add += crate::co_powers::extra_firepower(core, army);
     if add != 0 {
         let cpu = core.gba_mut().cpu_mut();
         let r0 = cpu.gpr(0);
@@ -151,18 +149,18 @@ const BAR_BONUS: u32 = 0x0808_5428;
 const BAR_SIDE: u32 = 0x0203_FFAB;
 
 fn bar_army(core: &mut Core) {
-    if active(core) {
+    if is_on(core) {
         let army = core.gba().cpu().gpr(0) as u8;
         core.raw_write_8(BAR_SIDE, -1, army);
     }
 }
 
 fn bar_bonus(core: &mut Core) {
-    if !active(core) {
+    if !is_on(core) {
         return;
     }
     let army = core.raw_read_8(BAR_SIDE, -1) as u32;
-    let add = crate::co_roster::tower_attack(core, army) * towers(core, army) as i32;
+    let add = crate::co_powers::extra_firepower(core, army);
     if add != 0 {
         let cpu = core.gba_mut().cpu_mut();
         let r0 = cpu.gpr(0);

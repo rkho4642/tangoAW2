@@ -55,3 +55,27 @@ def netplay_com_towers(ctx):
     ctx.check(identical, "netplay: all identical: true (both peers and the straight replay)")
     for a, v in offline.items():
         ctx.eq(values.get(a, b"").hex(), v.hex(), f"netplay peer 0 RAM at {a:08x} equals the offline run")
+
+
+@test(modes=("ds",), netplay=True)
+def netplay_new_co_powers(ctx):
+    """Dual Strike's new COs over netplay: Von Bolt's Ex Machina (its stun is
+    kept in RAM) and Sasha's War Bonds, then CPU turns, identical on both peers
+    and the replay."""
+    m = ctx.map()
+    m.unit(1, "tank", 10, 10).unit(2, "tank", 11, 10).unit(2, "mech", 20, 10).unit(2, "infantry", 21, 11)
+    g = ctx.start(m, ["vonbolt", "sasha"])
+    ctx.power(g, 1, "super")
+    ctx.attack(g, (10, 10), (10, 10), (11, 10))
+    g.end_turn(human=1)
+    g.end_turn(human=1)
+    units = (g.units_base + ram.UNIT_SIZE * 1, ram.UNIT_SIZE * 127)
+    players = (g.players_base + ram.PLAYER_SIZE, ram.PLAYER_SIZE * 2)
+    stun = (0x0203FE00, 0x58)
+    offline = {a: g.e.read(a, n) for a, n in (units, players, stun)}
+    g.e.wait(60)
+    identical, values, text = ctx.netplay_replay(g, [units, players, stun])
+    ctx.log("\n".join(l for l in text.splitlines() if not l.startswith("peek")))
+    ctx.check(identical, "netplay: all identical: true (both peers and the straight replay)")
+    for a, v in offline.items():
+        ctx.eq(values.get(a, b"").hex(), v.hex(), f"netplay peer 0 RAM at {a:08x} equals the offline run")

@@ -105,6 +105,9 @@ class Ctx:
         # added with tempFirepower / tempDefence.
         towers = self.towers(g, u["army"]) if self.ds else 0
         tower_fp = self.rules.tower(p["co"], p["co_mode"], 0) * towers
+        if self.ds and p["co"] == 74 and p["co_mode"] == 2 and st["co_abilities"]:
+            # Kindle's High Society: +3% per property she owns (co_powers).
+            tower_fp += 3 * self.properties(g, u["army"])
         tower_def = self.rules.tower(p["co"], p["co_mode"], 1) * towers
         return damage.Side(
             type=u["type"], hp=u["hp"], ammo=u["ammo"],
@@ -113,6 +116,12 @@ class Ctx:
             temp_firepower=p["temp_firepower"] + tower_fp, temp_defence=p["temp_defence"] + tower_def,
             dived=bool(u["flags"] & 0x20), co_abilities=bool(st["co_abilities"]),
         )
+
+    def properties(self, g, army):
+        """Properties (city, HQ, airport, port, base, Lab/tower) army owns."""
+        kinds = (6, 8, 10, 11, 14, 20)
+        return sum(1 for y in range(20) for x in range(30)
+                   if g.terrain_class(x, y) >> 5 == army and g.terrain_class(x, y) & 0x1F in kinds)
 
     def towers(self, g, army):
         """Com Towers (Labs) army owns, counted on the map."""
@@ -196,7 +205,10 @@ class Ctx:
         cost = g.charge_power(army, which)
         self.log(f"army {army}: power meter set to {cost} for {'Super CO Power' if which.startswith('s') else 'CO Power'}")
         names = g.map_menu_names()
-        self.check("Power" in names and ("Super" in names or which.startswith("p")), f"map menu offers the powers: {names}")
+        cop_stars = g.co_stars(g.player(army)["co"])[0]
+        want_power = which.startswith("p") or cop_stars > 0
+        self.check(("Power" in names) == want_power and ("Super" in names or which.startswith("p")),
+                   f"map menu offers the powers: {names}")
         before = {u["id"]: u for u in g.units()}
         p0 = g.player(army)
         g.power(which)
@@ -273,8 +285,8 @@ class Ctx:
     def netplay_replay(self, g, peeks):
         """Replay this run's inputs on two rollback peers (aw2_netplay_script, seat 0
         pressing) and return (all_identical, {addr: bytes on peer 0}, output)."""
-        bad = [l for l in g.e.timeline if l.startswith("poke")]
-        self.require(not bad, f"a netplay replay needs a run without pokes: {bad[:3]}")
+        # Pokes (a filled power meter) are replayed on both peers on the same
+        # tick, with idle frames after them (aw2_netplay_script).
         lines = ["seat 0"] + list(g.e.timeline) + ["wait 60"] + [f"peek {a:08x} {n}" for a, n in peeks]
         path = os.path.join(self.out, "netplay.txt")
         with open(path, "w") as f:

@@ -336,6 +336,7 @@ fn build(core: &Core) -> Option<Built> {
         }
         at
     };
+    crate::co_powers::presentation_changes(&mut pres);
     let mut pairs = vec![0u8; (8 * ROOM) as usize];
     let mut strings: Vec<u8> = Vec::new();
     let mut slots: Vec<(u32, u32)> = Vec::new();

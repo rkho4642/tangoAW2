@@ -186,6 +186,11 @@ impl tango_match::Link for SharedLink {
         self.inner.core(0).raw_read_range(addr, -1, buf);
         true
     }
+
+    fn poke(&mut self, addr: u32, bytes: &[u8]) -> bool {
+        self.inner.core_mut(0).raw_write_range(addr, -1, bytes);
+        true
+    }
 }
 
 struct SharedSide<'a> {

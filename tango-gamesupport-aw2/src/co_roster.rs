@@ -310,7 +310,8 @@ fn new_row(rows: &[Vec<u8>], andy: &[u8], co: u8, ds: u8) -> Option<Vec<u8>> {
             _ => text_id(co, T_SCOP_NAME) as u32,
         };
         row[at..at + 4].copy_from_slice(&name.to_le_bytes());
-        row[at + 4..at + 8].copy_from_slice(&DEFAULT_POWER.to_le_bytes());
+        let power = crate::co_powers::power_assembly(co, mode).unwrap_or(DEFAULT_POWER);
+        row[at + 4..at + 8].copy_from_slice(&power.to_le_bytes());
         let mut abilities = 0u32;
         for (byte, bit, aw2) in SKILLS {
             if b[0x08 + byte] & bit != 0 {
@@ -385,28 +386,46 @@ fn stat_function(core: &mut Core, field: usize) {
 }
 
 /// `GetUnitDefenceWithCoBonus(army, type)` = 100 + the CO's defence: the
-/// Com Towers' defence goes on top (the army kept from its entry).
+/// Com Towers' defence and Javier's against indirect attacks go on top
+/// (the army kept from its entry).
 const DEFENCE_ARMY: u32 = 0x0804_2CF8;
 const DEFENCE_DONE: u32 = 0x0804_2D10;
 const DEFENCE_SIDE: u32 = 0x0203_FFBA;
 
 fn defence_army(core: &mut Core) {
-    if crate::com_tower::active(core) {
+    if is_on(core) {
         let army = core.gba().cpu().gpr(0) as u8;
         core.raw_write_8(DEFENCE_SIDE, -1, army);
     }
 }
 
 fn defence_done(core: &mut Core) {
-    if !crate::com_tower::active(core) {
+    if !is_on(core) {
         return;
     }
     let army = core.raw_read_8(DEFENCE_SIDE, -1) as u32;
-    let add = crate::com_tower::towers(core, army) as i32 * tower_defence(core, army);
+    let mut add = 0;
+    if crate::com_tower::active(core) {
+        add += crate::com_tower::towers(core, army) as i32 * tower_defence(core, army);
+    }
+    if abilities_on(core) && core.raw_read_8(BATTLE_DISTANCE, -1) > 1 {
+        add += crate::co_powers::indirect_defence(core, army);
+    }
     if add != 0 {
         let cpu = core.gba_mut().cpu_mut();
         let r0 = cpu.gpr(0);
         cpu.set_gpr(0, r0 + add);
+    }
+}
+
+/// `CalcDamage(attacker, defender, distance, ...)`: the distance of the
+/// strike being worked out, for defences against indirect attacks.
+const CALC_DAMAGE: u32 = 0x0802_4ABC;
+const BATTLE_DISTANCE: u32 = 0x0203_FE51;
+fn calc_damage(core: &mut Core) {
+    if is_on(core) {
+        let d = core.gba().cpu().gpr(2).clamp(0, 255) as u8;
+        core.raw_write_8(BATTLE_DISTANCE, -1, d);
     }
 }
 
@@ -453,6 +472,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     t.push((DEFENCE_ARMY, Box::new(defence_army)));
     t.push((DEFENCE_DONE, Box::new(defence_done)));
     t.push((TERRAIN_DEFENCE_DONE, Box::new(terrain_defence_done)));
+    t.push((CALC_DAMAGE, Box::new(calc_damage)));
     t
 }
 

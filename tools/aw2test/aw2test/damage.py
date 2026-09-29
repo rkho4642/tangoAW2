@@ -92,6 +92,10 @@ class Rules:
         v = self.chart.co_field(co, mode, 0x2A) if self.chart is not None else None
         return max(0, v or 0)
 
+    def indirect_defence(self, co, mode):
+        """Javier's defence against indirect attacks (tangoAW2's co_powers)."""
+        return (20, 40, 60)[min(mode, 2)] if self.chart is not None and co == 77 else 0
+
     def tower(self, co, mode, which):
         """Com Tower % per tower: attack (0) or defence (1)."""
         v = self.chart.co_field(co, mode, 0x26 + 2 * which) if self.chart is not None else None
@@ -175,9 +179,12 @@ def terrain_defence(rules, s: Side):
     return d
 
 
-def total_defence(rules, s: Side, cut=0):
-    """`cut`: terrain stars the other side's CO takes away (Dual Strike's Sonja)."""
+def total_defence(rules, s: Side, cut=0, dist=1):
+    """`cut`: terrain stars the other side's CO takes away (Dual Strike's Sonja);
+    `dist` > 1: an indirect attack (Javier's defence)."""
     coDef = rules.co_bonus(s.co, s.co_mode, s.type, 1) if s.co_abilities else 0
+    if s.co_abilities and dist > 1:
+        coDef += rules.indirect_defence(s.co, s.co_mode)
     terrain = max(0, terrain_defence(rules, s) - 10 * cut)
     return div(hp_bars(s.hp) * terrain, 10) + 100 + coDef + s.temp_defence
 
@@ -196,7 +203,7 @@ def strike(rules, a: Side, b: Side, dist, is_attacker, a_hp_now):
     luck = (m["luck"], m["neg_luck"]) if a.co_abilities else (10, 0)
     dmg0 = div(acc * base, 100)
     cut = rules.enemy_terrain_cut(a.co, a.co_mode) if a.co_abilities else 0
-    defence = total_defence(rules, b, cut)
+    defence = total_defence(rules, b, cut, dist)
     losses = set()
     if dmg0 == 0:
         rolls = [0]
