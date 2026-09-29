@@ -82,7 +82,7 @@ pub const UNIT_BAR: u32 = DATA + 0x7100; // the Design Room's unit bar, u16s
 const NAME_PICTURES: u32 = DATA + 0x10000; // AW2's 19, then the new units'
 const DATA_END: u32 = DATA + 0x12000;
 const DATA_SENTINEL: u32 = DATA + 0x7FFC;
-const DATA_MAGIC: u32 = 0x3655_5344; // "DSU6"
+const DATA_MAGIC: u32 = 0x3755_5344; // "DSU7"
 
 /// The unit table's address as the game reads it now.
 pub fn table(core: &Core) -> u32 {
@@ -271,6 +271,12 @@ fn record(core: &Core, t: u8) -> Option<[u8; RECORD as usize]> {
         r[0x1C] = n.threatens;
         r[0x1D] = n.target;
         r[0x14..0x18].copy_from_slice(&0u32.to_le_bytes());
+        if t == OOZIUM {
+            // Attacks adjacent units with a weapon needing no ammo.
+            r[0x0E] = 1;
+            r[0x0F] = 1;
+            r[0x11] = 1;
+        }
     }
     if let Some(k) = TRANSPORTERS.iter().position(|&(u, _)| u == t) {
         r[0x14..0x18].copy_from_slice(&(TRANSPORTS + TRANSPORT_SIZE * k as u32).to_le_bytes());
@@ -291,6 +297,12 @@ const DS_HIDDEN_STEALTH: usize = 28;
 /// id, [`DIVED_SUB`] or [`HIDDEN_STEALTH`]), weapon 0 primary / 1
 /// secondary.
 pub fn chart(att: u8, def: u8, weapon: u32) -> u8 {
+    // Oozium's attack (its secondary, needing no ammo) destroys any ground
+    // or naval unit ([`crate::unit_actions`]); Dual Strike's record has none.
+    if att == OOZIUM {
+        let air = matches!(def, STEALTH | BLACK_BOMB | 16 | 17 | 19 | 20 | HIDDEN_STEALTH | DIVED_SUB);
+        return if weapon == 1 && !air && def != 0 { 255 } else { 0 };
+    }
     let Some(ds) = ds_record(att) else { return 0 };
     let slot = match def {
         DIVED_SUB => DS_SUBMERGED,

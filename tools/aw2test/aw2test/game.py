@@ -406,8 +406,24 @@ class Game:
     # menus (a builder proc: +0x08 = 0x08019D0D, +0x20 table, +0x31 visible
     # entry indexes (+0x41 of them), +0x44 the menu proc whose +0x20 is the cursor)
     MENU_BUILDER_FN = 0x08019D0D
-    ACTION_MENU = 0x0849AE28
+    @property
+    def ACTION_MENU(self):
+        """The unit command menu's table, as the game reads it (tangoAW2's copy
+        with the Dual Strike pack: pool word 0x0802D59C)."""
+        return self.e.u32(0x0802D59C)
     MAP_MENU = 0x0849AAC0
+
+    def live_label(self, table, i):
+        """A menu entry's label as the game shows it now (text table and
+        strings read from the running ROM image, which tangoAW2 edits), without
+        its icon code."""
+        tid = self.e.u32(table + 0x20 * i + 0x1C)
+        p = self.e.u32(0x08610A38 + 4 * tid)
+        raw = self.e.read(p, 40)
+        t = raw[:raw.index(b"\0")] if b"\0" in raw else raw
+        if t[:1] in (b"\t", b"\n"):
+            t = t[2:]
+        return t.decode("latin-1")
 
     def menu(self):
         for addr, _, fn in self.procs():
@@ -419,7 +435,7 @@ class Game:
                 if not (0x08000000 <= table < 0x08800000):
                     return None
                 try:
-                    names = [self.image.menu_label(table, i) for i in vis]
+                    names = [self.live_label(table, i) for i in vis]
                     if table == self.ACTION_MENU:
                         # entry 1 is the second Fire: an indirect unit that has not
                         # moved and has no target gets it greyed out (sub_0802CB20)

@@ -84,3 +84,118 @@ def buy_and_move_new_units(ctx):
     ctx.eq(moved.get((10, 8)), 9, "Piperunner moved along the pipe")
     ctx.eq(moved.get((11, 5)), 26, "Carrier moved on the sea")
     ctx.shot(g, "moved")
+
+
+def fuel(g, x, y):
+    return g.unit_at(x, y)["fuel"]
+
+
+@test(modes=("ds",))
+def stealth_hides(ctx):
+    m = ctx.map()
+    m.unit(1, 12, 10, 10).unit(2, "tank", 11, 10).unit(2, "fighter", 10, 12)
+    g = ctx.start(m, ["andy", "andy"], humans=(1, 2))
+    names = g.action_menu_at(10, 10)
+    ctx.check("Hide" in names, f"the Stealth offers Hide: {names}")
+    f0 = fuel(g, 10, 10)
+    g.select(10, 10)
+    g.move_to(10, 10)
+    g.choose("Hide", g.ACTION_MENU)
+    g.wait_idle()
+    ctx.check(g.unit_at(10, 10)["flags"] & 0x20, "the Stealth is hidden")
+    g.end_turn(human=2)
+    tank = g.action_menu_at(11, 10)
+    ctx.check("Fire" not in tank, f"a Tank cannot attack a hidden Stealth: {tank}")
+    fighter = g.action_menu_at(10, 12)
+    ctx.log(f"fighter menu at (10,12) without moving: {fighter}")
+    g.end_turn(human=1)
+    ctx.eq(f0 - fuel(g, 10, 10), 8, "a hidden Stealth burns 8 fuel a day")
+    names = g.action_menu_at(10, 10)
+    ctx.check("Appear" in names, f"and offers Appear: {names}")
+
+
+@test(modes=("ds",))
+def black_boat_repairs(ctx):
+    m = ctx.map()
+    for x in range(9, 13):
+        for y in range(8, 13):
+            m.terrain(x, y, "sea")
+    m.terrain(12, 10, "plain")
+    m.unit(1, 18, 11, 10).unit(1, "tank", 12, 10)
+    g = ctx.start(m, ["andy", "andy"])
+    ctx.set_hp(g, 12, 10, 50)
+    t = g.unit_at(12, 10)
+    g.e.w16(g.unit_addr(t["id"]) + 4, (g.e.u16(g.unit_addr(t["id"]) + 4) & ~(0xF << 7)) | (3 << 7) | 50)
+    funds0 = struct.unpack_from("<I", g.player(1)["raw"], 0)[0]
+    names = g.action_menu_at(11, 10)
+    ctx.check("Repair" in names, f"the Black Boat offers Repair: {names}")
+    g.select(11, 10)
+    g.move_to(11, 10)
+    g.choose("Repair", g.ACTION_MENU)
+    g.wait_for_input()
+    t = g.unit_at(12, 10)
+    ctx.eq(t["hp"], 60, "the Tank is repaired by 1 HP")
+    ctx.eq(t["ammo"], 9, "and resupplied")
+    funds1 = struct.unpack_from("<I", g.player(1)["raw"], 0)[0]
+    ctx.eq(funds0 - funds1, 700, "for a tenth of the Tank's price")
+
+
+@test(modes=("ds",))
+def oozium_destroys(ctx):
+    m = ctx.map()
+    m.unit(1, 27, 10, 10).unit(2, "tank", 11, 10)
+    g = ctx.start(m, ["andy", "andy"])
+    g.select(10, 10)
+    g.move_to(10, 10)
+    g.choose("Fire", g.ACTION_MENU)
+    g.pick_target(11, 10)
+    g.wait_for_input()
+    ctx.check(g.unit_at(11, 10) is None, "the Tank is gone")
+
+
+@test(modes=("ds",))
+def carrier_resupplies_cargo(ctx):
+    m = ctx.map()
+    for x in range(9, 14):
+        for y in range(8, 13):
+            m.terrain(x, y, "sea")
+    m.unit(1, 26, 11, 10).unit(1, "fighter", 11, 9)
+    g = ctx.start(m, ["andy", "andy"])
+    fid = g.unit_at(11, 9)["id"]
+    a = g.unit_addr(fid) + 6
+    g.e.w8(a, (g.e.u8(a) & 0x80) | 20)
+    g.select(11, 9)
+    g.move_to(11, 10)
+    names = g.menu()["names"]
+    ctx.log(f"menu on the Carrier: {names}")
+    g.choose("Load", g.ACTION_MENU)
+    g.wait_idle()
+    g.end_turn()
+    ctx.eq(g.e.u8(a) & 0x7F, 99, "the Fighter in the Carrier is refuelled at turn start")
+
+
+@test(modes=("ds",))
+def black_bomb_explodes(ctx):
+    m = ctx.map()
+    m.unit(1, 13, 5, 10)
+    m.unit(2, "tank", 10, 10).unit(2, "infantry", 11, 11).unit(1, "tank", 9, 12)
+    m.unit(2, 27, 12, 10).unit(2, "tank", 14, 10)  # Oozium in range; a Tank out of range
+    g = ctx.start(m, ["andy", "andy"])
+    ctx.set_hp(g, 11, 11, 3)
+    names = g.action_menu_at(5, 10)
+    ctx.check("Explode" in names, f"the Black Bomb offers Explode: {names}")
+    g.select(5, 10)
+    g.move_to(9, 10)
+    g.choose("Explode", g.ACTION_MENU)
+    g.e.wait(120)
+    ctx.shot(g, "boom")
+    g.wait_for_input()
+    hp = lambda x, y: (g.unit_at(x, y) or {}).get("hp")
+    ctx.eq(hp(10, 10), 50, "enemy Tank next to it: 100 -> 50")
+    ctx.eq(hp(11, 11), 1, "a unit left with less keeps 1 HP")
+    ctx.eq(hp(9, 12), 50, "its own army's units too")
+    ctx.eq(hp(12, 10), 100, "Oozium is unharmed")
+    ctx.eq(hp(14, 10), 100, "beyond 3 spaces nothing")
+    ctx.check(g.unit_at(9, 10) is None and g.unit_at(5, 10) is None, "the bomb is gone")
+    g.end_turn()
+    ctx.check(not g.battle_over(), "play goes on")

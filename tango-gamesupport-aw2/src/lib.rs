@@ -24,6 +24,7 @@ pub mod wasteland;
 pub mod com_tower;
 pub mod roster;
 pub mod unit_names;
+pub mod unit_actions;
 pub mod factory;
 pub mod five;
 mod five_art;
