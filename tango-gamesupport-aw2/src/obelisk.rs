@@ -39,12 +39,14 @@ const UNIT_TYPES: u32 = 0x085D_5ABC;
 const DATA: u32 = 0x0864_0000;
 const OBELISK_DEF: u32 = DATA;
 const CRYSTAL_DEF: u32 = DATA + 0x20;
+/// A sprite definition with no sprites (see [`sprite`]).
+const EMPTY_DEF: u32 = DATA + 0x40;
 pub const CRYSTAL_NAME_AT: u32 = DATA + 0x100;
 pub const OBELISK_NAME_AT: u32 = DATA + 0x200;
 const CRYSTAL_PICTURE_AT: u32 = DATA + 0x300;
 const OBELISK_PICTURE_AT: u32 = DATA + 0x400;
 const DATA_SENTINEL: u32 = DATA + 0xFFC;
-const DATA_MAGIC: u32 = 0x334B_4C42; // "BLK3" (bump when the data changes)
+const DATA_MAGIC: u32 = 0x344B_4C42; // "BLK4" (bump when the data changes)
 
 /// OBJ tiles for the sprites in battle (no screen of the battle map writes
 /// 0x176..0x1A5): the Obelisk's 36 tiles, then the Crystal's 8.
@@ -90,7 +92,12 @@ pub fn install(core: &mut Core) {
         tile(OBELISK_OBJ_TILE + 32),
     ];
     let crystal_def: &[u16] = &[0x0001, 0x80F0, 0x8000, tile(CRYSTAL_OBJ_TILE)];
-    for (at, def) in [(OBELISK_DEF, obelisk_def), (CRYSTAL_DEF, crystal_def)] {
+    let empty_def: &[u16] = &[0x0000];
+    for (at, def) in [
+        (OBELISK_DEF, obelisk_def),
+        (CRYSTAL_DEF, crystal_def),
+        (EMPTY_DEF, empty_def),
+    ] {
         for (i, h) in def.iter().enumerate() {
             core.raw_write_16(at + 2 * i as u32, -1, *h);
         }
@@ -186,7 +193,10 @@ fn load_tiles(core: &mut Core) {
 
 /// sub_0803F908(x, y, def, army, fog) puts a building's or invention's
 /// sprite: ours get their own definitions (a destroyed Obelisk keeps the
-/// Black Cannon's rubble).
+/// Black Cannon's rubble). The Design Room also comes through here when it
+/// redraws (placing an HQ, say), but draws ours itself
+/// ([`crate::invention_art`]) and holds other pictures in our battle tiles,
+/// so there they get no sprite at all.
 fn sprite(core: &mut Core) {
     let cpu = core.gba().cpu();
     let (x, y, def, lr) = (
@@ -201,6 +211,11 @@ fn sprite(core: &mut Core) {
             OBELISK_DEF
         }
         _ => return,
+    };
+    let new = if crate::design::in_map_editor(core) {
+        EMPTY_DEF
+    } else {
+        new
     };
     core.gba_mut().cpu_mut().set_gpr(2, new as i32);
 }
