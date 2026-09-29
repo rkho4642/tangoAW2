@@ -114,3 +114,17 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     traps.extend(crate::ds_battle::traps());
     traps
 }
+
+#[cfg(test)]
+mod trap_tests {
+    /// Two traps at one address would silently replace each other.
+    #[test]
+    fn no_two_traps_share_an_address() {
+        let mut seen = std::collections::BTreeMap::new();
+        for (at, _) in super::traps() {
+            *seen.entry(at).or_insert(0) += 1;
+        }
+        let twice: Vec<String> = seen.iter().filter(|(_, n)| **n > 1).map(|(a, _)| format!("{a:08x}")).collect();
+        assert!(twice.is_empty(), "trapped twice: {twice:?}");
+    }
+}
