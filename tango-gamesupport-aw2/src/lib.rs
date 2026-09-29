@@ -17,6 +17,7 @@ pub mod design_bar;
 pub mod ds_art;
 pub mod ds_pack;
 pub mod ds_units;
+pub mod ds_weather;
 pub mod factory;
 pub mod five;
 mod five_art;

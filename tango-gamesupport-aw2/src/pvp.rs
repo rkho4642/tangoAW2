@@ -474,7 +474,9 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         crate::design_bar::patch_rom(core, ds_features);
         crate::design5::patch_rom(core);
         // Dual Strike's unit stats and damage chart, with the pack on.
-        crate::ds_units::apply(core, crate::ds_pack::features(mode));
+        let ds = crate::ds_pack::features(mode);
+        crate::ds_units::apply(core, ds);
+        crate::ds_weather::tick(core, ds);
         crate::design5::sync(core);
 
         let prev = core.raw_read_16(PREV_KEYS, -1) as u32;
