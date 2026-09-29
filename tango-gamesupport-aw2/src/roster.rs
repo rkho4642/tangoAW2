@@ -194,6 +194,12 @@ const TEXT_TABLE: u32 = 0x0861_0A38;
 const TEXT_BASE: u16 = 0x3D72 + 32;
 const TEXT_STRINGS: u32 = 0x0862_0100 + 0x20 * 32;
 
+/// The AW2 unit a new unit's behaviour, pictures and information borrow
+/// from until they have their own.
+pub fn template(t: u8) -> Option<u8> {
+    NEW.iter().find(|n| n.id == t).map(|n| n.like)
+}
+
 /// Movement types 7 and 8 (Dual Strike's pipe and Oozium rows).
 const PIPE: u8 = 7;
 const OOZE: u8 = 8;

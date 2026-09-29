@@ -199,3 +199,75 @@ def black_bomb_explodes(ctx):
     ctx.check(g.unit_at(9, 10) is None and g.unit_at(5, 10) is None, "the bomb is gone")
     g.end_turn()
     ctx.check(not g.battle_over(), "play goes on")
+
+
+@test(modes=("ds",))
+def cpu_plays_new_units(ctx):
+    """A CPU army with every new unit: its turns run, and its units act."""
+    m = ctx.map()
+    for x in range(20, 30):
+        for y in range(0, 6):
+            m.terrain(x, y, "sea")
+    for x in range(12, 20):
+        m.terrain(x, 9, "pipe")
+    m.terrain(11, 9, "base", 2)
+    m.unit(2, 4, 16, 12).unit(2, 9, 14, 9).unit(2, 12, 18, 14).unit(2, 13, 20, 12)
+    m.unit(2, 18, 24, 3).unit(2, 26, 26, 3).unit(2, 27, 15, 14).unit(2, "infantry", 23, 6)
+    m.unit(1, "tank", 10, 12).unit(1, "tank", 12, 14).unit(1, "fighter", 14, 16).unit(1, "infantry", 10, 10)
+    g = ctx.start(m, ["andy", "andy"], humans=(1,))
+    before = {u["id"]: (u["x"], u["y"], u["hp"]) for u in g.units()}
+    for day in range(3):
+        g.end_turn()
+        ctx.shot(g, f"day{day}")
+    after = {u["id"]: (u["x"], u["y"], u["hp"]) for u in g.units()}
+    moved = [t for t, (i, u) in ((u["type"], (u["id"], u)) for u in g.units(2)) if before.get(i, (0, 0, 0))[:2] != (u["x"], u["y"])]
+    ctx.log(f"CPU units that moved: {moved}")
+    hurt = [u["type"] for u in g.units(1) if before.get(u["id"], (0, 0, 100))[2] > u["hp"]]
+    ctx.log(f"our units the CPU hurt: {hurt}")
+    ctx.check(not g.battle_over(), "no hang, the battle goes on")
+    ctx.check(len(moved) >= 3, f"several new units moved: {moved}")
+
+
+@test(modes=("ds",))
+def cpu_attacks_with_new_units(ctx):
+    """Each attacking new unit, played by the CPU with our unit in reach, hits
+    it (a CPU Tank is the control)."""
+    cases = [("control Tank", "tank", (12, 10), "tank"), ("Megatank", 4, (13, 10), "tank"),
+             ("Piperunner", 9, (12, 12), "tank"), ("Stealth", 12, (13, 11), "tank"),
+             ("Oozium", 27, (11, 10), "tank"), ("Carrier", 26, (14, 10), "fighter")]
+    for name, t, pos, target in cases:
+        m = ctx.map()
+        if t == 9:
+            for x in range(8, 16):
+                m.terrain(x, 12, "pipe")
+        if t == 26:
+            for x in range(13, 17):
+                for y in range(8, 13):
+                    m.terrain(x, y, "sea")
+        m.unit(1, target, 10, 10).unit(2, t, *pos)
+        g = ctx.start(m, ["andy", "andy"], humans=(1,))
+        g.wait_unit(10, 10)
+        g.end_turn()
+        u = g.unit_at(10, 10)
+        ctx.check(u is None or u["hp"] < 100, f"{name} attacked: our {target} now {u['hp'] if u else 'destroyed'}")
+        g.e.close()
+
+
+@test(modes=("ds",))
+def cpu_builds_new_units(ctx):
+    """A rich CPU with a base, an airport and a port over several days builds
+    some of the new units (Megatank, Stealth, Black Boat), and its turns run."""
+    m = ctx.map()
+    for x in range(20, 30):
+        for y in range(0, 8):
+            m.terrain(x, y, "sea")
+    m.terrain(25, 12, "base", 2).terrain(23, 14, "airport", 2).terrain(21, 8, "port", 2)
+    m.unit(1, "tank", 10, 10).unit(1, "bomber", 5, 5).unit(1, "battleship", 25, 2)
+    g = ctx.start(m, ["andy", "andy"], humans=(1,))
+    built = set()
+    for day in range(6):
+        g.e.w32(g.player(2)["addr"], 90000)
+        g.end_turn()
+        built |= {u["type"] for u in g.units(2)}
+    ctx.log(f"types the CPU has: {sorted(built)}")
+    ctx.check(built & {4, 12, 18}, f"the CPU built a new unit: {sorted(built)}")

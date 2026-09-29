@@ -216,6 +216,48 @@ fn explode_done(core: &mut Core) {
     cpu.set_thumb_pc(DESTROY);
 }
 
+// --- The CPU -------------------------------------------------------------------
+
+/// The CPU's turn, per unit (`sub_0805D438`): its behaviour row, 12 bytes
+/// per unit type in the CPU's record (`*0x085766E0` + 4 + 12 * type), has
+/// just been stored at `0x03004784` (the unit in r4). The new units have
+/// no rows of their own: they take their template unit's
+/// ([`crate::roster::template`]), so the CPU moves and fights with them as
+/// it does with those.
+const BEHAVIOUR_ROW: u32 = 0x0805_D496;
+const BEHAVIOUR: u32 = 0x0300_4784;
+const CPU_RECORD_POINTER: u32 = 0x0857_66E0;
+fn behaviour_row(core: &mut Core) {
+    if !is_on(core) {
+        return;
+    }
+    let u = core.gba().cpu().gpr(4) as u32;
+    if let Some(like) = crate::roster::template(core.raw_read_8(u, -1)) {
+        let base = core.raw_read_32(CPU_RECORD_POINTER, -1);
+        core.raw_write_32(BEHAVIOUR, -1, base + 4 + 12 * like as u32);
+    }
+}
+
+/// The CPU's record has just been copied for its turn (`sub_08061788`):
+/// the units it may build take their template's row (its build rate, byte
+/// 11, included); the Piperunner (it would need pipes by its base) and the
+/// Black Bomb (the CPU does not explode it) keep none, and the Carrier and
+/// Oozium are past the 24 types the CPU's build code counts.
+const CPU_RECORD_COPIED: u32 = 0x0806_184E;
+const CPU_BUILDS: [u8; 3] = [crate::roster::MEGATANK, STEALTH, BLACK_BOAT];
+fn cpu_record_copied(core: &mut Core) {
+    if !is_on(core) {
+        return;
+    }
+    let base = core.raw_read_32(CPU_RECORD_POINTER, -1);
+    for t in CPU_BUILDS {
+        let Some(like) = crate::roster::template(t) else { continue };
+        let mut row = [0u8; 12];
+        core.raw_read_range(base + 4 + 12 * like as u32, -1, &mut row);
+        core.raw_write_range(base + 4 + 12 * t as u32, -1, &row);
+    }
+}
+
 // --- Command names ------------------------------------------------------------
 
 const TEXT_TABLE: u32 = 0x0861_0A38;
@@ -257,5 +299,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (LAUNCH_HIDE, Box::new(launch_hide)),
         (LAUNCH_SELECTED, Box::new(launch_selected)),
         (EXPLODE_DONE, Box::new(explode_done)),
+        (BEHAVIOUR_ROW, Box::new(behaviour_row)),
+        (CPU_RECORD_COPIED, Box::new(cpu_record_copied)),
     ]
 }
