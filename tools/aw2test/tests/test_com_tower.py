@@ -218,3 +218,63 @@ def cpu_captures_com_tower(ctx):
             break
     ctx.eq(g.terrain_class(20, 10), (2 << 5) | 0x14, "Blue Moon's CPU captured the tower")
     ctx.check(not g.battle_over(), "the battle goes on")
+
+
+@test()
+def cpu_attacks_with_tower_boost(ctx):
+    """A CPU owning two towers hits harder (+10% each, with the pack): its
+    attack matches the calculator with the towers counted."""
+    from aw2test import damage
+    m = ctx.map()
+    m.terrain(25, 2, LAB[2]).terrain(27, 2, LAB[2])
+    m.unit(1, "tank", 10, 10).unit(2, "tank", 12, 10)
+    g = ctx.start(m, ["andy", "andy"])
+    ctx.eq(ctx.towers(g, 2), 2, "the CPU owns two towers")
+    before = {u["id"]: dict(u) for u in g.units()}
+    sides = {uid: ctx.side(g, u) for uid, u in before.items()}
+    g.end_turn(human=1)
+    after = {u["id"]: u for u in g.units()}
+    mine = [uid for uid, u in before.items() if u["army"] == 1 and u["type"] == 5][0]
+    cpu = [uid for uid, u in before.items() if u["army"] == 2 and u["type"] == 5][0]
+    if not ctx.check(after[mine]["hp"] < 100, "the CPU attacked our tank"):
+        return
+    a = sides[cpu]
+    a.terrain = g.terrain_class(after[cpu]["x"], after[cpu]["y"]) & 0x1F
+    ctx.eq(a.temp_firepower, {"aw2": 0, "ds": 20}[ctx.mode], "the CPU's tower firepower")
+    dist = abs(after[cpu]["x"] - after[mine]["x"]) + abs(after[cpu]["y"] - after[mine]["y"])
+    first, _ = damage.battle(ctx.rules, a, sides[mine], dist, dfd_hp_after=after[mine]["hp"])
+    ctx.check(100 - after[mine]["hp"] in first.losses,
+              f"CPU's attack took {100 - after[mine]['hp']}, allowed {sorted(first.losses)}")
+
+
+@test(modes=("ds",))
+def cpu_goes_for_a_far_tower(ctx):
+    """A CPU infantry a few squares from a neutral tower walks over and takes it."""
+    m = ctx.map()
+    m.terrain(20, 10, LAB[0])
+    m.unit(2, "infantry", 24, 12)
+    g = ctx.start(m, ["andy", "andy"], humans=(1,))
+    for _ in range(5):
+        g.end_turn()
+        if g.terrain_class(20, 10) == (2 << 5) | 0x14:
+            break
+    ctx.eq(g.terrain_class(20, 10), (2 << 5) | 0x14, "Blue Moon's CPU went for the tower and took it")
+
+
+@test(modes=("ds",))
+def cpu_black_hole_captures_tower(ctx):
+    """Five armies: Black Hole's CPU (army 5) takes a tower, in its own colour."""
+    m = ctx.map(hq=((1, 0, 0), (2, 29, 19), (3, 29, 0), (4, 0, 19)))
+    m.terrain(15, 10, 0x1B4)
+    m.terrain(18, 12, LAB[0])
+    m.unit(5, "infantry", 19, 12)
+    m.colours = [5, 1, 2, 3, 4]
+    g = ctx.start(m, None)
+    for _ in range(3):
+        g.end_turn()
+        if g.terrain_class(18, 12) == (5 << 5) | 0x14:
+            break
+    ctx.eq(g.terrain_class(18, 12), (5 << 5) | 0x14, "Black Hole's CPU captured the tower")
+    g.goto(18, 12)
+    g.e.wait(30)
+    ctx.shot(g, "black_hole_tower")
