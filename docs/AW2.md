@@ -311,6 +311,39 @@ so real minicannons and Black Cannons run the game's code unchanged.
 - **Panel.** The terrain panel (`sub_0802A8DC`, cell in r8/r5) gets the
   name picture at `0x0802A914` and the picture at `0x0802A982`.
 
+## The Dual Strike pack (0.3.0)
+
+With a Dual Strike (USA) ROM imported (`ds_pack.rs`: its ARM9, overlays and
+files, saved next to the ROMs), Dual Strike's content is added to AW2. Nothing
+from either game is in the repository; everything is read from the player's
+ROMs at run time. Without the pack the game runs byte-identical to 0.2.2 (the
+comparison battery in CONTRIBUTING.md), and online it is on only when both
+players have it (the match's `SHARED_ART` flag, kept in replays).
+
+Every change is switched every frame from ROM and RAM state (`pvp.rs`
+`before_tick`), so both peers and every replay agree: tables are copied to free
+ROM and their literal-pool words pointed at the copies, and code is changed by
+traps (a trap runs before the instruction it replaces; setting the PC skips it).
+
+| Part | Module | What it changes |
+|---|---|---|
+| Units | `roster.rs`, `ds_units.rs`, `unit_actions.rs`, `unit_names.rs`, `ds_unit_art.rs`, `ds_battle.rs` | Unit table grown to 64 rows (0x08680000), 7 new units (ids 4, 9, 12, 13, 18, 26, 27), Dual Strike's stats and damage chart, their actions (Hide, Explode, Repair, Carrier), map and battle-scene art, CPU use |
+| COs | `co_roster.rs`, `co_new.rs`, `co_powers.rs`, `ds_co_art.rs` | CO table grown to 96 rows (0x086A0000), Dual Strike's numbers for AW2's COs, 9 new COs at ids 72..80 (face ids stay unambiguous), their pictures, texts and powers |
+| Terrain | `com_tower.rs`, `wasteland.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), the Wasteland look, the Sandstorm weather |
+| Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's effect, the camera visiting each |
+
+Free ROM used: 0x08620000.. (text slots), 0x0862C000.. (new CO text ids 0x6D72..),
+0x08640000..0x08672FFF (earlier features), 0x08680000..0x08691FFF (units),
+0x086A0000..0x086AFFFF (CO table), 0x08740000..0x0877FFFF (CO pictures, texts,
+powers' code, heal wait). Free RAM used: 0x0203F800..0x0203F87F (battle scenes),
+0x0203FD80..0x0203FEFF (heal effect, stun, battle distance, Teams list),
+0x0203FF00.. (earlier features). `factory.rs` has a test that no two traps share
+an address.
+
+`tools/aw2test` plays real battles in both modes and checks them against its
+own damage calculator (Dual Strike's numbers read from the .nds in `ds` mode),
+fires every CO's COP and SCOP, and replays netplay runs on two rollback peers.
+
 ## Known limits
 
 - Black Hole's unique buildings (Black Cannons and so on) are map

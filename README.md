@@ -72,10 +72,11 @@ Both press Ready; the game starts from power-on for both. Go to
   Factory, Volcano, Deathray) in the terrain bar. In Versus they work as
   in the campaign, for a human or computer Black Hole.
 - **Optional, from your own Dual Strike ROM:** put your Advance Wars: Dual
-  Strike `.nds` in the `roms` folder once and tangoAW2 imports the Black
-  Crystal and Black Obelisk sprites, adding those healing structures and
-  their maps. Without it they stay hidden. Online they appear only when
-  both players have imported them.
+  Strike `.nds` in the `roms` folder once and Dual Strike comes to AW2: its
+  7 units with their battle animations, its 9 new COs and their powers,
+  its CO and damage numbers, Com Towers, Sandstorm, the Wasteland and the
+  healing Black Crystal and Obelisk, in the Design Room too. Without the
+  ROM nothing changes; online, both players need it.
 
 <table>
 <tr>
