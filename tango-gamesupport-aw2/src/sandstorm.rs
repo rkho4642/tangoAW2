@@ -29,10 +29,21 @@ const FIXED: u8 = 3;
 
 /// AW2's weather block (`gUnknown_03004490`): [0] a change marker, [1] the
 /// rain chance, [2] the snow chance, [4 + army] day counters. [3] is ours:
-/// [`ONE_DAY`] while a one-day sandstorm lasts.
+/// its low bits are [`ONE_DAY`] while a one-day sandstorm lasts, its high
+/// bits the map's biome ([`crate::wasteland`]).
 const WEATHER_BLOCK: u32 = 0x0300_4490;
 pub const STATE: u32 = WEATHER_BLOCK + 3;
+const SANDSTORM_BITS: u8 = 0x0F;
 const ONE_DAY: u8 = 2;
+
+fn one_day(core: &Core) -> bool {
+    core.raw_read_8(STATE, -1) & SANDSTORM_BITS == ONE_DAY
+}
+
+fn set_one_day(core: &mut Core, on: bool) {
+    let s = core.raw_read_8(STATE, -1) & !SANDSTORM_BITS;
+    core.raw_write_8(STATE, -1, s | if on { ONE_DAY } else { 0 });
+}
 const RNG: u32 = 0x0300_1FD4;
 
 const UNITS: u32 = 0x085D_5ABC;
@@ -44,7 +55,7 @@ const EXEMPT_COS: [u8; 2] = [2, 5];
 pub fn active(core: &Core) -> bool {
     is_on(core)
         && core.raw_read_8(WEATHER, -1) == 0
-        && (fixed(core) || core.raw_read_8(STATE, -1) == ONE_DAY)
+        && (fixed(core) || one_day(core))
 }
 
 fn fixed(core: &Core) -> bool {
@@ -95,7 +106,7 @@ fn draw(core: &mut Core) {
     if !is_on(core) {
         return;
     }
-    if core.raw_read_8(STATE, -1) == ONE_DAY {
+    if one_day(core) {
         // Count the day as AW2 does for its own weather; clear meanwhile.
         let cpu = core.gba_mut().cpu_mut();
         cpu.set_gpr(4, 0);
@@ -105,7 +116,7 @@ fn draw(core: &mut Core) {
     // Sandstorm is drawn first, with snow's chance (`sub_080129F8`).
     let chance = core.raw_read_8(WEATHER_BLOCK + 2, -1) as u32;
     if next_random(core) % 10000 < chance * 100 {
-        core.raw_write_8(STATE, -1, ONE_DAY);
+        set_one_day(core, true);
         // A new weather's day starts now (`sub_080350E4`).
         for army in 1..=4 {
             core.raw_write_8(WEATHER_BLOCK + 3 + army, -1, 0);
@@ -119,21 +130,23 @@ fn draw(core: &mut Core) {
 
 fn day_checked(core: &mut Core) {
     if is_on(core)
-        && core.raw_read_8(STATE, -1) == ONE_DAY
+        && one_day(core)
         && core.raw_read_8(WEATHER, -1) == 0
         && core.gba().cpu().gpr(0) & 0xFF != 0
     {
-        core.raw_write_8(STATE, -1, 0);
+        set_one_day(core, false);
     }
 }
 
 /// `CalcRandomWeatherChances`, at every map start: no sandstorm carries
-/// over from another map.
+/// over from another map (and the biome is the map's,
+/// [`crate::wasteland::map_start`]).
 const MAP_START: u32 = 0x0803_5490;
 fn map_start(core: &mut Core) {
-    if core.raw_read_8(STATE, -1) != 0 {
-        core.raw_write_8(STATE, -1, 0);
+    if one_day(core) {
+        set_one_day(core, false);
     }
+    crate::wasteland::map_start(core);
 }
 
 // --- Rules screen --------------------------------------------------------
@@ -272,7 +285,7 @@ fn word_drawn(core: &mut Core) {
 // --- The look ----------------------------------------------------------
 
 /// A colour (BGR555) with sand blown over it: 3/8 of the way to sand.
-fn sand_colour(c: u16) -> u16 {
+pub fn sand_colour(c: u16) -> u16 {
     const SAND: [u16; 3] = [27, 21, 12];
     let mut out = 0;
     for (i, sand) in SAND.iter().enumerate() {
@@ -283,7 +296,8 @@ fn sand_colour(c: u16) -> u16 {
 }
 
 /// `sub_08035020` (map colours for the weather), the palette in r0 just
-/// before it is applied: the sand colours in a sandstorm. Whatever loads
+/// before it is applied: the sand colours in a sandstorm, and a Wasteland
+/// map's colours ([`crate::wasteland`]). Whatever loads
 /// the map's colours comes here (map start, a resumed game, the weather
 /// change fade), so the colours follow the sandstorm.
 const MAP_PALETTE: u32 = 0x0803_503C;
@@ -295,9 +309,15 @@ fn map_palette(core: &mut Core) {
     }
     let sand = active(core);
     core.raw_write_8(SAND_SHOWN, -1, sand as u8);
-    if sand {
-        core.gba_mut().cpu_mut().set_gpr(0, SAND_PALETTE as i32);
-    }
+    let wasteland = crate::wasteland::is_wasteland(core);
+    let set = match (sand, wasteland, core.raw_read_8(WEATHER, -1)) {
+        (true, false, _) => SAND_PALETTE,
+        (true, true, _) => crate::wasteland::SAND_AT,
+        (false, true, 0) => crate::wasteland::CLEAR_AT,
+        (false, true, 2) => crate::wasteland::RAIN_AT,
+        _ => return,
+    };
+    core.gba_mut().cpu_mut().set_gpr(0, set as i32);
 }
 
 /// `sub_080351F0`, at a turn start, comparing this turn's weather with the

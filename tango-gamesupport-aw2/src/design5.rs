@@ -478,6 +478,7 @@ pub fn append_emblem(core: &mut Core, at: u32, end: u32) -> u32 {
 pub const SAVE_RECORD: u32 = 0x0803_CF7A;
 const RECORD: u32 = 0x0200_0000;
 pub fn save_record(core: &mut Core) {
+    crate::wasteland::save_record(core, RECORD);
     if core.raw_read_8(RECORD + 0x4C4, -1) != crate::five::DESIGN_FIVE {
         return;
     }

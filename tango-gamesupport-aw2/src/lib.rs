@@ -19,6 +19,7 @@ pub mod ds_pack;
 pub mod ds_units;
 pub mod ds_weather;
 pub mod sandstorm;
+pub mod wasteland;
 pub mod factory;
 pub mod five;
 mod five_art;

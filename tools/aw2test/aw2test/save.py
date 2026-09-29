@@ -96,6 +96,9 @@ class DesignMap:
         self.tiles = [t] * (width * height)
         self.units = [0] * (width * height)
         self.colours = [0, 1, 2, 3, 4]
+        # tangoAW2's biome (0 Normal, 1 Wasteland), in the record's last
+        # byte as 0xB0 | biome; read only with the Dual Strike pack.
+        self.biome = 0
 
     def terrain(self, x, y, kind, owner=0):
         """Set a cell's terrain by name ('wood', 'city', 'hq', ...) or tile id (int)."""
@@ -136,6 +139,8 @@ class DesignMap:
         p[0x4C9] = sum(counts)
         p[0x4CA] = max(counts[1:6]) + 1
         p[0x4CB:0x4CB + len(self.units)] = bytes(self.units)
+        if self.biome:
+            p[0x723] = 0xB0 | self.biome
         return bytes(p)
 
     def write(self, base_save_path, out_path, slot=1):

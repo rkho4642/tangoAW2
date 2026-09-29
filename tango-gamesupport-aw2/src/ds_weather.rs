@@ -79,6 +79,7 @@ pub fn tick(core: &mut Core, on: bool) {
         }
     }
     crate::sandstorm::tick(core, on);
+    crate::wasteland::tick(core, on);
     let forced = core.raw_read_8(RULE_FOG, -1);
     if on && core.raw_read_8(NEXT_WEATHER, -1) == RAIN {
         if forced == 0 {
