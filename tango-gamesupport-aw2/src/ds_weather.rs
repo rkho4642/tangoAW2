@@ -3,8 +3,8 @@
 //! Dual Strike keeps AW2's weathers but changes what they do: snow and rain
 //! no longer slow units down; snow doubles the daily fuel burn (except for
 //! Olaf's army); rain lowers vision by 1 (AW2 already does) and brings fog
-//! of war with it. (Sandstorm, Dual Strike's fourth weather,
-//! comes separately.) With the pack off everything is AW2's own.
+//! of war with it. (Sandstorm, Dual Strike's fourth weather, is
+//! [`crate::sandstorm`].) With the pack off everything is AW2's own.
 //!
 //! - Movement: each CO's power blocks (CO table [`CO_TABLE`], 0x104 per CO,
 //!   blocks at +0x38 + 0x44 * mode) hold three movement-cost chart pointers
@@ -78,6 +78,7 @@ pub fn tick(core: &mut Core, on: bool) {
             }
         }
     }
+    crate::sandstorm::tick(core, on);
     let forced = core.raw_read_8(RULE_FOG, -1);
     if on && core.raw_read_8(NEXT_WEATHER, -1) == RAIN {
         if forced == 0 {
