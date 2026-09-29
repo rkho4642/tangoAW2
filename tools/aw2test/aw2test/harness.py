@@ -85,7 +85,9 @@ class Ctx:
         st = g.playst()
         self.log(f"battle started at frame {e.frame}: {st}")
         self.eq(st["map"], 0xB4, "Versus map is design map 1")
-        self.eq(st["fog"], 1 if fog else 0, "fog")
+        # With the Dual Strike pack rain brings fog (ds_weather.rs).
+        want_fog = fog or (self.ds and weather == "rain")
+        self.eq(st["fog"], 1 if want_fog else 0, "fog")
         self.eq(st["anim"], {"off": 0, "a": 1, "b": 2, "c": 3}[visuals], "battle animations option")
         if weather != "random":
             self.eq(st["weather"], {"clear": 0, "snow": 1, "rain": 2, "sandstorm": 0}[weather], "weather")
