@@ -1,9 +1,9 @@
 """Test context: build a map, start a Versus battle on it, act, and check
 what the game did against what the independent calculator expects."""
 
-import json
 import os
 import struct
+import subprocess
 import traceback
 
 from . import damage, paths, ram
@@ -14,6 +14,10 @@ from .save import DesignMap
 
 
 class TestFailure(AssertionError):
+    pass
+
+
+class Skip(Exception):
     pass
 
 
@@ -74,7 +78,7 @@ class Ctx:
         self.eq(st["fog"], 1 if fog else 0, "fog")
         self.eq(st["anim"], {"off": 0, "a": 1, "b": 2, "c": 3}[visuals], "battle animations option")
         if weather != "random":
-            self.eq(st["weather"], {"clear": 0, "snow": 1, "rain": 2}[weather], "weather")
+            self.eq(st["weather"], {"clear": 0, "snow": 1, "rain": 2, "sandstorm": 0}[weather], "weather")
         for army, co in enumerate(cos, 1):
             self.eq(g.player(army)["co"], romlib.co_id(co), f"army {army} CO")
         return g
@@ -216,6 +220,68 @@ class Ctx:
         v = g.e.u16(a)
         g.e.w16(a, (v & ~0x7F) | hp)
 
+    def script(self, g, name, tail=()):
+        """The run so far as an aw2_script file script, in commands every build
+        of aw2_script has (wait, press, hold, poke8, poke16)."""
+        lines = []
+        for l in list(g.e.timeline) + list(tail):
+            p = l.split()
+            if p[0] == "poke32":
+                a, v = int(p[1], 16), int(p[2], 16)
+                lines += [f"poke16 {a:08x} {v & 0xFFFF:x}", f"poke16 {a + 2:08x} {v >> 16:x}"]
+            elif p[0] == "pokebytes":
+                a = int(p[1], 16)
+                lines += [f"poke8 {a + i:08x} {b:x}" for i, b in enumerate(bytes.fromhex(p[2]))]
+            else:
+                lines.append(l)
+        path = os.path.join(self.out, name)
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        return path
+
+    def run_script(self, runner, script, save, ds=False):
+        """Run a file script with an aw2_script binary; returns its output."""
+        env = dict(os.environ)
+        if ds:
+            env["TANGOAW2_DS_ROM"] = paths.ds_rom()
+        else:
+            env.pop("TANGOAW2_DS_ROM", None)
+        out = subprocess.run([runner, paths.aw2_rom(), script, "--save", save], capture_output=True, text=True,
+                             env=env, timeout=1800, cwd=self.out)
+        return out.stdout + out.stderr
+
+    def netplay_replay(self, g, peeks):
+        """Replay this run's inputs on two rollback peers (aw2_netplay_script, seat 0
+        pressing) and return (all_identical, {addr: bytes on peer 0}, output)."""
+        bad = [l for l in g.e.timeline if l.startswith("poke")]
+        self.require(not bad, f"a netplay replay needs a run without pokes: {bad[:3]}")
+        lines = ["seat 0"] + list(g.e.timeline) + ["wait 60"] + [f"peek {a:08x} {n}" for a, n in peeks]
+        path = os.path.join(self.out, "netplay.txt")
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        env = dict(os.environ)
+        if self.ds:
+            env["TANGOAW2_DS_ROM"] = paths.ds_rom()
+            env["AW2_SHARED_ART"] = "1"
+        else:
+            env.pop("TANGOAW2_DS_ROM", None)
+            env.pop("AW2_SHARED_ART", None)
+        out = subprocess.run([paths.runner("aw2_netplay_script"), g.e.rom, os.path.join(self.out, "map.sav"), path,
+                              os.path.join(self.out, "netplay")], capture_output=True, text=True, env=env, timeout=1800)
+        text = out.stdout + out.stderr
+        with open(os.path.join(self.out, "netplay.log"), "w") as f:
+            f.write(text)
+        values = {}
+        differs = False
+        for line in text.splitlines():
+            if line.startswith("peek ") and " peer0: " in line:
+                addr = int(line.split()[1], 16)
+                values[addr] = bytes.fromhex(line.split(" peer0: ")[1].replace(" ", ""))
+            if "(differs)" in line:
+                differs = True
+        identical = "all identical: true" in text and not differs
+        return identical, values, text
+
     def finish(self):
         for g in self.games:
             try:
@@ -241,13 +307,18 @@ def run_one(t, mode):
     ctx = Ctx(t["name"], ds=(mode == "ds"))
     ok = False
     err = None
+    skipped = None
     try:
         t["fn"](ctx)
         ok = not ctx.failures
+    except Skip as ex:
+        ok = True
+        skipped = str(ex)
+        ctx.log("SKIP " + skipped)
     except Exception as ex:  # noqa: BLE001 - report everything
         err = "".join(traceback.format_exception(ex))
         ctx.log("ERROR " + err)
     finally:
         ctx.finish()
-    return {"name": t["name"], "mode": mode, "ok": ok, "checks": ctx.checks,
+    return {"name": t["name"], "mode": mode, "ok": ok, "checks": ctx.checks, "skipped": skipped,
             "failures": ctx.failures, "error": err, "out": ctx.out}

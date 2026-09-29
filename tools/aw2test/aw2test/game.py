@@ -18,9 +18,10 @@ class NavError(RuntimeError):
 
 RULE_ITEMS = ("fog", "weather", "funds", "turn", "capt", "power", "visuals")
 # Rules-screen item values (probed): fog 0 on / 1 off; weather 0 random, 1 clear,
-# 2 snow, 3 rain; power 0 on / 1 off; visuals 0 off, 1 A, 2 B, 3 C.
+# 2 rain, 3 snow, 4 sandstorm (Dual Strike pack only); power 0 on / 1 off;
+# visuals 0 off, 1 A, 2 B, 3 C.
 FOG_VALUES = {True: 0, False: 1}
-WEATHER_VALUES = {"random": 0, "clear": 1, "snow": 2, "rain": 3}
+WEATHER_VALUES = {"random": 0, "clear": 1, "rain": 2, "snow": 3, "sandstorm": 4}
 POWER_VALUES = {True: 0, False: 1}
 VISUALS_VALUES = {"off": 0, "a": 1, "b": 2, "c": 3}
 
@@ -159,7 +160,9 @@ class Game:
                 e.press("RIGHT", 6)
                 e.wait(14)
         for army in range(n):
-            e.w8(ram.TEAMS + ram.T_CONTROLLERS + army, 1 if (army + 1) in humans else 2)
+            want = 1 if (army + 1) in humans else 2
+            if e.u8(ram.TEAMS + ram.T_CONTROLLERS + army) != want:
+                e.w8(ram.TEAMS + ram.T_CONTROLLERS + army, want)
         e.wait(4)
 
     # -- Rules screen ---------------------------------------------------------------
@@ -172,12 +175,16 @@ class Game:
                 return
         raise NavError("Rules screen did not open")
 
+    def weather_values(self):
+        return WEATHER_VALUES
+
     def set_rules(self, fog=False, weather="clear", power=True, visuals="off"):
         e = self.e
         items = self.rules_items()
         if len(items) < 7:
             raise NavError(f"rules items found: {[hex(a) for a in items]}")
-        wants = {0: FOG_VALUES[fog], 1: WEATHER_VALUES[weather], 5: POWER_VALUES[power],
+        wants = {0: FOG_VALUES[fog], 1: weather if isinstance(weather, int) else self.weather_values()[weather],
+                 5: POWER_VALUES[power],
                  6: VISUALS_VALUES[visuals]}
         for idx in sorted(wants):
             # cursor to item idx
@@ -340,8 +347,28 @@ class Game:
             n += step
         raise NavError(f"map not idle after {max_frames} frames: {[(hex(a), hex(f)) for a, _, f in self.procs()]}")
 
-    def wait_for_input(self, max_frames=2400):
-        self.wait_idle(max_frames)
+    def wait_for_input(self, max_frames=4000):
+        """Wait until the free map cursor answers the pad.
+
+        No proc running is not enough (power cutscenes, weather changes and the
+        day banner run without one), so the cursor is nudged one cell and back:
+        it only moves when the player has control."""
+        n = 0
+        while n <= max_frames:
+            self.wait_idle(max_frames, stable=4)
+            x, y = self.cursor()
+            key, back = ("RIGHT", "LEFT") if x < 29 else ("LEFT", "RIGHT")
+            self.e.hold(key, 6)
+            self.e.wait(10)
+            if self.cursor() != (x, y):
+                self.e.hold(back, 6)
+                self.e.wait(10)
+                if self.cursor() != (x, y):
+                    raise NavError(f"cursor did not come back to {(x, y)}: {self.cursor()}")
+                return
+            self.e.wait(20)
+            n += 36
+        raise NavError(f"the map cursor never answered in {max_frames} frames")
 
     def goto(self, x, y):
         """Walk the map cursor to (x, y) with the arrows, reading it from RAM each step."""
@@ -375,9 +402,14 @@ class Game:
                     return None
                 try:
                     names = [self.image.menu_label(table, i) for i in vis]
+                    if table == self.ACTION_MENU:
+                        # entry 1 is the second Fire: an indirect unit that has not
+                        # moved and has no target gets it greyed out (sub_0802CB20)
+                        names = [n + " (greyed)" if i == 1 else n for n, i in zip(names, vis)]
                 except Exception:
                     return None
                 return {"table": table, "visible": vis, "names": names, "cursor_addr": menu_proc + 0x20,
+                        "flags": list(b[0x24:0x24 + b[0x40]]),  # per entry: 0 shown, 1 hidden, 2 greyed
                         "cursor": self.e.u8(menu_proc + 0x20)}
         return None
 
@@ -451,7 +483,7 @@ class Game:
         self.move_to(*dst)
         self.choose("Fire", self.ACTION_MENU)
         self.pick_target(*target)
-        self.wait_idle()
+        self.wait_for_input()
         return (att, self.unit(att["id"])), (dfd, self.unit(dfd["id"]))
 
     def wait_unit(self, x, y):
@@ -460,6 +492,19 @@ class Game:
         self.move_to(x, y)
         self.choose("Wait", self.ACTION_MENU)
         self.wait_idle()
+
+    def action_menu_at(self, x, y):
+        """The action menu of the unit at (x, y) when it stays put; then cancel
+        (B twice) so the unit can still act. Returns the entry labels."""
+        self.select(x, y)
+        m = self.move_to(x, y)
+        self.e.press("B", 4)
+        self.e.wait(20)
+        self.e.press("B", 4)
+        self.wait_for_input()
+        if self.e.u32(ram.SELECTED_UNIT) and self.has_proc(0x080228D9):
+            raise NavError("unit still selected after cancelling")
+        return m["names"]
 
     def empty_cell(self):
         occupied = {(u["x"], u["y"]) for u in self.units()}
@@ -482,7 +527,7 @@ class Game:
     def map_menu_names(self):
         m = self.open_map_menu()
         self.e.press("B", 4)
-        self.wait_idle()
+        self.wait_for_input()
         return m["names"]
 
     def power(self, which="power"):
@@ -493,21 +538,23 @@ class Game:
         self.choose("Super" if mode == 2 else "Power", self.MAP_MENU)
         if not self.e.wait_until(lambda: self.player(army)["co_mode"] == mode, 3000, step=10):
             raise NavError(f"army {army}'s power mode did not become {mode}")
-        self.wait_idle(3000)
+        self.wait_for_input()
 
-    def end_turn(self, human=1, max_frames=20000):
-        """End the turn and wait until army `human` can move again (CPU turns run)."""
+    def end_turn(self, human=1, max_frames=20000, observe=None):
+        """End the turn and wait until army `human` can move again (CPU turns run).
+
+        observe(game), if given, is called once the next army's turn has begun."""
         army = self.current_army()
         self.open_map_menu()
         self.choose("End", self.MAP_MENU)
         # wait for the turn to leave this army, then come back to `human`
         if not self.e.wait_until(lambda: self.current_army() != army, 600, step=8):
             raise NavError("turn did not end")
+        if observe:
+            observe(self)
         if not self.e.wait_until(lambda: self.current_army() == human, max_frames, step=30):
             raise NavError(f"army {human}'s turn did not come back")
-        if not self.e.wait_until(lambda: bool(self.procs()), 900, step=5):
-            raise NavError("turn start never ran")
-        self.wait_idle(3000)
+        self.wait_for_input()
 
     def charge_power(self, army, which="super"):
         """Fill army's power meter exactly to the COP or SCOP cost (charge +0x20)."""

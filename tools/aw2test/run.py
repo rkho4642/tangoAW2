@@ -61,13 +61,15 @@ def main():
         for f in concurrent.futures.as_completed(futs):
             r = f.result()
             results.append(r)
-            status = "PASS" if r["ok"] else "FAIL"
+            status = "SKIP" if r.get("skipped") else "PASS" if r["ok"] else "FAIL"
             print(f"{status} {r['mode']:4} {r['name']:36} {r['checks']:3} checks  {r['out']}", flush=True)
             if not r["ok"]:
                 for msg in r["failures"]:
                     print(f"       - {msg}")
                 if r["error"]:
                     print("       " + r["error"].strip().splitlines()[-1])
+            if r.get("skipped"):
+                print(f"       ({r['skipped']})")
             if a.v:
                 print(open(os.path.join(r["out"], "log.txt")).read())
     bad = [r for r in results if not r["ok"]]
