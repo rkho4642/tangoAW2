@@ -384,7 +384,10 @@ class Game:
                 self.e.hold(back, 6)
                 self.e.wait(10)
                 if self.cursor() != (x, y):
-                    raise NavError(f"cursor did not come back to {(x, y)}: {self.cursor()}")
+                    # The game moved the cursor itself (a turn start still
+                    # panning): not in the player's hands yet.
+                    n += 30
+                    continue
                 return
             self.e.wait(20)
             n += 36

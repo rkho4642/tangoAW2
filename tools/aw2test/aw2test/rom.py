@@ -30,7 +30,7 @@ UNIT_NAMES = {
     8: "Neotank", 9: "Piperunner", 10: "Artillery", 11: "Rockets", 12: "Stealth",
     13: "Black Bomb", 14: "Anti-Air", 15: "Missiles", 16: "Fighter", 17: "Bomber",
     18: "Black Boat", 19: "B Copter", 20: "T Copter", 21: "Battleship", 22: "Cruiser",
-    23: "Lander", 24: "Sub", 25: "dived Sub",
+    23: "Lander", 24: "Sub", 25: "dived Sub", 26: "Carrier", 27: "Oozium",
 }
 UNIT_IDS = {v.lower().replace(" ", "").replace("-", ""): k for k, v in UNIT_NAMES.items()}
 
