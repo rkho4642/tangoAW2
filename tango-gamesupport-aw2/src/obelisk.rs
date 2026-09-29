@@ -225,12 +225,61 @@ fn sprite(core: &mut Core) {
     core.gba_mut().cpu_mut().set_gpr(2, new as i32);
 }
 
-/// The turn-start firing loop, per entry (r2): ours skip to the next.
+/// The turn-start firing loop (`sub_0803ED60`, the proc in r5), per
+/// entry (r2): ours do not fire. On Black Hole's turn, with the Dual
+/// Strike pack's pictures, a structure shows its heal instead, as a cannon
+/// shows its shot: the camera goes to it and the loop waits for Dual
+/// Strike's heal effect there ([`crate::heal_effect`]); then on to the
+/// next entry (0x0803EE9C, as after a shot). Otherwise it is skipped
+/// (0x0803EEAC).
+const NEXT_AFTER_SHOT: u32 = 0x0803_EE9C;
+const NEXT_ENTRY: u32 = 0x0803_EEAC;
 fn no_fire(core: &mut Core) {
     let entry = core.gba().cpu().gpr(2) as u32;
-    if structure(core, entry).is_some() {
-        core.gba_mut().cpu_mut().set_thumb_pc(0x0803_EEAC);
+    let Some(kind) = structure(core, entry) else { return };
+    let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
+    let players = crate::five::players(core);
+    let black_hole = (1..=5).contains(&army) && core.raw_read_8(players + 0x3C * army + 0x1A, -1) == 5;
+    let alive = core.raw_read_8(entry + 4, -1) != 0;
+    if !(black_hole && alive && crate::heal_effect::available()) {
+        core.gba_mut().cpu_mut().set_thumb_pc(NEXT_ENTRY);
+        return;
     }
+    let (x, y) = (core.raw_read_8(entry, -1) as i32, core.raw_read_8(entry + 1, -1) as i32);
+    let (source, centre, wait, crystals) = match kind {
+        Structure::Crystal => ((x, y, x, y, 2), (x, y), crate::heal_effect::CRYSTAL_WAIT, vec![(x as u8, y as u8)]),
+        Structure::Obelisk => ((x, y, x + 2, y + 2, 4), (x + 1, y + 1), crate::heal_effect::OBELISK_WAIT, vec![]),
+    };
+    let units = units_near(core, army, source);
+    crate::heal_effect::install(core);
+    crate::heal_effect::start(core, &crystals, &units);
+    let cpu = core.gba_mut().cpu_mut();
+    let parent = cpu.gpr(5);
+    cpu.set_gpr(0, centre.0);
+    cpu.set_gpr(1, centre.1);
+    cpu.set_gpr(2, parent);
+    cpu.set_gpr(3, wait as i32);
+    cpu.set_gpr(14, (NEXT_AFTER_SHOT | 1) as i32);
+    cpu.set_thumb_pc(crate::heal_effect::SHOW_FN);
+}
+
+/// Where the army's units within `range` of a structure's cells are.
+fn units_near(core: &Core, army: u32, (x0, y0, x1, y1, range): (i32, i32, i32, i32, i32)) -> Vec<(u8, u8)> {
+    let (first, per) = if crate::five::active(core) { ((army - 1) * 51, 51) } else { ((army - 1) * 64, 64) };
+    let mut out = Vec::new();
+    for id in first + 1..first + per.min(51) {
+        let u = UNITS + 12 * id;
+        if core.raw_read_8(u, -1) == 0 {
+            continue;
+        }
+        let (ux, uy) = (core.raw_read_8(u + 2, -1) as i32, core.raw_read_8(u + 3, -1) as i32);
+        let dx = (x0 - ux).max(ux - x1).max(0);
+        let dy = (y0 - uy).max(uy - y1).max(0);
+        if dx + dy <= range {
+            out.push((ux as u8, uy as u8));
+        }
+    }
+    out
 }
 
 /// A on a structure shows its firing range (sub_0803E9F8, entry in r5):
@@ -270,6 +319,7 @@ fn heal(core: &mut Core) {
     if sources.is_empty() {
         return;
     }
+
     let (first, per) = if crate::five::active(core) {
         ((army - 1) * 51, 51)
     } else {

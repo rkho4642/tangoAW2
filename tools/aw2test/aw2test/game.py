@@ -265,15 +265,17 @@ class Game:
         """Every live unit: dict(id, army, type, x, y, hp, ammo, fuel, flags)."""
         e = self.e
         raw = e.read(self.units_base, ram.UNIT_SIZE * 256)
+        # Five armies (tangoAW2's five.rs): 51 slots an army, else 64.
+        per = 51 if e.u8(ram.FIVE_ON) == 1 else 64
         out = []
         for uid in range(256):
             r = raw[ram.UNIT_SIZE * uid: ram.UNIT_SIZE * (uid + 1)]
-            if r[0] == 0 or uid % 64 == 0:
+            if r[0] == 0 or uid % per == 0:
                 continue
-            a = uid // 64 + 1
+            a = uid // per + 1
             if army is not None and a != army:
                 continue
-            out.append(parse_unit(uid, r))
+            out.append(parse_unit(uid, r, per))
         return out
 
     def unit(self, uid):
@@ -639,11 +641,11 @@ def power_star_cost(uses):
     return 9000 * pct // 100
 
 
-def parse_unit(uid, r):
+def parse_unit(uid, r, per=64):
     hp_ammo = struct.unpack_from("<H", r, 4)[0]
     return {
         "id": uid,
-        "army": uid // 64 + 1,
+        "army": uid // per + 1,
         "type": r[0],
         "flags": r[1],
         "x": r[2],

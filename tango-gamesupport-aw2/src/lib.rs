@@ -26,6 +26,7 @@ pub mod com_tower;
 pub mod co_new;
 pub mod co_powers;
 pub mod co_roster;
+pub mod heal_effect;
 pub mod lz77;
 pub mod roster;
 pub mod unit_names;

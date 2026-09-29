@@ -386,6 +386,7 @@ fn grain_tiles() -> Vec<u8> {
 }
 
 fn effects(core: &mut Core) {
+    crate::heal_effect::draw(core);
     if !is_on(core) {
         return;
     }
