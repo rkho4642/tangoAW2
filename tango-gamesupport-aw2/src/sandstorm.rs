@@ -46,7 +46,6 @@ fn set_one_day(core: &mut Core, on: bool) {
 }
 const RNG: u32 = 0x0300_1FD4;
 
-const UNITS: u32 = 0x085D_5ABC;
 const UNIT_RECORD: u32 = 0x5C;
 /// COs whose units keep their range: Max, Grit (and Jugger, when added).
 const EXEMPT_COS: [u8; 2] = [2, 5];
@@ -80,7 +79,7 @@ fn range(core: &mut Core) {
     if EXEMPT_COS.contains(&co) {
         return;
     }
-    let min = core.raw_read_8(UNITS + UNIT_RECORD * (unit & 0xFF) + 0x0E, -1) as i32;
+    let min = core.raw_read_8(crate::roster::table(core) + UNIT_RECORD * (unit & 0xFF) + 0x0E, -1) as i32;
     core.gba_mut().cpu_mut().set_gpr(4, (max - 1).max(min));
 }
 

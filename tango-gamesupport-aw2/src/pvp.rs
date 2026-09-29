@@ -475,7 +475,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         let ds = crate::ds_pack::features(mode);
         crate::design_bar::patch_rom(core, ds_features, ds);
         crate::design5::patch_rom(core);
-        crate::ds_units::apply(core, ds);
+        crate::roster::tick(core, ds);
         crate::ds_weather::tick(core, ds);
         crate::design5::sync(core);
 

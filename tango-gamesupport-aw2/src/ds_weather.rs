@@ -6,10 +6,8 @@
 //! of war with it. (Sandstorm, Dual Strike's fourth weather, is
 //! [`crate::sandstorm`].) With the pack off everything is AW2's own.
 //!
-//! - Movement: each CO's power blocks (CO table [`CO_TABLE`], 0x104 per CO,
-//!   blocks at +0x38 + 0x44 * mode) hold three movement-cost chart pointers
-//!   indexed by the weather (+0x18: clear, snow, rain). With the pack on,
-//!   snow's and rain's point at the block's clear chart.
+//! - Movement: snow's and rain's movement charts are clear's with the pack
+//!   on ([`crate::roster`], which also gives the charts the new units' rows).
 //! - Fuel: `sub_080253B0` works out a unit's daily burn in r5 (after its
 //!   CO's modifier); a trap at [`FUEL`] doubles it in snow.
 //! - Fog: while rain is coming the Rules' fog flag is set, and put back when
@@ -19,15 +17,11 @@
 //!   and last turns. Rain from a CO power brings fog from the next turn.
 
 use mgba::core::Core;
-use std::sync::OnceLock;
 
 /// Set every frame to 1 while the Dual Strike features are on, 0 otherwise
 /// (for traps, which only see the core). In EWRAM, so saved with the state.
 pub const DS_ON: u32 = 0x0203_FFA6;
 
-const CO_TABLE: u32 = 0x085D_3DD0;
-const CO_ROW: u32 = 0x104;
-const CO_COUNT: u32 = 19;
 const OLAF: u8 = 3;
 /// The army whose turn it is (1..5).
 const CURRENT_ARMY: u32 = 0x0300_33EC;
@@ -43,26 +37,6 @@ const RAIN: u8 = 2;
 /// forced).
 const RULE_FOG: u32 = 0x0203_FFA7;
 
-/// The movement pointers, as (address, AW2's word, Dual Strike's word).
-static CHARTS: OnceLock<Vec<(u32, u32, u32)>> = OnceLock::new();
-
-fn charts(core: &Core) -> &'static [(u32, u32, u32)] {
-    CHARTS.get_or_init(|| {
-        let mut out = Vec::new();
-        for co in 0..CO_COUNT {
-            for mode in 0..3 {
-                let block = CO_TABLE + CO_ROW * co + 0x38 + 0x44 * mode;
-                let clear = core.raw_read_32(block + 0x18, -1);
-                for w in 1..3 {
-                    let at = block + 0x18 + 4 * w;
-                    out.push((at, core.raw_read_32(at, -1), clear));
-                }
-            }
-        }
-        out
-    })
-}
-
 pub fn is_on(core: &Core) -> bool {
     core.raw_read_8(DS_ON, -1) != 0
 }
@@ -70,14 +44,6 @@ pub fn is_on(core: &Core) -> bool {
 /// Every frame, before the game runs.
 pub fn tick(core: &mut Core, on: bool) {
     core.raw_write_8(DS_ON, -1, on as u8);
-    if on || CHARTS.get().is_some() {
-        for &(at, aw2, ds) in charts(core) {
-            let want = if on { ds } else { aw2 };
-            if core.raw_read_32(at, -1) != want {
-                core.raw_write_32(at, -1, want);
-            }
-        }
-    }
     crate::sandstorm::tick(core, on);
     crate::wasteland::tick(core, on);
     crate::com_tower::tick(core, on);

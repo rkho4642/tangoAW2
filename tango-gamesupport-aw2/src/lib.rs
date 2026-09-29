@@ -21,6 +21,7 @@ pub mod ds_weather;
 pub mod sandstorm;
 pub mod wasteland;
 pub mod com_tower;
+pub mod roster;
 pub mod factory;
 pub mod five;
 mod five_art;

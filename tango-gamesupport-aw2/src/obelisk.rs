@@ -33,7 +33,6 @@ const INVENTIONS: u32 = 0x0202_8360;
 const INVENTION_COUNT: u32 = 16;
 const CURRENT_ARMY: u32 = 0x0300_33EC;
 const UNITS: u32 = 0x0202_2684;
-const UNIT_TYPES: u32 = 0x085D_5ABC;
 
 /// tangoAW2's data in the ROM image's free space.
 const DATA: u32 = 0x0864_0000;
@@ -305,7 +304,7 @@ fn heal(core: &mut Core) {
             .map(|s| s.5)
             .max();
         let Some(heal) = heal else { continue };
-        let stats = UNIT_TYPES + kind * 0x5C;
+        let stats = crate::roster::table(core) + kind * 0x5C;
         let max_ammo = core.raw_read_8(stats + 0x0B, -1) as u16 & 0xF;
         let max_fuel = core.raw_read_8(stats + 0x10, -1) & 0x7F;
         let w = core.raw_read_16(u + 4, -1);
