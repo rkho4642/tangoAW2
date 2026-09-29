@@ -112,6 +112,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     traps.extend(crate::co_powers::traps());
     traps.extend(crate::unit_actions::traps());
     traps.extend(crate::ds_battle::traps());
+    traps.extend(crate::cpu_tactics::traps());
     traps
 }
 

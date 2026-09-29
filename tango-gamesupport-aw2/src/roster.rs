@@ -38,6 +38,10 @@ pub const BLACK_BOMB: u8 = 13;
 pub const BLACK_BOAT: u8 = 18;
 pub const CARRIER: u8 = 26;
 pub const OOZIUM: u8 = 27;
+/// The Oozium's price at a base (Dual Strike has none: it never sells it).
+/// It destroys any ground or naval unit it attacks but moves one square a
+/// day: under a Neotank's 22000.
+pub const OOZIUM_PRICE: u16 = 20000;
 pub const NEW_UNITS: [u8; 7] = [MEGATANK, PIPERUNNER, STEALTH, BLACK_BOMB, BLACK_BOAT, CARRIER, OOZIUM];
 /// Records in use in the grown table (0..27).
 pub const TYPES: u32 = 28;
@@ -282,6 +286,10 @@ fn record(core: &Core, t: u8) -> Option<[u8; RECORD as usize]> {
             r[0x0E] = 1;
             r[0x0F] = 1;
             r[0x11] = 1;
+            // Dual Strike never sells it (its price is 0): tangoAW2's.
+            if u16::from_le_bytes([r[0x06], r[0x07]]) == 0 {
+                r[0x06..0x08].copy_from_slice(&(OOZIUM_PRICE / 10).to_le_bytes());
+            }
         }
     }
     if let Some(k) = TRANSPORTERS.iter().position(|&(u, _)| u == t) {
@@ -643,9 +651,9 @@ pub const UNIT_BAR_UNITS: [u16; 27] = [
 /// ended by -1; reached through one pool word.
 const AW2_BUILD_LIST: u32 = 0x081B_A054;
 const BUILD_LIST_POINTER: u32 = 0x0809_0C08;
-const BUILD: [u8; 25] = [
-    1, 2, 6, 5, 3, 8, MEGATANK, 7, 10, 11, 14, 15, PIPERUNNER, 16, 17, 19, 20, STEALTH, BLACK_BOMB, 21, 22, 23, 24,
-    BLACK_BOAT, CARRIER,
+const BUILD: [u8; 26] = [
+    1, 2, 6, 5, 3, 8, MEGATANK, 7, 10, 11, 14, 15, PIPERUNNER, OOZIUM, 16, 17, 19, 20, STEALTH, BLACK_BOMB, 21, 22,
+    23, 24, BLACK_BOAT, CARRIER,
 ];
 /// A base builds units whose domain has any of these bits (`sub_0802D5E8`,
 /// `movs r4, #7`): with the Piperunner's pipe bit (8) too.

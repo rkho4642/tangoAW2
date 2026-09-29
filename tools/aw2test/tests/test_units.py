@@ -42,7 +42,7 @@ def build_menus(ctx):
     port = menu_at(ctx, g, 9, 5, "port")
     ctx.log(f"base {base}\nairport {air}\nport {port}")
     if ctx.mode == "ds":
-        ctx.eq(base, [1, 2, 6, 5, 3, 8, 4, 7, 10, 11, 14, 15, 9], "base: the game's list with Megatank and Piperunner")
+        ctx.eq(base, [1, 2, 6, 5, 3, 8, 4, 7, 10, 11, 14, 15, 9, 27], "base: the game's list with Megatank, Piperunner and Oozium")
         ctx.eq(air, [16, 17, 19, 20, 12, 13], "airport: with Stealth and Black Bomb")
         ctx.eq(port, [21, 22, 23, 24, 18, 26], "port: with Black Boat and Carrier")
     else:

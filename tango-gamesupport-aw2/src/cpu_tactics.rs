@@ -18,6 +18,10 @@
 //!   fuel runs low (a hidden one burns 8 a day).
 //! - Black Boat, as the CPU's turn ends: it repairs its army's adjacent
 //!   units, as the player's Repair does.
+//! - Buying: the CPU buys Megatanks, Stealths, Black Bombs and Black Boats
+//!   by their rows ([`crate::unit_actions`]); Carriers, Oozium and
+//!   Piperunners (past AW2's 24 types) in place of a Cruiser, a Md Tank or
+//!   an Artillery / Rockets now and then ([`buy`]).
 
 use mgba::core::Core;
 
@@ -231,6 +235,76 @@ pub fn effects_pass(core: &mut Core) -> bool {
         return true;
     }
     false
+}
+
+// --- Buying -------------------------------------------------------------------
+
+/// The CPU buys by AW2's 24 types (its record has a row each). Where it
+/// is about to buy one of these at a factory (its three `BuyUnit(x, y,
+/// type)` calls: `sub_080600F0`, `sub_08060110`, `sub_080610D0`), it buys the Dual
+/// Strike unit instead now and then: when it can pay for it, the factory
+/// suits it (a Piperunner needs pipes next to its base) and it has at most
+/// half as many of it as of the AW2 unit (a Carrier for a Cruiser, a
+/// Battleship or a Sub, an Oozium for a Md Tank, a Piperunner for an Artillery or
+/// Rockets). The unit then plays as the AW2
+/// unit it stood in for.
+const BUYS: [u32; 3] = [0x0806_00FA, 0x0806_011A, 0x0806_1126];
+const BATTLESHIP: u8 = 21;
+const CRUISER: u8 = 22;
+const SUB: u8 = 24;
+const MD_TANK: u8 = 3;
+const ARTILLERY: u8 = 10;
+const ROCKETS: u8 = 11;
+/// Pipe and pipe seam.
+const PIPES: [u8; 2] = [15, 16];
+const SWAPS: [(u8, u8); 6] = [
+    (CRUISER, crate::roster::CARRIER),
+    (BATTLESHIP, crate::roster::CARRIER),
+    (SUB, crate::roster::CARRIER),
+    (MD_TANK, crate::roster::OOZIUM),
+    (ARTILLERY, crate::roster::PIPERUNNER),
+    (ROCKETS, crate::roster::PIPERUNNER),
+];
+
+fn count(core: &Core, army: u32, t: u8) -> u32 {
+    army_units(core, army).iter().filter(|&&(u, _)| core.raw_read_8(u, -1) == t).count() as u32
+}
+
+fn next_to_pipes(core: &Core, x: i32, y: i32) -> bool {
+    let (w, h) = map_size(core);
+    [(0, -1), (1, 0), (0, 1), (-1, 0)].iter().any(|&(dx, dy)| {
+        let (nx, ny) = (x + dx, y + dy);
+        if nx < 0 || ny < 0 || nx >= w || ny >= h {
+            return false;
+        }
+        let row = core.raw_read_16(ROWS + 2 * ny as u32, -1) as u32;
+        PIPES.contains(&(core.raw_read_8(MAP + 0x1432 + row + nx as u32, -1) & 0x1F))
+    })
+}
+
+fn buy(core: &mut Core) {
+    if !is_on(core) {
+        return;
+    }
+    let cpu = core.gba().cpu();
+    let (x, y, t) = (cpu.gpr(0) & 0xFFFF, cpu.gpr(1) & 0xFFFF, cpu.gpr(2) as u8);
+    let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
+    let funds = core.raw_read_32(crate::five::players(core) + 0x3C * army, -1);
+    for (aw2, ds) in SWAPS {
+        if t != aw2 {
+            continue;
+        }
+        let cost = core.raw_read_16(crate::roster::table(core) + 0x5C * ds as u32 + 6, -1) as u32 * 10;
+        let fits = ds != crate::roster::PIPERUNNER || next_to_pipes(core, x, y);
+        if fits && funds >= cost && 2 * count(core, army, ds) <= count(core, army, aw2) {
+            core.gba_mut().cpu_mut().set_gpr(2, ds as i32);
+            return;
+        }
+    }
+}
+
+pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
+    BUYS.iter().map(|&at| (at, Box::new(buy) as Box<dyn Fn(&mut Core)>)).collect()
 }
 
 // --- Stealth and Black Boat ---------------------------------------------------
