@@ -78,10 +78,11 @@ const ART_MAP: u32 = DATA + 0x8000; // per new unit, 3 idle frames of 4 tiles
 const ART_MOVE: u32 = DATA + 0x9000; // per new unit, an LZ77 moving sheet
 const ART_MOVE_SIZE: u32 = 0x1000;
 const NAME_INDEX: u32 = DATA + 0x7000; // 64 units x 4 bytes
+pub const UNIT_BAR: u32 = DATA + 0x7100; // the Design Room's unit bar, u16s
 const NAME_PICTURES: u32 = DATA + 0x10000; // AW2's 19, then the new units'
 const DATA_END: u32 = DATA + 0x12000;
 const DATA_SENTINEL: u32 = DATA + 0x7FFC;
-const DATA_MAGIC: u32 = 0x3555_5344; // "DSU5"
+const DATA_MAGIC: u32 = 0x3655_5344; // "DSU6"
 
 /// The unit table's address as the game reads it now.
 pub fn table(core: &Core) -> u32 {
@@ -585,9 +586,10 @@ fn sync_map_art(core: &mut Core) {
     }
 }
 
-/// The cursor panel copies a unit's 4 tiles from the sheet in ROM
-/// (`sub_0802B91C`, source in r0): the new units' from tangoAW2's.
-const PANEL_ICON: u32 = 0x0802_BA9C;
+/// The cursor panel (`sub_0802B91C`) and the Design Room's unit bar
+/// (`sub_08002844`) copy a unit's 4 tiles from the sheet in ROM (source in
+/// r0): the new units' from tangoAW2's.
+const ICON_COPIES: [u32; 2] = [0x0802_BA9C, 0x0800_289C];
 fn panel_icon(core: &mut Core) {
     if !is_on(core) {
         return;
@@ -608,6 +610,13 @@ const NAME_PICTURES_REF: u32 = 0x0802_A850;
 const AW2_NAME_PICTURES: u32 = 19;
 /// The panel names, in [`NEW`]'s order (AW2's are short too: "Md Tank").
 const PANEL_NAMES: [&str; 7] = ["Megatnk", "Pipernr", "Stealth", "B Bomb", "B Boat", "Carrier", "Oozium"];
+
+/// The Design Room's unit bar (the game's, 0x08488856, with the new units
+/// beside their relatives; 25 is the eraser), ended by 0xFF.
+pub const UNIT_BAR_UNITS: [u16; 27] = [
+    23, 24, BLACK_BOAT as u16, CARRIER as u16, 25, 1, 2, 6, 5, 3, 8, MEGATANK as u16, 7, 10, 11, PIPERUNNER as u16, 14,
+    15, 16, 17, STEALTH as u16, BLACK_BOMB as u16, 19, 20, 21, 22, OOZIUM as u16,
+];
 
 // --- Build menu --------------------------------------------------------------
 
@@ -753,6 +762,9 @@ fn install(core: &mut Core) -> bool {
     }
     core.raw_write_range(NAME_INDEX, -1, &index);
     let _ = DATA_END;
+    let mut bar: Vec<u8> = UNIT_BAR_UNITS.iter().flat_map(|u| u.to_le_bytes()).collect();
+    bar.extend_from_slice(&0xFFu16.to_le_bytes());
+    core.raw_write_range(UNIT_BAR, -1, &bar);
     let mut list = BUILD.to_vec();
     list.push(0xFF);
     core.raw_write_range(BUILD_LIST, -1, &list);
@@ -846,7 +858,9 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     for at in DIVED_COLUMN {
         t.push((at, Box::new(dived_column)));
     }
-    t.push((PANEL_ICON, Box::new(panel_icon)));
+    for at in ICON_COPIES {
+        t.push((at, Box::new(panel_icon)));
+    }
     t
 }
 

@@ -57,6 +57,26 @@ const LENGTH_SITES: [(u32, u32); 11] = [
     (0x0800_779E, 0), //   list -= 17
 ];
 
+/// The unit bar's: 20 units (with the eraser), 27 with Dual Strike's
+/// (template [`crate::roster::UNIT_BAR`], read through one pool word).
+const UNIT_SITES: [(u32, u32); 10] = [
+    (0x0800_0D42, 0), // SetSelectedTile: += 20
+    (0x0800_1D78, 1), // list search: i <= 19
+    (0x0800_6282, 1), // RIGHT: slot > 19
+    (0x0800_6286, 0), //        slot -= 20
+    (0x0800_62FA, 0), // LEFT:  slot += 20
+    (0x0800_648C, 1), // index > 19
+    (0x0800_6494, 0), // index -= 20
+    (0x0800_658A, 0), // index += 20
+    (0x0800_77A2, 1), // ring rebuild: list > 19
+    (0x0800_77A8, 0), //   list -= 20
+];
+const UNIT_BYTES_SITE: u32 = 0x0800_77A6; // pointer -= 20 * 4
+const UNITS_BASE: u32 = 20;
+const UNITS_DS: u32 = 27;
+const UNIT_TEMPLATE_POINTER: u32 = 0x0800_7998;
+const UNIT_TEMPLATE: u32 = 0x0848_8856;
+
 fn site_value(kind: u32, entries: u32) -> u8 {
     match kind {
         0 => entries as u8,
@@ -120,6 +140,19 @@ pub fn invention_of(word: u16) -> Option<usize> {
 /// and Obelisk in the bar when `with_obelisk`, and the Wasteland switch too
 /// when `with_wasteland`.
 pub fn patch_rom(core: &mut Core, with_obelisk: bool, with_wasteland: bool) {
+    let units = if with_wasteland { UNITS_DS } else { UNITS_BASE };
+    for (at, kind) in UNIT_SITES.iter().copied().chain([(UNIT_BYTES_SITE, 4)]) {
+        let op = core.raw_read_16(at, -1);
+        let known = [site_value(kind, UNITS_BASE), site_value(kind, UNITS_DS)];
+        let want = site_value(kind, units);
+        if op as u8 != want && known.contains(&(op as u8)) {
+            core.raw_write_16(at, -1, (op & 0xFF00) | want as u16);
+        }
+    }
+    let template = if with_wasteland { crate::roster::UNIT_BAR } else { UNIT_TEMPLATE };
+    if core.raw_read_32(UNIT_TEMPLATE_POINTER, -1) != template {
+        core.raw_write_32(UNIT_TEMPLATE_POINTER, -1, template);
+    }
     for p in LIST_POINTERS {
         if core.raw_read_32(p, -1) == OLD_LIST {
             core.raw_write_32(p, -1, LIST);
