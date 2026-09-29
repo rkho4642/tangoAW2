@@ -4,6 +4,10 @@
 //!
 //! Usage: aw2_script <rom> <script> [--save <sav>]
 //!
+//! A script of `-` reads commands from stdin instead, one at a time, and
+//! prints `@ok FRAME` after each one (flushed), so a driver (tools/aw2test)
+//! can read RAM and decide what to press next.
+//!
 //! Script lines (blank lines and `#` comments are skipped):
 //!   wait N               run N frames with nothing held
 //!   press KEYS [N]       hold KEYS for N frames (default 2), then release for 6
@@ -16,6 +20,15 @@
 //!   watch8 ADDR          print the byte every time it changes
 //!   sticky8 ADDR VAL     write a byte before every later frame; `unstick` stops
 //!   peek ADDR LEN        print LEN bytes at ADDR (hex)
+//!   poke32 ADDR VAL      write a word (hex ADDR/VAL)
+//!   pokebytes ADDR HEX   write the bytes HEX (e.g. 0a0b0c) at ADDR
+//!   until8 ADDR VAL MAX [MASK]  run frames (nothing held) until
+//!                        (byte & MASK) == VAL, at most MAX frames; prints
+//!                        `until8 hit N` or `until8 timeout`
+//!   untilne8 ADDR VAL MAX [MASK]  the same, until (byte & MASK) != VAL
+//!   dumprange ADDR LEN FILE  write LEN bytes at ADDR (e.g. the patched ROM
+//!                        image at 08000000) to FILE
+//!   frame                print the frame count
 //!   regs                 print the CPU registers
 //!   stepwatch32 ADDR N   single-step N instructions, printing each change
 //!                        of the word at ADDR
@@ -155,7 +168,14 @@ fn write_rgba_bmp(path: &str, rgba: &[u8]) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let rom = std::fs::read(&args[1]).expect("rom");
-    let script = std::fs::read_to_string(&args[2]).expect("script");
+    let script: Box<dyn Iterator<Item = String>> = if args[2] == "-" {
+        use std::io::BufRead;
+        Box::new(std::io::stdin().lock().lines().map_while(Result::ok))
+    } else {
+        let text = std::fs::read_to_string(&args[2]).expect("script");
+        Box::new(text.lines().map(String::from).collect::<Vec<_>>().into_iter())
+    };
+    let interactive = args[2] == "-";
     let mut save = None;
     let mut i = 3;
     while i < args.len() {
@@ -210,10 +230,17 @@ fn main() {
             FRAME.store(*frame, std::sync::atomic::Ordering::Relaxed);
         }
     }
-    for line in script.lines() {
+    for line in script {
         let line = line.split('#').next().unwrap().trim();
         if line.is_empty() {
+            if interactive {
+                println!("@ok {frame}");
+                std::io::stdout().flush().ok();
+            }
             continue;
+        }
+        if line == "quit" {
+            break;
         }
         let parts: Vec<&str> = line.split_whitespace().collect();
         match parts[0] {
@@ -278,6 +305,44 @@ fn main() {
             "sticky8" => sticky.push((hex(parts[1]), hex(parts[2]) as u8)),
             "watch8" => watch.push((hex(parts[1]), 0)),
             "unstick" => sticky.clear(),
+            "poke32" => link.core_mut(0).raw_write_32(hex(parts[1]), -1, hex(parts[2])),
+            "pokebytes" => {
+                let h = parts[2];
+                let bytes: Vec<u8> = (0..h.len() / 2)
+                    .map(|i| u8::from_str_radix(&h[2 * i..2 * i + 2], 16).expect("hex bytes"))
+                    .collect();
+                link.core_mut(0).raw_write_range(hex(parts[1]), -1, &bytes);
+            }
+            "until8" | "untilne8" => {
+                let addr = hex(parts[1]);
+                let val = hex(parts[2]) as u8;
+                let max: u32 = parts[3].parse().unwrap();
+                let mask = parts.get(4).map(|m| hex(m) as u8).unwrap_or(0xFF);
+                let want_eq = parts[0] == "until8";
+                let mut n = 0;
+                let hit = loop {
+                    let v = link.core(0).raw_read_8(addr, -1) & mask;
+                    if (v == val) == want_eq {
+                        break true;
+                    }
+                    if n >= max {
+                        break false;
+                    }
+                    run(&mut link, &sticky, &mut watch, &mut frame, 0, 1);
+                    n += 1;
+                };
+                if hit {
+                    println!("{} hit {n}", parts[0]);
+                } else {
+                    println!("{} timeout", parts[0]);
+                }
+            }
+            "dumprange" => {
+                let mut buf = vec![0u8; parts[2].parse::<usize>().unwrap()];
+                link.core(0).raw_read_range(hex(parts[1]), -1, &mut buf);
+                std::fs::write(parts[3], buf).unwrap();
+            }
+            "frame" => println!("frame {frame}"),
             "poke16" => link.core_mut(0).raw_write_16(hex(parts[1]), -1, hex(parts[2]) as u16),
             "poke8" => link.core_mut(0).raw_write_8(hex(parts[1]), -1, hex(parts[2]) as u8),
             "peek" => {
@@ -393,6 +458,9 @@ fn main() {
                 }
             }
             other => panic!("unknown command {other}"),
+        }
+        if interactive {
+            println!("@ok {frame}");
         }
         std::io::stdout().flush().ok();
     }
