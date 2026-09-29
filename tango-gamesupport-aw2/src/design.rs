@@ -52,6 +52,8 @@ const ROWS: u32 = MAP + 0x417A;
 const CLASS_TABLE: u32 = 0x080C_1BC4;
 
 const PLAIN_TILE: u16 = 0x001;
+/// The terrain bar's Plain entry (its class).
+const PLAIN_CLASS: u16 = 0x01;
 const UNDERLAY: u16 = 0x1A4;
 const VOLCANO_RIM: u16 = 0x1A5;
 const FACTORY_ANCHOR: u16 = 0x18D;
@@ -222,8 +224,17 @@ fn placed(core: &Core) -> Vec<(usize, i32, i32)> {
     out
 }
 
+/// The structure covering map cell (x, y), if any: (index into
+/// INVENTIONS, anchor x, y).
+fn structure_at(core: &Core, x: i32, y: i32) -> Option<(usize, i32, i32)> {
+    placed(core)
+        .into_iter()
+        .find(|&(i, ax, ay)| footprint(&INVENTIONS[i], ax, ay).any(|(cx, cy, _)| (cx, cy) == (x, y)))
+}
+
 /// Stamp invention `i` at the cursor, unless it would leave the map, cover
-/// a property or a unit, or exceed the game's invention limit.
+/// a property, a unit or another structure, or exceed the game's invention
+/// limit.
 fn stamp(core: &mut Core, i: usize) -> bool {
     let inv = &INVENTIONS[i];
     let (w, h) = size(core);
@@ -252,7 +263,7 @@ fn stamp(core: &mut Core, i: usize) -> bool {
         let c = cell(core, cx, cy);
         let owner_class = core.raw_read_8(CLASSES + c, -1) & 0x1F;
         let property = matches!(owner_class, 0x06 | 0x08 | 0x0A | 0x0B | 0x0E | 0x10 | 0x11);
-        if property || core.raw_read_8(UNIT_PLANE + c, -1) != 0 {
+        if property || core.raw_read_8(UNIT_PLANE + c, -1) != 0 || structure_at(core, cx, cy).is_some() {
             return false;
         }
     }
@@ -337,6 +348,23 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
         if let Some(i) = crate::design_bar::invention_of(word) {
             stamp(core, i);
             keys &= !KEY_A;
+        }
+    }
+    // One thing per cell: nothing goes onto a structure's cells, except
+    // plain, which clears the whole structure (the editor's way to remove
+    // things). Checked while A is held, so painting by dragging stops at a
+    // structure too.
+    if !bar_open && keys & KEY_A != 0 && !(terrain_bar && crate::design_bar::invention_of(word).is_some()) {
+        let x = core.raw_read_16(E_CURSOR_X, -1) as i32;
+        let y = core.raw_read_16(E_CURSOR_Y, -1) as i32;
+        if let Some((i, ax, ay)) = structure_at(core, x, y) {
+            if terrain_bar && word & 0x1F == PLAIN_CLASS && pressed & KEY_A != 0 {
+                for (cx, cy, _) in footprint(&INVENTIONS[i], ax, ay).collect::<Vec<_>>() {
+                    set_tile(core, cx, cy, PLAIN_TILE);
+                }
+            } else {
+                keys &= !KEY_A;
+            }
         }
     }
 
