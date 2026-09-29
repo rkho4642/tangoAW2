@@ -14,15 +14,16 @@
 
 use mgba::core::Core;
 
-/// Where the bar's list lives now: room for 29 entries of (word, tile).
+/// Where the bar's list lives now: room for 31 entries of (word, tile).
 pub const LIST: u32 = 0x0203_FF00;
 /// The bar's length: the game's 17 and the ten inventions, and the Black
 /// Crystal and Black Obelisk when their art is there
 /// ([`crate::ds_art::features`]), and the Wasteland switch with the whole
-/// Dual Strike pack ([`crate::ds_pack::features`]).
+/// Dual Strike pack ([`crate::ds_pack::features`]) the Wasteland switch
+/// and the Com Tower. 31 entries end at 0x0203FF7C.
 const ENTRIES_BASE: u32 = 27;
 const ENTRIES_ALL: u32 = 29;
-const ENTRIES_DS: u32 = 30;
+const ENTRIES_DS: u32 = 31;
 const OLD_LIST: u32 = 0x0200_B224;
 const OLD_ENTRIES: u32 = 17;
 
@@ -76,9 +77,10 @@ pub fn entries(core: &Core) -> u32 {
 /// `design::INVENTIONS` order. The Black Crystal and Black Obelisk are a
 /// minicannon and a Black Cannon to the game (`crate::obelisk`); their words
 /// carry bit 8 ([`OURS`]) so the bar can tell them from the real ones. The
-/// last, [`WASTE_WORD`], is not placed: it switches the map between Normal
-/// and Wasteland ([`crate::wasteland`]); it shows the mountain's icon.
-pub const ENTRIES_ADDED: [(u16, u16); 13] = [
+/// Wasteland entry, [`WASTE_WORD`], is not placed: it switches the map
+/// between Normal and Wasteland ([`crate::wasteland`]); it shows the
+/// mountain's icon. The last is the Com Tower ([`TOWER_WORD`]).
+pub const ENTRIES_ADDED: [(u16, u16); 14] = [
     (0x15, 0x182),        // minicannon facing down
     (0x16, 0x183),        // up
     (0x17, 0x184),        // left
@@ -92,7 +94,11 @@ pub const ENTRIES_ADDED: [(u16, u16); 13] = [
     (OURS | 0x15, 0x192), // Black Crystal
     (OURS | 0x1A, 0x193), // Black Obelisk
     (WASTE_WORD, 0x020),  // Wasteland (shown as a mountain)
+    (TOWER_WORD, 0x1D9),  // Com Tower (a Lab; its owner follows the bar's army)
 ];
+/// The Com Tower's entry: a Lab ([`crate::com_tower`]), neutral here; the
+/// editor's army choice is put in each frame ([`tower_owner`]).
+pub const TOWER_WORD: u16 = crate::com_tower::LAB as u16;
 pub const OURS: u16 = 0x100;
 pub const WASTE_WORD: u16 = OURS | 0x03;
 
@@ -103,7 +109,7 @@ pub fn is_invention_type(class: u8) -> bool {
 /// The invention a bar word stands for, in `design::INVENTIONS` order.
 pub fn invention_of(word: u16) -> Option<usize> {
     let word = word & (OURS | 0x1F);
-    if word == WASTE_WORD {
+    if word == WASTE_WORD || word == TOWER_WORD {
         return None;
     }
     ENTRIES_ADDED.iter().position(|&(w, _)| w == word)
@@ -170,10 +176,53 @@ pub fn list_built(core: &mut Core) {
     for (k, e) in ENTRIES_ADDED.iter().take(added as usize).enumerate() {
         list.insert(at + k, *e);
     }
+    // The Com Tower keeps the army last stepped to, else the bar's.
+    let kept = core.raw_read_8(TOWER_OWNER, -1) as u16;
+    let owner = if (1..=6).contains(&kept) {
+        kept - 1
+    } else {
+        (core.raw_read_8(BAR_OWNER, -1) as u16).min(5)
+    };
+    for e in list.iter_mut() {
+        if e.0 == TOWER_WORD {
+            *e = tower_entry(owner);
+        }
+    }
     for (i, (w, t)) in list.iter().enumerate() {
         core.raw_write_16(LIST + 4 * i as u32, -1, *w);
         core.raw_write_16(LIST + 4 * i as u32 + 2, -1, *t);
     }
+}
+
+/// The army the editor's bars place for (0 neutral .. 5 Black Hole).
+const BAR_OWNER: u32 = 0x0200_B02E;
+
+/// The Com Tower's army while the editor is open (owner + 1; 0: the bar's
+/// army, [`BAR_OWNER`]), kept when the bar is rebuilt.
+pub const TOWER_OWNER: u32 = 0x0203_FFAD;
+
+/// The Com Tower's entry for `owner`.
+fn tower_entry(owner: u16) -> (u16, u16) {
+    (TOWER_WORD | owner << 5, crate::com_tower::tile_for(owner as u8))
+}
+
+/// The bar's Com Tower entry, if it is the highlighted one (its list
+/// address).
+pub fn highlighted_tower(core: &Core, window: u32) -> Option<u32> {
+    let at = LIST + 4 * ((window + 4) % entries(core));
+    (core.raw_read_16(at, -1) & 0x11F & !0xE0 == TOWER_WORD).then_some(at)
+}
+
+/// UP/DOWN on the highlighted Com Tower: the editor switches armies only on
+/// its own property entries, so the tower's entry steps through neutral,
+/// the four armies and Black Hole itself.
+pub fn step_tower_owner(core: &mut Core, at: u32, forward: bool) {
+    let owner = (core.raw_read_16(at, -1) >> 5) & 7;
+    let next = if forward { (owner + 1) % 6 } else { (owner + 5) % 6 };
+    core.raw_write_8(TOWER_OWNER, -1, next as u8 + 1);
+    let (w, t) = tower_entry(next);
+    core.raw_write_16(at, -1, w);
+    core.raw_write_16(at + 2, -1, t);
 }
 
 /// The bar's sprite loader (`sub_0803F6BC(kind, variant, dest, load)`).
@@ -204,6 +253,7 @@ pub fn icon_loader(core: &mut Core) {
     let pending = match word {
         CRYSTAL_WORD => PENDING_CRYSTAL,
         OBELISK_WORD => PENDING_OBELISK,
+        TOWER_WORD if crate::com_tower::active(core) => PENDING_TOWER,
         _ => (is_invention_type(kind as u8) && load != 0) as u8,
     };
     core.raw_write_8(ICON_PENDING, -1, pending);
@@ -214,6 +264,7 @@ const CRYSTAL_WORD: u16 = OURS | 0x15;
 const OBELISK_WORD: u16 = OURS | 0x1A;
 const PENDING_CRYSTAL: u8 = 2;
 const PENDING_OBELISK: u8 = 3;
+const PENDING_TOWER: u8 = 4;
 
 /// Trap at [`ICON_LOADED`]: map the loaded icon's colours.
 pub fn icon_loaded(core: &mut Core) {
@@ -230,6 +281,7 @@ pub fn icon_loaded(core: &mut Core) {
     let own: Option<&[u8]> = match pending {
         PENDING_CRYSTAL => Some(art.map_or(&[0u8; 256][..], |a| &a.crystal)),
         PENDING_OBELISK => Some(art.map_or(&[0u8; 256][..], |a| &a.obelisk_small)),
+        PENDING_TOWER => crate::com_tower::picture(),
         _ => None,
     };
     if let Some(picture) = own {
@@ -315,6 +367,18 @@ pub fn icon_palette(core: &mut Core) {
         core.gba_mut().cpu_mut().set_gpr(0, palette);
         return;
     }
+    // The Com Tower: its owner's building palette (8 + owner), Black Hole's
+    // as its other buildings.
+    if raw as u16 & 0x11F == TOWER_WORD && crate::com_tower::active(core) {
+        let owner = (raw >> 5) & 7;
+        let palette = if owner >= 5 {
+            crate::invention_art::black_hole_palette() as i32
+        } else {
+            8 + owner as i32
+        };
+        core.gba_mut().cpu_mut().set_gpr(0, palette);
+        return;
+    }
     // The Crystal's and Obelisk's words carry OURS.
     let item = core.gba().cpu().gpr(3) as u32 & !(OURS as u32);
     if item > 0x1F || !is_invention_type(item as u8) {
@@ -342,6 +406,7 @@ pub fn bar_name(core: &mut Core) {
         CRYSTAL_WORD => crate::obelisk::CRYSTAL_NAME_AT,
         OBELISK_WORD => crate::obelisk::OBELISK_NAME_AT,
         WASTE_WORD => crate::wasteland::NAME_AT,
+        TOWER_WORD if crate::com_tower::active(core) => crate::com_tower::NAME_AT,
         _ => return,
     };
     core.gba_mut().cpu_mut().set_gpr(0, name as i32);

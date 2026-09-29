@@ -103,7 +103,7 @@ fn install_tables(core: &mut Core) {
 }
 
 /// Set while the editor is open, once its players have been moved.
-const EDITOR_READY: u32 = 0x0203_FF7A;
+const EDITOR_READY: u32 = 0x0203_FFAC;
 const OLD_PLAYERS: u32 = 0x0202_3284;
 
 /// Every frame: the editor's patches on while it is open, off otherwise.
@@ -126,6 +126,7 @@ pub fn sync(core: &mut Core) {
         // The editor opens on a new map: Normal until one is loaded or
         // switched (a battle's biome must not carry over).
         crate::wasteland::set_biome(core, crate::wasteland::NORMAL);
+        core.raw_write_8(crate::design_bar::TOWER_OWNER, -1, 0);
         core.raw_write_8(EDITOR_READY, -1, 1);
     }
     for (at, old, new) in EDITOR_HALVES {
@@ -239,11 +240,15 @@ pub fn building_palette(core: &mut Core) {
 pub const DEFAULT_TILE: u32 = 0x0800_12DC;
 pub fn default_tile(core: &mut Core) {
     let class = core.gba().cpu().gpr(0) as u16 & 0xFF;
-    let tile = ARMY5_PROPERTIES
-        .iter()
-        .chain(std::iter::once(&ARMY5_LAB))
-        .find(|&&(c, _)| c == class)
-        .map(|&(_, t)| t);
+    let tower = (class & 0x1F == crate::com_tower::LAB as u16 && crate::com_tower::active(core))
+        .then(|| crate::com_tower::tile_for((class >> 5) as u8));
+    let tile = tower.or_else(|| {
+        ARMY5_PROPERTIES
+            .iter()
+            .chain(std::iter::once(&ARMY5_LAB))
+            .find(|&&(c, _)| c == class)
+            .map(|&(_, t)| t)
+    });
     if let Some(tile) = tile {
         let lr = core.gba().cpu().gpr(14) as u32;
         let cpu = core.gba_mut().cpu_mut();

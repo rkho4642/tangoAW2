@@ -28,9 +28,19 @@ const VERSUS: u8 = 3;
 /// Firepower per tower, in %.
 const PER_TOWER: i32 = 10;
 
-/// Whether Labs are Com Towers now.
+/// Whether Labs are Com Towers now: in Versus, and in the Design Room's
+/// map editor, with the pack.
 pub fn active(core: &Core) -> bool {
-    is_on(core) && core.raw_read_8(GAME_MODE, -1) == VERSUS
+    is_on(core) && (core.raw_read_8(GAME_MODE, -1) == VERSUS || crate::design::in_map_editor(core))
+}
+
+/// The Lab tile of an owner (0 neutral .. 4; 5 is Black Hole's, tangoAW2's
+/// own, see `crate::five`).
+pub fn tile_for(owner: u8) -> u16 {
+    match owner {
+        0..=4 => 0x1D9 + owner as u16,
+        _ => 0x1B9,
+    }
 }
 
 /// The towers each army owns, counted on the map every frame (the game's
@@ -210,7 +220,7 @@ pub fn show(core: &mut Core) {
     let Some(p) = picture() else {
         return;
     };
-    if crate::five::active(core) {
+    if crate::five::active(core) || crate::design::in_map_editor(core) {
         after_sheet(core);
         return;
     }
@@ -235,12 +245,24 @@ fn map_has(core: &Core, tile: u16) -> bool {
     (0..h.min(30)).any(|y| (0..w.min(30)).any(|x| crate::obelisk::tile_at(core, x, y) == tile))
 }
 
-/// In a five-army game the Lab's tiles hold Black Hole's HQ, so the tower
-/// is drawn from tangoAW2's own battle tiles: the Crystal's when no Crystal
-/// is on the map, else the Obelisk's when no Obelisk is (with both, the
-/// tower keeps the game's picture).
+/// Sprite tiles the Design Room's editor never uses (the end of
+/// `crate::invention_art`'s range, past what the inventions take).
+const EDITOR_TILE: u32 = 524;
+
+/// Where the tower is drawn from when the Lab's tiles are taken: in the
+/// Design Room (they hold Black Hole's HQ there, `crate::design5`), tiles
+/// the editor never uses; in a five-army game (they hold Black Hole's HQ,
+/// `crate::five`), tangoAW2's own battle tiles: the Crystal's when no
+/// Crystal is on the map, else the Obelisk's when no Obelisk is (with both,
+/// the tower keeps the game's picture).
 pub fn five_army_tiles(core: &Core) -> Option<u32> {
-    if !active(core) || !crate::five::active(core) {
+    if !active(core) {
+        return None;
+    }
+    if crate::design::in_map_editor(core) {
+        return Some(EDITOR_TILE);
+    }
+    if !crate::five::active(core) {
         return None;
     }
     if !map_has(core, crate::obelisk::CRYSTAL_TILE) {
@@ -264,6 +286,43 @@ pub fn after_sheet(core: &mut Core) {
     if now[..] != p[..] {
         core.raw_write_range(at, -1, p);
     }
+}
+
+/// At the Design Room's VBlank sprite flush ([`crate::design::flush_sprites`]):
+/// the map's towers, which the editor itself never draws, as 16x32 sprites
+/// in their owner's building palette (8 + owner; Black Hole's, as its other
+/// buildings there), standing a cell tall like the battle's.
+pub fn append_editor(core: &mut Core, at: u32, end: u32, bottom: i32) -> u32 {
+    if !active(core) || !crate::design::in_map_editor(core) {
+        return at;
+    }
+    let (w, h) = (core.raw_read_16(MAP, -1) as u32, core.raw_read_16(MAP + 2, -1) as u32);
+    let (cam_x, cam_y) = (core.raw_read_16(MAP + 4, -1) as i32, core.raw_read_16(MAP + 6, -1) as i32);
+    let mut at = at;
+    for y in 0..h.min(30) {
+        let row = core.raw_read_16(ROWS + 2 * y, -1) as u32;
+        for x in 0..w.min(30) {
+            let c = core.raw_read_8(CLASSES + row + x, -1);
+            if c & 0x1F != LAB {
+                continue;
+            }
+            let (sx, sy) = (16 * x as i32 - cam_x, 16 * y as i32 - 16 - cam_y);
+            if sx <= -16 || sx >= 240 || sy <= -32 || sy + 16 >= bottom || at + 8 > end {
+                continue;
+            }
+            let owner = (c >> 5) as u16;
+            let palette = if owner >= 5 {
+                crate::invention_art::black_hole_palette() as u16
+            } else {
+                8 + owner
+            };
+            core.raw_write_16(at, -1, 0x8000 | (sy as u16 & 0xFF));
+            core.raw_write_16(at + 2, -1, 0x8000 | (sx as u16 & 0x1FF));
+            core.raw_write_16(at + 4, -1, palette << 12 | 3 << 10 | EDITOR_TILE as u16);
+            at += 8;
+        }
+    }
+    at
 }
 
 /// The building sprite for a tower (`sub_0803F908`'s definition `def`, the

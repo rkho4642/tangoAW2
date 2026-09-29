@@ -217,7 +217,8 @@ fn sprite(core: &mut Core) {
         }
         _ => return,
     };
-    let new = if crate::design::in_map_editor(core) {
+    let tower = lr == 0x0803_FB77;
+    let new = if crate::design::in_map_editor(core) && !tower {
         EMPTY_DEF
     } else {
         new

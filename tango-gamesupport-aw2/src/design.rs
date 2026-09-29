@@ -64,6 +64,7 @@ const MAX_INVENTIONS: usize = 15;
 const KEY_A: u32 = 1;
 const KEY_SELECT: u32 = 1 << 2;
 const KEY_UP: u32 = 1 << 6;
+const KEY_DOWN: u32 = 1 << 7;
 
 /// One placeable invention: its label, the tile carrying its class (the
 /// anchor), and its footprint rows starting at (anchor.x + dx, anchor.y + dy).
@@ -323,6 +324,17 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
         keys &= !KEY_SELECT;
     }
     let terrain_bar = core.raw_read_8(E_BAR, -1) == 0;
+    // The Com Tower's army, stepped by the tower's own entry.
+    if bar_open && terrain_bar && crate::com_tower::active(core) {
+        let window = core.raw_read_8(E_TERRAIN_WINDOW, -1) as u32;
+        if let Some(at) = crate::design_bar::highlighted_tower(core, window) {
+            if pressed & (KEY_UP | KEY_DOWN) != 0 {
+                crate::design_bar::step_tower_owner(core, at, pressed & KEY_DOWN != 0);
+            }
+            keys &= !(KEY_UP | KEY_DOWN);
+            pressed &= !(KEY_UP | KEY_DOWN);
+        }
+    }
     // While a bar is open the tool is only chosen on A: read the
     // highlighted entry. On the map, the chosen tool.
     let word = if bar_open && terrain_bar {
@@ -337,7 +349,10 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
         }
     };
     if bar_open && terrain_bar && pressed & KEY_A != 0 {
-        core.raw_write_16(PICKED, -1, word);
+        // The Com Tower's entry carries its army (owner << 5) too.
+        let window = core.raw_read_8(E_TERRAIN_WINDOW, -1) as u32;
+        let full = crate::design_bar::highlighted_tower(core, window).map(|at| core.raw_read_16(at, -1));
+        core.raw_write_16(PICKED, -1, full.unwrap_or(word));
     }
     // In the bars UP/DOWN (and SELECT) step through the armies: neutral,
     // Orange Star, Blue Moon, Green Earth, Yellow Comet and Black Hole
@@ -347,6 +362,23 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
     if !bar_open && terrain_bar && word == crate::design_bar::WASTE_WORD && keys & KEY_A != 0 {
         if pressed & KEY_A != 0 {
             crate::wasteland::toggle(core);
+        }
+        keys &= !KEY_A;
+    }
+    // The Com Tower (a Lab of the picked army): the game's editor places no
+    // Labs, so A (held, too) puts the tile itself.
+    if !bar_open
+        && terrain_bar
+        && word & 0x11F & !0xE0 == crate::design_bar::TOWER_WORD
+        && keys & KEY_A != 0
+        && crate::com_tower::active(core)
+    {
+        let x = core.raw_read_16(E_CURSOR_X, -1) as i32;
+        let y = core.raw_read_16(E_CURSOR_Y, -1) as i32;
+        if structure_at(core, x, y).is_none() {
+            // The army is in the picked entry (class | owner << 5).
+            let owner = (core.raw_read_16(PICKED, -1) >> 5) as u8 & 7;
+            set_tile(core, x, y, crate::com_tower::tile_for(owner));
         }
         keys &= !KEY_A;
     }
@@ -413,6 +445,7 @@ pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
         160
     };
     let at = crate::design5::append_emblem(core, at, end);
+    let at = crate::com_tower::append_editor(core, at, end, bottom);
     crate::invention_art::append(core, &list, volcano_on_map, bottom, at, end)
 }
 
