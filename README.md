@@ -73,11 +73,25 @@ Both press Ready; the game starts from power-on for both. Go to
   in the campaign, for a human or computer Black Hole.
 - **Optional, from your own Dual Strike ROM:** put your Advance Wars: Dual
   Strike `.nds` in the `roms` folder once and Dual Strike comes to AW2: its
-  7 units with their own pictures and their battle and map animations, its
-  9 new COs with their power animations, its CO and damage numbers, Com
-  Towers, Sandstorm, the Wasteland and the healing Black Crystal and
-  Obelisk, in the Design Room too, and the computer uses all of it. Without
-  the ROM nothing changes; online, both players need it.
+  7 units with their own pictures and their battle and map animations (the
+  Oozium eats what it moves onto), its 9 new COs with their power
+  animations, its CO and damage numbers, Com Towers, Sandstorm, the
+  Wasteland and the healing Black Crystal and Obelisk, in the Design Room
+  too, and the computer uses all of it. Without the ROM nothing changes;
+  online, both players need it.
+
+<table>
+<tr>
+<td><img src="docs/screenshots/ds-megatank-battle.png" width="240" alt="A Megatank firing in battle"></td>
+<td><img src="docs/screenshots/ds-carrier-launch.png" width="240" alt="A Carrier launching its planes"></td>
+<td><img src="docs/screenshots/ds-piperunner-pipe.png" width="240" alt="A Piperunner on its pipe"></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/ds-build-base.png" width="240" alt="The base's build menu with the Piperunner and Oozium"></td>
+<td><img src="docs/screenshots/ds-von-bolt-ex-machina.png" width="240" alt="Von Bolt's Ex Machina"></td>
+<td><img src="docs/screenshots/ds-wasteland-battle.png" width="240" alt="A battle on a Wasteland map"></td>
+</tr>
+</table>
 
 <table>
 <tr>
