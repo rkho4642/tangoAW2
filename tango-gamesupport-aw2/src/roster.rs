@@ -516,8 +516,11 @@ const CLONE: [Clone; 5] = [
         refs: &[0x0803_5B24, 0x0803_5B38, 0x0803_5B64, 0x0803_5B7C, 0x0803_5F94, 0x0803_60CC, 0x0809_0EB0, 0x0809_0EB4, 0x0809_0EB8] },
     // Unit information: sprites and pictures per country.
     Clone { at: 0x0849_DC18, stride: 60, entries: 25, first: 0, refs: &[0x0803_A15C, 0x0803_A2A8] },
-    // Unit information: picture palettes (from unit 1).
-    Clone { at: 0x0855_5D30, stride: 20, entries: 24, first: 1, refs: &[0x0803_A2B4, 0x0804_BD54] },
+    // Unit information: picture palettes (from unit 1). The battle scene
+    // reads the same table by scene id (`sub_0804BD20`, pool word
+    // 0x0804BD54), whose rows 3 and 17 (the second B Copter and the dived
+    // Sub) are units 4 and 18 here: it keeps the game's table.
+    Clone { at: 0x0855_5D30, stride: 20, entries: 24, first: 1, refs: &[0x0803_A2B4] },
     // Unit information: class icon.
     Clone { at: 0x0849_E224, stride: 1, entries: 25, first: 0, refs: &[0x0803_A164] },
     // Unit information: its byte script.
@@ -536,6 +539,13 @@ const INFO_TEXT_AW2: u32 = 0x0849_E398;
 const INFO_TEXT_REFS: [u32; 3] = [0x0803_A534, 0x0803_A6F8, 0x0803_A864];
 const INFO_TEXT_ROWS: u32 = 19;
 const INFO_ROWS_AT: u32 = SMALL_TABLES + SMALL_SIZE * SMALL.len() as u32;
+
+/// The Intel screen's unit list (`sub_08047190`) orders an army's units by
+/// their information row, walking unit types 0..24 (`cmp r0, #0x18`) in
+/// three loops: to 27 with the new units, so the Carrier and the Oozium
+/// are listed too.
+const INTEL_LIST_TYPES: [u32; 3] = [0x0804_71EE, 0x0804_7270, 0x0804_7416];
+const INTEL_LIST_LAST: (u16, u16) = (0x2818, 0x2800 | (TYPES as u16 - 1));
 
 /// The map's unit sprites: slot per (country, unit), `u16 [5][25]` at
 /// 0x08499608, read by `sub_080261A4` with a row stride of `movs r1, #0x32`.
@@ -703,6 +713,9 @@ fn install(core: &mut Core) -> bool {
         }
         core.raw_write_range(clone_at(k), -1, &t);
     }
+    // The new units' own pictures in the information panel, when the pack
+    // has them (else the template's).
+    crate::ds_unit_pictures::install(core, clone_at(1), clone_at(2));
     // Information text: the game's rows, then one per new unit with its own
     // description and the template's lines about move, vision and fuel.
     let mut rows = vec![0u8; ROOM_TYPES as usize];
@@ -857,6 +870,14 @@ pub fn tick(core: &mut Core, on: bool) {
     let now = core.raw_read_16(at, -1);
     if now != want && (now == aw2 || now == ds) {
         core.raw_write_16(at, -1, want);
+    }
+    for at in INTEL_LIST_TYPES {
+        let (aw2, ds) = INTEL_LIST_LAST;
+        let want = if on { ds } else { aw2 };
+        let now = core.raw_read_16(at, -1);
+        if now != want && (now == aw2 || now == ds) {
+            core.raw_write_16(at, -1, want);
+        }
     }
     let (at, aw2, ds) = BASE_MASK;
     let want = if on { ds } else { aw2 };

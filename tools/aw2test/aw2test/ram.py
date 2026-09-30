@@ -56,6 +56,7 @@ TEAMS = 0x02017C50             # Teams record (five-army mode: TEAMS_FIVE)
 TEAMS_FIVE = 0x02030300
 FIVE_ON = 0x02030206           # tangoAW2: a five-army game is being set up or played
 T5_ARMY5_CONTROLLER = 0x94     # five-army Teams record: army 5's controller (crate::five)
+T5_CONTROLLERS = 0x90          # five-army Teams record: the five armies' controllers (what the battle uses)
 T_ARMY_COUNT = 0x08
 T_CONTROLLERS = 0x09           # per army: 1 human, 2 computer
 T_COLOURS = 0x0D

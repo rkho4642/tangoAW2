@@ -134,6 +134,9 @@ class Image:
     def tile_for(self, kind, owner=0):
         """A tile id of the given terrain kind (name or class number)."""
         if isinstance(kind, str) and kind in PROPERTY_KIND:
+            if owner == 5:
+                # Black Hole's properties in a five-army game (crate::five).
+                return 0x1B4 + PROPERTY_KIND[kind]
             return 0x1C0 + PROPERTY_KIND[kind] + 5 * owner
         cls = TERRAIN_CLASSES[kind] if isinstance(kind, str) else kind
         preferred = {1: 0x001, 3: 0x022, 7: 0x008}
@@ -273,6 +276,25 @@ class DualStrike:
         data = self.files[path]
         return lz10(data) if decompress and data[:1] == b"\x10" else data
 
+    def ov0_word(self, addr):
+        return struct.unpack_from("<I", self.ov0, addr - DS_OVERLAY0_BASE)[0]
+
+    def ov0_name(self, addr):
+        o = addr - DS_OVERLAY0_BASE
+        return self.ov0[o:o + 4].split(b"\0")[0].decode()
+
+    def unit_picture(self, ds_id, army):
+        """The unit information picture of Dual Strike unit `ds_id` for army
+        0..4 (OS, BM, GE, YC, BH): (OAM layout bytes, 4bpp tiles, 64-byte
+        palette), from overlay 0's table at 0x0234F384 (15 words per unit)."""
+        row = 0x0234F384 + 60 * ds_id
+        lay = self.ov0_word(row + 4 * army) - DS_OVERLAY0_BASE
+        count = struct.unpack_from("<H", self.ov0, lay)[0]
+        layout = self.ov0[lay:lay + 2 + 6 * count]
+        tiles = self.file("xinfo/" + self.ov0_name(self.ov0_word(row + 4 * (5 + army))))
+        palette = self.files["battle/" + self.ov0_name(self.ov0_word(row + 4 * (10 + army)))][:64]
+        return layout, tiles, palette
+
     def record(self, t):
         o = DS_UNITS - DS_OVERLAY0_BASE + DS_RECORD * t
         return self.ov0[o:o + DS_RECORD]
@@ -333,6 +355,28 @@ class DualStrike:
             return 0
         p = struct.unpack_from("<I", b, 0x2C)[0] - DS_OVERLAY0_BASE
         return struct.unpack_from("<b", self.ov0, p + (terrain & 0x1F))[0] if 0 <= p < len(self.ov0) - 32 else 0
+
+
+def lz10(b):
+    """LZ77 type 0x10, as the GBA/DS BIOS decompresses it."""
+    size = int.from_bytes(b[1:4], "little")
+    out = bytearray()
+    p = 4
+    while len(out) < size:
+        flags = b[p]
+        p += 1
+        for bit in range(8):
+            if len(out) >= size:
+                break
+            if flags & (0x80 >> bit):
+                x = (b[p] << 8) | b[p + 1]
+                p += 2
+                for _ in range((x >> 12) + 3):
+                    out.append(out[-((x & 0xFFF) + 1)])
+            else:
+                out.append(b[p])
+                p += 1
+    return bytes(out)
 
 
 # AW2 CO id -> Dual Strike CO id (Sturm, 10, has none).

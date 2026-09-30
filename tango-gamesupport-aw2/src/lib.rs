@@ -20,6 +20,7 @@ pub mod ds_co_art;
 pub mod ds_pack;
 pub mod ds_power_art;
 pub mod ds_unit_art;
+pub mod ds_unit_pictures;
 pub mod ds_units;
 pub mod ds_weather;
 pub mod sandstorm;

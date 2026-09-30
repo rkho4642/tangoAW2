@@ -328,7 +328,7 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 
 | Part | Module | What it changes |
 |---|---|---|
-| Units | `roster.rs`, `ds_units.rs`, `unit_actions.rs`, `unit_names.rs`, `ds_unit_art.rs`, `ds_battle.rs`, `map_anim.rs` | Unit table grown to 64 rows (0x08680000), 7 new units (ids 4, 9, 12, 13, 18, 26, 27), Dual Strike's stats and damage chart, their actions (Hide, Explode, Repair, Carrier), map art, battle scenes with Dual Strike's figures, effects and volleys (the Oozium attacks on the map, as in Dual Strike), and Dual Strike's map animations played through AW2's own map effects (a Black Bomb's explosion, a Stealth hiding and appearing, a Black Boat's REPAIR label, Oozium's death in its army's colours; for the CPU at its turn's end, before the turn passes) |
+| Units | `roster.rs`, `ds_units.rs`, `unit_actions.rs`, `unit_names.rs`, `ds_unit_art.rs`, `ds_unit_pictures.rs`, `ds_battle.rs`, `map_anim.rs` | Unit table grown to 64 rows (0x08680000), 7 new units (ids 4, 9, 12, 13, 18, 26, 27), Dual Strike's stats and damage chart, their actions (Hide, Explode, Repair, Carrier), map art, their own information pictures (build menu panel, R on a unit) in each army's colours, every unit in the Intel unit list, battle scenes with Dual Strike's figures, effects and volleys (the Oozium attacks on the map, as in Dual Strike), and Dual Strike's map animations played through AW2's own map effects (a Black Bomb's explosion, a Stealth hiding and appearing, a Black Boat's REPAIR label, Oozium's death in its army's colours; for the CPU at its turn's end, before the turn passes) |
 | COs | `co_roster.rs`, `co_new.rs`, `co_powers.rs`, `ds_co_art.rs`, `ds_power_art.rs`, `power_anim.rs` | CO table grown to 96 rows (0x086A0000), Dual Strike's numbers for AW2's COs (and its 200% defence cap), 9 new COs at ids 72..80 (face ids stay unambiguous), their pictures, texts, powers and Dual Strike's power animations (Ex Machina, Covering Fire, Urban Blight), and Dual Strike's choice of power effect on their units |
 | CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats |
 | Terrain | `com_tower.rs`, `wasteland.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), the Wasteland look, the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
@@ -338,7 +338,8 @@ Free ROM used: 0x08620000.. (text slots), 0x0862C000.. (new CO text ids 0x6D72..
 0x08640000..0x08672FFF (earlier features), 0x08680000..0x08691FFF (units),
 0x086A0000..0x086AFFFF (CO table), 0x08740000..0x0877FFFF (CO pictures, texts,
 powers' code, heal wait), 0x087C0000..0x087C0FFF (power animations),
-0x087C1000..0x087C3FFF (map animations). Free RAM used: 0x0203F740..0x0203F79F
+0x087C1000..0x087C3FFF (map animations), 0x087D0000..0x087DFFFF (unit pictures).
+Free RAM used: 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, stun, battle
 distance, Teams list),
@@ -355,6 +356,8 @@ fires every CO's COP and SCOP, and replays netplay runs on two rollback peers.
   features; ordinary Versus maps do not have them. Build them in the
   Design Room.
 - Campaign and War Room are single-player. Netplay is Versus only.
+- The CO screen's unit grid (map menu > CO, its firepower bars) has 20
+  slots for AW2's 19 units; the Dual Strike units are not on it.
 - The game's mini maps (the map list's preview, the editor's overview)
   have colours for four armies; Black Hole's buildings show there as
   neutral grey. The editor's Intel screen counts the four armies and
