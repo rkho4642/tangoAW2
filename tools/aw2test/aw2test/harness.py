@@ -97,7 +97,7 @@ class Ctx:
         return g
 
     def shot(self, g, name):
-        g.e.shot(os.path.join(self.out, name))
+        return g.e.shot(os.path.join(self.out, name))
 
     # -- expectations ------------------------------------------------------------------
     def side(self, g, u, terrain=None):

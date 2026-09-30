@@ -146,11 +146,11 @@ def oozium_destroys(ctx):
     m.unit(1, 27, 10, 10).unit(2, "tank", 11, 10)
     g = ctx.start(m, ["andy", "andy"])
     g.select(10, 10)
-    g.move_to(10, 10)
-    g.choose("Fire", g.ACTION_MENU)
-    g.pick_target(11, 10)
+    g.move_to(11, 10)
+    g.choose("Wait", g.ACTION_MENU)
     g.wait_for_input()
-    ctx.check(g.unit_at(11, 10) is None, "the Tank is gone")
+    u = g.unit_at(11, 10)
+    ctx.check(u is not None and u["type"] == 27, "the Tank is gone, eaten (the Oozium moved onto it)")
 
 
 @test(modes=("ds",))
@@ -249,6 +249,8 @@ def cpu_attacks_with_new_units(ctx):
         g.wait_unit(10, 10)
         g.end_turn()
         u = g.unit_at(10, 10)
+        if u is not None and u["army"] != 1:
+            u = None  # eaten: the Oozium stands on its square
         ctx.check(u is None or u["hp"] < 100, f"{name} attacked: our {target} now {u['hp'] if u else 'destroyed'}")
         g.e.close()
 

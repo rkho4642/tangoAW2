@@ -150,6 +150,12 @@ const POWER_FIREPOWER: i32 = 10;
 /// Dual Strike's `field` for unit type `t` under CO `co` at power `mode`,
 /// or `None` for a CO Dual Strike does not have.
 pub fn stat(co: u8, mode: u8, t: u8, field: usize) -> Option<i32> {
+    // No CO changes an Oozium (Dual Strike's 0x020E5678, 0x020E57AC,
+    // 0x020E5A58, 0x020E5C40, 0x020E5D8C return 0 for its class, 6; see
+    // [`crate::oozium`]), Sturm included.
+    if t == crate::roster::OOZIUM {
+        return Some(0);
+    }
     let b = block(ds_co(co)?, mode)?;
     let unit = crate::roster::ds_record(t)?;
     let (class, combat) = (unit[0x1C], unit[0x20]);
@@ -402,10 +408,15 @@ const DEFENCE_ARMY: u32 = 0x0804_2CF8;
 const DEFENCE_DONE: u32 = 0x0804_2D10;
 const DEFENCE_SIDE: u32 = 0x0203_FFBA;
 
+/// Bit 7 of [`DEFENCE_SIDE`]: the unit is an Oozium (no CO's defence).
+const DEFENCE_OOZIUM: u8 = 0x80;
+
 fn defence_army(core: &mut Core) {
     if is_on(core) {
-        let army = core.gba().cpu().gpr(0) as u8;
-        core.raw_write_8(DEFENCE_SIDE, -1, army);
+        let cpu = core.gba().cpu();
+        let (army, t) = (cpu.gpr(0) as u8, cpu.gpr(1) as u8);
+        let v = if t == crate::roster::OOZIUM { army | DEFENCE_OOZIUM } else { army };
+        core.raw_write_8(DEFENCE_SIDE, -1, v);
     }
 }
 
@@ -413,7 +424,11 @@ fn defence_done(core: &mut Core) {
     if !is_on(core) {
         return;
     }
-    let army = core.raw_read_8(DEFENCE_SIDE, -1) as u32;
+    let side = core.raw_read_8(DEFENCE_SIDE, -1);
+    if side & DEFENCE_OOZIUM != 0 {
+        return;
+    }
+    let army = side as u32;
     let mut add = 0;
     if crate::com_tower::active(core) {
         add += crate::com_tower::towers(core, army) as i32 * tower_defence(core, army);
@@ -431,13 +446,21 @@ fn defence_done(core: &mut Core) {
 /// `sub_08024C58` storing a side's defence (terrain + 100 + CO bonuses +
 /// its own) at 0x08024D12 (r1): Dual Strike caps it at 200 (0x020C34C8),
 /// so no defence turns a hit into healing. AW2 has no cap and never gets
-/// there; Javier's Tower of Power (+80 against indirects) does.
+/// there; Javier's Tower of Power (+80 against indirects) does. An
+/// Oozium's leaves out the power's +10 (the player's +0x28, in r8):
+/// Dual Strike gives it no CO defence at all (0x020E5A58).
 const DEFENCE_TOTAL: u32 = 0x0802_4D12;
 const DEFENCE_CAP: i16 = 200;
 
 fn defence_total(core: &mut Core) {
     if !is_on(core) {
         return;
+    }
+    let unit = core.raw_read_32(core.gba().cpu().gpr(5) as u32, -1);
+    if crate::oozium::immune(core, unit) {
+        let cpu = core.gba_mut().cpu_mut();
+        let (r1, power) = (cpu.gpr(1), cpu.gpr(8));
+        cpu.set_gpr(1, r1.wrapping_sub(power));
     }
     let cpu = core.gba_mut().cpu_mut();
     if cpu.gpr(1) as u16 as i16 > DEFENCE_CAP {

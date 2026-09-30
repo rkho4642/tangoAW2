@@ -328,7 +328,7 @@ fn clear_stuns(core: &mut Core) {
 }
 
 /// `sub_08044854(x, y, damage)`, a strike's hit on one square: in Von
-/// Bolt's Ex Machina the unit there is marked.
+/// Bolt's Ex Machina the unit there is marked (not an Oozium).
 const STRIKE_SQUARE: u32 = 0x0804_4854;
 fn strike_square(core: &mut Core) {
     if !is_on(core) {
@@ -350,7 +350,7 @@ fn strike_square(core: &mut Core) {
         return;
     }
     let u = core.raw_read_32(UNITS_POINTER, -1) + UNIT * i;
-    if core.raw_read_8(u, -1) != 0 && core.raw_read_8(u + 1, -1) & 0x08 == 0 {
+    if core.raw_read_8(u, -1) != 0 && core.raw_read_8(u + 1, -1) & 0x08 == 0 && !crate::oozium::immune(core, u) {
         set_bit(core, STUN_PENDING, i, true);
     }
 }
@@ -405,12 +405,17 @@ pub fn tick(core: &mut Core, on: bool) {
 // --- Traps -----------------------------------------------------------------------
 
 /// `sub_08044F24`'s per-unit step of a mass damage (r4 the unit, just
-/// found to be on the map): in Urban Blight a unit off a property is
-/// skipped (0x0804505E is the next unit).
+/// found to be on the map): an Oozium is skipped (0x0804505E is the next
+/// unit), and in Urban Blight a unit off a property.
 const MASS_UNIT: u32 = 0x0804_4FFC;
 const MASS_NEXT: u32 = 0x0804_505E;
 fn mass_unit(core: &mut Core) {
     if !is_on(core) {
+        return;
+    }
+    // Powers pass the Oozium by ([`crate::oozium`]).
+    if crate::oozium::immune(core, core.gba().cpu().gpr(4) as u32) {
+        core.gba_mut().cpu_mut().set_thumb_pc(MASS_NEXT);
         return;
     }
     let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;

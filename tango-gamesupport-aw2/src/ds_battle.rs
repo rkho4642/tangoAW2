@@ -9,8 +9,8 @@
 //! one figure (Dual Strike shows these units as one, whatever their HP),
 //! drawn from Dual Strike's own frames, animated by Dual Strike's scripts,
 //! in the army's Dual Strike colours; the donor's effects on that side are
-//! replaced by Dual Strike's. An Oozium's attack has no scene: Dual Strike
-//! resolves it on the map (it slides onto its target), and so does AW2 here.
+//! replaced by Dual Strike's. An Oozium has no weapon: it eats on the map
+//! ([`crate::oozium`]), with no scene, as in Dual Strike.
 //!
 //! **Dual Strike's data** (the battle overlay, 2, loaded at `0x02350560`,
 //! which draws everything with the 3D engine, a textured quad per piece;
@@ -508,10 +508,6 @@ fn figure(unit: usize, army: usize) -> Option<&'static Figure> {
 /// `[0]` colour, `[1]` scene id, `[2]` weapon (1 primary, 2 secondary).
 const ROWS: u32 = 0x0300_4580;
 const ROW: u32 = 0x10;
-/// The attacker's battle record (`+0` its unit); the two sides are the
-/// screen's halves, not attacker and defender (a CPU attacker is on the
-/// right).
-const ATTACKER: u32 = 0x0300_13D0;
 /// The two sides' units (pointers to 12-byte unit records).
 const SIDE_UNITS: u32 = 0x0300_4528;
 /// The two sides' army colours (0 Orange Star .. 4 Black Hole), kept by
@@ -694,15 +690,10 @@ fn donor(t: u8, class: u8, weapon: u16) -> (u16, u16) {
     }
 }
 
-/// Trap at [`ROWS_FILLED`]: a new unit's side plays its donor's scene; an
-/// Oozium's attack plays on the map, as in Dual Strike.
+/// Trap at [`ROWS_FILLED`]: a new unit's side plays its donor's scene.
 fn rows_filled(core: &mut Core) {
     if !is_on(core) {
         return;
-    }
-    let attacker = core.raw_read_32(ATTACKER, -1);
-    if (0x0200_0000..0x0204_0000).contains(&attacker) && core.raw_read_8(attacker, -1) == OOZIUM {
-        core.gba_mut().cpu_mut().set_gpr(2, 0);
     }
     for side in 0..2 {
         let t = side_unit_type(core, side);

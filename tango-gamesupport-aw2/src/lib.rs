@@ -45,6 +45,7 @@ mod five_map_data;
 mod five_patches;
 pub mod invention_art;
 pub mod obelisk;
+pub mod oozium;
 mod obelisk_art;
 pub mod power_anim;
 pub mod pvp;

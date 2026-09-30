@@ -328,10 +328,10 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 
 | Part | Module | What it changes |
 |---|---|---|
-| Units | `roster.rs`, `ds_units.rs`, `unit_actions.rs`, `unit_names.rs`, `ds_unit_art.rs`, `ds_unit_pictures.rs`, `ds_battle.rs`, `map_anim.rs` | Unit table grown to 64 rows (0x08680000), 7 new units (ids 4, 9, 12, 13, 18, 26, 27), Dual Strike's stats and damage chart, their actions (Hide, Explode, Repair, Carrier), map art, their own information pictures (build menu panel, R on a unit) in each army's colours, every unit in the Intel unit list, battle scenes with Dual Strike's figures, effects and volleys (the Oozium attacks on the map, as in Dual Strike), and Dual Strike's map animations played through AW2's own map effects (a Black Bomb's explosion, a Stealth hiding and appearing, a Black Boat's REPAIR label, Oozium's death in its army's colours; for the CPU at its turn's end, before the turn passes) |
+| Units | `roster.rs`, `ds_units.rs`, `unit_actions.rs`, `oozium.rs`, `unit_names.rs`, `ds_unit_art.rs`, `ds_unit_pictures.rs`, `ds_battle.rs`, `map_anim.rs` | Unit table grown to 64 rows (0x08680000), 7 new units (ids 4, 9, 12, 13, 18, 26, 27), Dual Strike's stats and damage chart, their actions (Hide, Explode, Repair, Carrier; the Oozium eats: no weapon, moving onto a unit of another team next to it destroys that unit with the game's own destruction, and no CO, power, silo or Black Bomb touches it), map art, their own information pictures (build menu panel, R on a unit) in each army's colours, every unit in the Intel unit list, battle scenes with Dual Strike's figures, effects and volleys, and Dual Strike's map animations played through AW2's own map effects (a Black Bomb's explosion, a Stealth hiding and appearing, a Black Boat's REPAIR label, Oozium's death in its army's colours; for the CPU at its turn's end, before the turn passes) |
 | COs | `co_roster.rs`, `co_new.rs`, `co_powers.rs`, `ds_co_art.rs`, `ds_power_art.rs`, `power_anim.rs` | CO table grown to 96 rows (0x086A0000), Dual Strike's numbers for AW2's COs (and its 200% defence cap), 9 new COs at ids 72..80 (face ids stay unambiguous), their pictures, texts, powers and Dual Strike's power animations (Ex Machina, Covering Fire, Urban Blight), and Dual Strike's choice of power effect on their units |
 | CO screen | `co_grid.rs` | The unit grid (map menu > CO, its last page) gets a second page: ground units, then air and naval units, in the build menus' order, every unit with its icon in the viewed army's colours (the new units in the map sheet's slots for other countries' Infantry and Mech) and its firepower bar (Dual Strike's bonuses take the nearest of AW2's 13 bars) and move / range change |
-| CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats |
+| CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike |
 | Terrain | `com_tower.rs`, `wasteland.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), the Wasteland look, the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
 | Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation for each (arm9 0x0213E078 / 0x0213E2A0), the camera visiting each |
 
@@ -343,10 +343,28 @@ powers' code, heal wait), 0x087C0000..0x087C0FFF (power animations),
 0x087F0000..0x087F4FFF (CO screen grid: the map sheet per country, the page lists).
 Free RAM used: 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
-scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, stun, battle
-distance, Teams list),
+scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
+0x0203FDC8..0x0203FDFB, stun, battle distance, Teams list),
 0x0203FF00.. (earlier features). `factory.rs` has a test that no two traps share
 an address.
+
+The Oozium (`oozium.rs`, the Dual Strike rule): it has no weapon (no Fire, no
+counter-attack). Its move takes in the squares next to it holding a unit of
+another team, any unit (air units and ships in port too) on a square it can
+enter; moving onto one and choosing Wait destroys that unit with the game's
+destruction (`sub_0804018C`: explosion, units lost, rout), charges both power
+meters as a battle in which the victim lost all its HP, and counts a unit
+destroyed for the eater's army. A hidden unit on that square is eaten too
+(no Trap!). The CPU eats with its Ooziums as its turn starts (the most
+valuable unit next to one) and moves the others a square towards the enemy.
+Nothing from a CO changes an Oozium, as in Dual Strike, whose CO stat
+functions (arm9 0x020E5678, 0x020E57AC, 0x020E5A58, 0x020E5C40, 0x020E5D8C)
+return 0 for its unit class (6) before the power's +10 defence (player +0x28)
+is added, and whose CO blocks' unit filters (block +0x34: 0x020E25E8,
+0x020E2610) leave class 6 out: no CO stats (not even a power's +10 defence,
+nor Com Towers' or Javier's), no power's damage, stun or fuel loss, no
+repair, move-again or resupply; a Missile Silo's and a Black Bomb's blasts
+spare it, and the CPU's silo and strike scoring leave it out.
 
 `tools/aw2test` plays real battles in both modes and checks them against its
 own damage calculator (Dual Strike's numbers read from the .nds in `ds` mode),

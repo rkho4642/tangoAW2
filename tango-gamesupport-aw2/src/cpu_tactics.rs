@@ -16,6 +16,8 @@
 //!   it are near and none of them can hit a hidden Stealth (Fighters,
 //!   Stealths), while it has fuel for it; a hidden Stealth appears when its
 //!   fuel runs low (a hidden one burns 8 a day).
+//! - Oozium, when the CPU starts moving its units: one next to units it
+//!   eats moves onto the most valuable and eats it ([`crate::oozium`]).
 //! - Black Boat, as the CPU's turn ends: it repairs its army's adjacent
 //!   units, as the player's Repair does.
 //! - Buying: the CPU buys Megatanks, Stealths, Black Bombs and Black Boats
@@ -205,6 +207,7 @@ pub fn cpu_unit(core: &mut Core) {
     }
     core.raw_write_8(BOMBS_DONE, -1, army as u8);
     bombs(core, army);
+    crate::oozium::cpu_eats(core, army);
 }
 
 /// The frame's effects pass (`sub_0803550C`, weather in r0, trapped by
@@ -233,6 +236,13 @@ pub fn effects_pass(core: &mut Core) -> bool {
         cpu.set_gpr(0, bomb as i32);
         cpu.set_gpr(14, (EFFECTS | 1) as i32);
         cpu.set_thumb_pc(crate::unit_actions::DESTROY);
+        return true;
+    }
+    // A CPU Oozium's eat ([`crate::oozium`]), returning here the same way.
+    let r0 = core.gba().cpu().gpr(0) as u32;
+    if crate::oozium::effects_pass(core, EFFECTS | 1) {
+        core.raw_write_32(SAVED_R0, -1, r0);
+        core.raw_write_8(CALLED, -1, 1);
         return true;
     }
     false

@@ -24,6 +24,9 @@ from dataclasses import dataclass, field
 from . import rom as romlib
 
 
+OOZIUM = 27
+
+
 def div(a, b):
     """C integer division (truncates toward zero)."""
     q = abs(a) // abs(b)
@@ -63,6 +66,8 @@ class Rules:
         return self.image.unit(t)
 
     def co_bonus(self, co, mode, unit_type, which):
+        if self.chart is not None and unit_type == OOZIUM:
+            return 0  # no CO changes an Oozium (Dual Strike: its class, 6, gets 0)
         if self.chart is not None:
             v = self.chart.co_stat(co, mode, unit_type, which)
             if v is not None:
@@ -186,8 +191,11 @@ def total_defence(rules, s: Side, cut=0, dist=1):
     coDef = rules.co_bonus(s.co, s.co_mode, s.type, 1) if s.co_abilities else 0
     if s.co_abilities and dist > 1:
         coDef += rules.indirect_defence(s.co, s.co_mode)
+    temp = s.temp_defence
+    if rules.chart is not None and s.type == OOZIUM:
+        coDef, temp = 0, 0  # nothing from its CO: no power's +10, towers or Javier's
     terrain = max(0, terrain_defence(rules, s) - 10 * cut)
-    total = div(hp_bars(s.hp) * terrain, 10) + 100 + coDef + s.temp_defence
+    total = div(hp_bars(s.hp) * terrain, 10) + 100 + coDef + temp
     if rules.chart is not None:
         total = min(total, 200)  # Dual Strike's cap (0x020C34C8), with the pack
     return total

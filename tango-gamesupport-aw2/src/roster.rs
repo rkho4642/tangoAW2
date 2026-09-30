@@ -187,7 +187,7 @@ const DESCRIPTIONS_TEXT: [&[u8]; 7] = [
     b"\x82Black Bomb\x80: explodes,\rdamaging all units\rwithin 3 spaces.",
     b"\x82Black Boat\x80: carries two\rfoot soldiers and\rrepairs units nearby.",
     b"\x82Carrier\x80: carries two\rair units. Attacks air\runits at range 3-8.",
-    b"\x82Oozium\x80: moves 1 space\rand destroys any unit\rit attacks.",
+    b"\x82Oozium\x80: moves 1 space.\rMoving onto an enemy\rdestroys it.",
 ];
 const DESCRIPTION_TEXT: u16 = 16;
 const DESCRIPTION_SIZE: u32 = 0x80;
@@ -282,10 +282,6 @@ fn record(core: &Core, t: u8) -> Option<[u8; RECORD as usize]> {
         r[0x1D] = n.target;
         r[0x14..0x18].copy_from_slice(&0u32.to_le_bytes());
         if t == OOZIUM {
-            // Attacks adjacent units with a weapon needing no ammo.
-            r[0x0E] = 1;
-            r[0x0F] = 1;
-            r[0x11] = 1;
             // Dual Strike never sells it (its price is 0): tangoAW2's.
             if u16::from_le_bytes([r[0x06], r[0x07]]) == 0 {
                 r[0x06..0x08].copy_from_slice(&(OOZIUM_PRICE / 10).to_le_bytes());
@@ -311,11 +307,10 @@ const DS_HIDDEN_STEALTH: usize = 28;
 /// id, [`DIVED_SUB`] or [`HIDDEN_STEALTH`]), weapon 0 primary / 1
 /// secondary.
 pub fn chart(att: u8, def: u8, weapon: u32) -> u8 {
-    // Oozium's attack (its secondary, needing no ammo) destroys any ground
-    // or naval unit ([`crate::unit_actions`]); Dual Strike's record has none.
+    // The Oozium has no weapon: it eats ([`crate::oozium`]). Dual Strike's
+    // record has none either.
     if att == OOZIUM {
-        let air = matches!(def, STEALTH | BLACK_BOMB | 16 | 17 | 19 | 20 | HIDDEN_STEALTH | DIVED_SUB);
-        return if weapon == 1 && !air && def != 0 { 255 } else { 0 };
+        return 0;
     }
     let Some(ds) = ds_record(att) else { return 0 };
     let slot = match def {

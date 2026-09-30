@@ -11,7 +11,7 @@
 //! - Black Bomb: Explode (in the silo's Launch slot): every unit within 3 spaces (either
 //!   army's, but Oozium) loses 5 HP, never below 1, and the bomb is
 //!   destroyed (the game's own destruction, with its explosion).
-//! - Oozium: its attack destroys any ground or naval unit.
+//! - Oozium: it eats ([`crate::oozium`]).
 //! - Stealth's and Black Boat's commands carry their own names.
 
 use mgba::core::Core;

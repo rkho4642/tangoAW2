@@ -6,7 +6,7 @@ on that side are gone and the unit's own are drawn from the side's figure
 tiles, its Dual Strike effects (muzzle flashes, missiles and shells, hits) are
 drawn in the effects' palettes (12, 13), and each army colour has its own
 palette; the scene ends, control comes back and the units end exactly as the
-same battle with animations off; an Oozium's attack has no scene (as in Dual
+same battle with animations off; an Oozium's eat has no scene (as in Dual
 Strike); the run replays identically on two rollback peers.
 
 Every new unit attacks and is attacked in all five army colours (Black Hole in
@@ -288,24 +288,26 @@ for _u in DEFENCES:
 
 @test(modes=("ds",))
 def battle_scene_oozium_attack_on_map(ctx):
-    """An Oozium's attack has no battle scene (Dual Strike resolves it on the
-    map), by the player or by the CPU; the target is destroyed."""
+    """An Oozium's eat has no battle scene (it plays on the map), by the player
+    or by the CPU; the unit it moves onto is destroyed."""
     m = ctx.map()
     m.unit(1, OOZIUM, 10, 10).unit(2, "tank", 11, 10)
     g = ctx.start(m, ["andy", "olaf"], visuals="a")
-    fire(g, (10, 10), (11, 10))
+    g.select(10, 10)
+    g.move_to(11, 10)
+    g.choose("Wait", g.ACTION_MENU)
     seen = watch_scene(ctx, g, "oozium_attacks", 600)
     g.wait_for_input()
-    ctx.eq(seen["frames"], 0, "the player's Oozium attack: no battle scene")
-    ctx.check(g.unit_at(11, 10) is None, "the Oozium's target is destroyed")
+    ctx.eq(seen["frames"], 0, "the player's Oozium eat: no battle scene")
+    ctx.check(g.unit_at(11, 10) is not None and g.unit_at(11, 10)["type"] == OOZIUM, "the Oozium's meal is destroyed")
     g.e.close()
     m = ctx.map()
     m.unit(1, "tank", 10, 10).unit(2, OOZIUM, 11, 10)
     g = ctx.start(m, ["andy", "olaf"], visuals="a")
     out = {}
     g.end_turn(human=1, observe=lambda gg: out.update(seen=watch_scene(ctx, gg, "cpu_oozium", 2000)))
-    ctx.eq(out["seen"]["frames"], 0, "the CPU's Oozium attack: no battle scene")
-    ctx.check(g.unit_at(10, 10) is None, "the CPU Oozium's target is destroyed")
+    ctx.eq(out["seen"]["frames"], 0, "the CPU's Oozium eat: no battle scene")
+    ctx.check(g.unit_at(10, 10) is not None and g.unit_at(10, 10)["type"] == OOZIUM, "the CPU Oozium's meal is destroyed")
 
 
 def battle(ctx, att, dfd, visuals, dist=1, terrain=("plain", "plain"), sample=None):
