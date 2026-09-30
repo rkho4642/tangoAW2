@@ -73,7 +73,7 @@ jobs:
       - name: Check
         run: cargo check --bin tango --features gamesupport-all --profile release-dist --target x86_64-pc-windows-msvc
 
-  check-mac-universal:
+  check-mac-arm64:
     runs-on: macos-14
     env:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
@@ -89,19 +89,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: x86_64-apple-darwin, aarch64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-dist
           cache-on-failure: true
 
-      # Both halves of the lipo'd universal build, since each triple gets
-      # its own target subdirectory and its own vendored C++.
+      # The release build is Apple Silicon only.
       - name: Check
-        run: |
-          cargo check --bin tango --features gamesupport-all --profile release-dist --target aarch64-apple-darwin
-          cargo check --bin tango --features gamesupport-all --profile release-dist --target x86_64-apple-darwin
+        run: cargo check --bin tango --features gamesupport-all --profile release-dist --target aarch64-apple-darwin
 
   check-linux-x86_64:
     runs-on: ubuntu-22.04

@@ -29,17 +29,15 @@ sips -z 1024 1024 tango/src/icon.png --out TangoAW2.iconset/icon_512x512@2x.png
 iconutil -c icns TangoAW2.iconset --output TangoAW2.app/Contents/Resources/TangoAW2.icns
 rm -rf TangoAW2.iconset
 
-# Build macOS binaries.
+# Build the macOS binary (Apple Silicon only).
 cargo build --bin tango --target=aarch64-apple-darwin --profile release-dist
-cargo build --bin tango --target=x86_64-apple-darwin --profile release-dist
-lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release-dist/tango -output TangoAW2.app/Contents/MacOS/tango
+cp target/aarch64-apple-darwin/release-dist/tango TangoAW2.app/Contents/MacOS/tango
 
 ffmpeg_version="8.1.2"
 
 mkdir -p tango_macos_workdir
 wget -O tango_macos_workdir/ffmpeg-arm64 "https://github.com/tangobattle/ffmpeg-build/releases/download/ffmpeg-${ffmpeg_version}/ffmpeg-macos-arm64"
-wget -O tango_macos_workdir/ffmpeg-x64 "https://github.com/tangobattle/ffmpeg-build/releases/download/ffmpeg-${ffmpeg_version}/ffmpeg-macos-x86_64"
-lipo -create tango_macos_workdir/ffmpeg-{arm64,x64} -output TangoAW2.app/Contents/MacOS/ffmpeg
+cp tango_macos_workdir/ffmpeg-arm64 TangoAW2.app/Contents/MacOS/ffmpeg
 chmod a+x TangoAW2.app/Contents/MacOS/ffmpeg
 
 # Build zip.

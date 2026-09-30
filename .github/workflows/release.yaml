@@ -123,7 +123,7 @@ jobs:
             ./dist/tangoaw2-x86_64-windows.exe
             ./dist/tangoaw2-x86_64-windows.pdb
 
-  release-mac-universal:
+  release-mac-arm64:
     runs-on: macos-14
     needs: create-release
     env:
@@ -142,11 +142,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          targets: x86_64-apple-darwin, aarch64-apple-darwin
+          targets: aarch64-apple-darwin
 
       # See the note in release-win32-x64: after the toolchain, and it
-      # restores both target/aarch64-apple-darwin and
-      # target/x86_64-apple-darwin for the lipo'd universal build.
+      # restores target/aarch64-apple-darwin (Apple Silicon only).
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-dist

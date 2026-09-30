@@ -21,9 +21,9 @@ No game is included. You need your own dump of the USA cartridge.
 
 Download the latest build from
 [Releases](https://github.com/rkoh46/tangoAW2/releases/latest): Windows
-(`.exe` installer), macOS (`.dmg`, not signed: right-click the app and
-choose Open the first time) or Linux (`.AppImage`). What changed in each
-version is in its release notes.
+(`.exe` installer), macOS on Apple Silicon (`.dmg`, not signed:
+right-click the app and choose Open the first time) or Linux
+(`.AppImage`). What changed in each version is in its release notes.
 
 ## First run
 
