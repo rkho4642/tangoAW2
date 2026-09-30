@@ -322,6 +322,50 @@ fn grown(core: &Core, at: u32, size: u32, aw2_rows: u32) -> Vec<u8> {
     t
 }
 
+/// AW2's power effect table (`sub_08043A80` / `sub_08043A90`): per entry
+/// the pictures (LZ77) and the palette of the effect on each unit.
+const AW2_POWER_EFFECTS: u32 = 0x084A_06F0;
+const AW2_POWER_EFFECT_COUNT: u32 = 8;
+/// Dual Strike's (arm9): per entry three file names, the pictures for the
+/// 3D engine, for OBJ tiles, and the palette (`0x020D5C44`).
+const DS_POWER_EFFECTS: u32 = 0x0216_8850;
+const DS_POWER_EFFECT_COUNT: u32 = 9;
+
+/// The power effect Dual Strike gives a new CO's CO Power (`power` 0) or
+/// Super CO Power (1): its CO block's +0x30, the effect's pictures and
+/// its palette, each an entry of Dual Strike's table. AW2's table holds
+/// the same pictures and palettes (Dual Strike kept them and added one),
+/// so each is found there by its data: (AW2's picture entry, AW2's
+/// palette entry), as AW2's presentation row +0x1C takes them.
+fn power_effect(core: &Core, ds: u8, power: u32) -> Option<(u8, u8)> {
+    let pack = crate::ds_pack::pack()?;
+    let block = pack.arm9_at(0x0215_360C + 0x220 * ds as u32 + 0x120 + 0x80 * power + 0x30, 2)?;
+    let (anim, pal) = (block[0] as u32, block[1] as u32);
+    if anim >= DS_POWER_EFFECT_COUNT || pal >= DS_POWER_EFFECT_COUNT {
+        return None;
+    }
+    let name = |i: u32, k: u32| -> Option<String> {
+        let at = u32::from_le_bytes(pack.arm9_at(DS_POWER_EFFECTS + 12 * i + 4 * k, 4)?.try_into().ok()?);
+        let b = pack.arm9_at(at, 4)?;
+        let s: Vec<u8> = b.iter().copied().take_while(|&c| c != 0).collect();
+        Some(format!("bmap/{}", String::from_utf8(s).ok()?))
+    };
+    let pictures = crate::ds_art::lz10(pack.file(&name(anim, 1)?)?)?;
+    let palette = pack.file(&name(pal, 2)?)?.get(..32)?.to_vec();
+    let entry = |k: u32| (core.raw_read_32(AW2_POWER_EFFECTS + 8 * k, -1), core.raw_read_32(AW2_POWER_EFFECTS + 8 * k + 4, -1));
+    let rom = |at: u32, n: usize| {
+        let mut b = vec![0u8; n];
+        core.raw_read_range(at, -1, &mut b);
+        b
+    };
+    let a = (0..AW2_POWER_EFFECT_COUNT).find(|&k| {
+        let (g, _) = entry(k);
+        crate::ds_art::lz10(&rom(g, 0x2000)).is_some_and(|d| d == pictures)
+    })?;
+    let p = (0..AW2_POWER_EFFECT_COUNT).find(|&k| rom(entry(k).1, 32) == palette)?;
+    Some((a as u8, p as u8))
+}
+
 fn put32(t: &mut [u8], o: usize, v: u32) {
     t[o..o + 4].copy_from_slice(&v.to_le_bytes());
 }
@@ -373,6 +417,10 @@ fn build(core: &Core) -> Option<Built> {
             put32(&mut pres, o + 4, COND_ALWAYS);
             put32(&mut pres, o + 8, EACH_NOTHING);
             put32(&mut pres, o + 12, ON_ACTIVATE);
+            if let Some((anim, pal)) = power_effect(core, ds, p as u32) {
+                pres[o] = anim;
+                pres[o + 1] = pal;
+            }
         }
         let h = HUD_FACE as usize * co as usize;
         hud[h..h + HUD_FACE as usize].copy_from_slice(&art.hud[..HUD_FACE as usize]);

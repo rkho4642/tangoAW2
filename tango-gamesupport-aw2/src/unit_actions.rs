@@ -123,8 +123,9 @@ fn supply_selected(core: &mut Core) {
 
 /// A Black Boat's Repair where it stands: its army's adjacent units get
 /// 1 HP each (and are resupplied by the Supply command itself), while
-/// funds last.
-pub(crate) fn repair_around(core: &mut Core, boat: u32) {
+/// funds last. The units repaired.
+pub(crate) fn repair_around(core: &mut Core, boat: u32) -> Vec<u32> {
+    let mut repaired = Vec::new();
     let (x, y) = (core.raw_read_8(boat + 2, -1) as i32, core.raw_read_8(boat + 3, -1) as i32);
     let army = army_of(core, boat);
     let funds_at = core.raw_read_32(PLAYERS_POINTER, -1) + PLAYER_SIZE * army;
@@ -148,7 +149,9 @@ pub(crate) fn repair_around(core: &mut Core, boat: u32) {
         }
         core.raw_write_32(funds_at, -1, funds - cost);
         core.raw_write_16(u + 4, -1, (w & !HP_BITS) | (hp + add));
+        repaired.push(u);
     }
+    repaired
 }
 
 // --- Black Bomb ---------------------------------------------------------------
@@ -236,6 +239,7 @@ pub(crate) fn blast(core: &mut Core, bomb: u32, bx: i32, by: i32) {
 
 fn explode_done(core: &mut Core) {
     let (bomb, lr) = (core.raw_read_32(BOMB, -1), core.raw_read_32(BOMB_RETURN, -1));
+    crate::map_anim::mark_bomb(core, bomb);
     let cpu = core.gba_mut().cpu_mut();
     cpu.set_gpr(0, bomb as i32);
     cpu.set_gpr(14, lr as i32);

@@ -228,6 +228,7 @@ pub fn effects_pass(core: &mut Core) -> bool {
         let r0 = core.gba().cpu().gpr(0) as u32;
         core.raw_write_32(SAVED_R0, -1, r0);
         core.raw_write_8(CALLED, -1, 1);
+        crate::map_anim::mark_bomb(core, bomb);
         let cpu = core.gba_mut().cpu_mut();
         cpu.set_gpr(0, bomb as i32);
         cpu.set_gpr(14, (EFFECTS | 1) as i32);
@@ -340,14 +341,18 @@ fn can_hit_air(t: u8) -> bool {
     crate::roster::chart(t, STEALTH, 0) > 0 || crate::roster::chart(t, STEALTH, 1) > 0
 }
 
-fn end_of_turn(core: &mut Core, army: u32) {
+/// What the CPU's Stealths and Black Boats do as its turn ends: (unit
+/// record, id, action) with [`crate::map_anim`]'s actions (hide, appear,
+/// repair).
+fn end_of_turn_plan(core: &Core, army: u32) -> Vec<(u32, u32, u8)> {
     let foes: Vec<(u8, (i32, i32))> = (1..=5u32)
         .filter(|&a| a != army && !teams(core, a, army))
         .flat_map(|a| {
             army_units(core, a).into_iter().map(|(v, _)| (core.raw_read_8(v, -1), pos(core, v))).collect::<Vec<_>>()
         })
         .collect();
-    for (u, _) in army_units(core, army) {
+    let mut plan = Vec::new();
+    for (u, id) in army_units(core, army) {
         match core.raw_read_8(u, -1) {
             STEALTH => {
                 let p = pos(core, u);
@@ -359,16 +364,54 @@ fn end_of_turn(core: &mut Core, army: u32) {
                 let hide = threat && !hunter && fuel > HIDE_FUEL;
                 let want = if hide { f | HIDDEN } else if fuel <= HIDE_FUEL || hunter { f & !HIDDEN } else { f };
                 if want != f {
-                    core.raw_write_8(u + 1, -1, want);
+                    let action = if want & HIDDEN != 0 { crate::map_anim::HIDE } else { crate::map_anim::APPEAR };
+                    plan.push((u, id, action));
                 }
             }
-            BLACK_BOAT => {
-                repair_around(core, u);
-                resupply_around(core, u, army);
-            }
+            BLACK_BOAT => plan.push((u, id, crate::map_anim::REPAIR)),
             _ => {}
         }
     }
+    plan
+}
+
+fn end_of_turn(core: &mut Core, army: u32) {
+    for (u, _, action) in end_of_turn_plan(core, army) {
+        if action == crate::map_anim::REPAIR {
+            repair_now(core, u);
+        } else {
+            let f = core.raw_read_8(u + 1, -1);
+            let want = if action == crate::map_anim::HIDE { f | HIDDEN } else { f & !HIDDEN };
+            core.raw_write_8(u + 1, -1, want);
+        }
+    }
+}
+
+/// The CPU's turn-end actions, for [`crate::map_anim`] to play out: (unit
+/// id, action). A Black Boat is listed only when it has its army's units
+/// next to it.
+pub(crate) fn turn_end_actions(core: &Core, army: u32) -> Vec<(u8, u8)> {
+    end_of_turn_plan(core, army)
+        .into_iter()
+        .filter(|&(u, _, action)| {
+            action != crate::map_anim::REPAIR || {
+                let (x, y) = pos(core, u);
+                [(0, -1), (1, 0), (0, 1), (-1, 0)]
+                    .iter()
+                    .any(|&(dx, dy)| unit_at(core, x + dx, y + dy).is_some_and(|v| army_of(core, v) == army))
+            }
+        })
+        .map(|(_, id, action)| (id as u8, action))
+        .collect()
+}
+
+/// A CPU Black Boat's Repair now: its army's adjacent units are repaired
+/// and resupplied. Where the units repaired are.
+pub(crate) fn repair_now(core: &mut Core, boat: u32) -> Vec<(i32, i32)> {
+    let army = army_of(core, boat);
+    let repaired = repair_around(core, boat);
+    resupply_around(core, boat, army);
+    repaired.into_iter().map(|u| pos(core, u)).collect()
 }
 
 /// Every frame: a CPU army's turn has just ended (the army moving now
@@ -383,9 +426,12 @@ pub fn tick(core: &mut Core, on: bool) {
         return;
     }
     core.raw_write_8(PREV_ARMY, -1, army as u8);
-    if is_cpu(core, prev) {
+    // With Dual Strike's pictures the turn end is played out before the
+    // turn passes ([`crate::map_anim`]); without, it is done here.
+    if is_cpu(core, prev) && !crate::map_anim::available() {
         end_of_turn(core, prev);
     }
+    crate::map_anim::turn_changed(core);
     if core.raw_read_8(BOMBS_DONE, -1) as u32 != army {
         core.raw_write_8(BOMBS_DONE, -1, 0);
     }

@@ -205,6 +205,54 @@ DS_RECORD = 0x6C
 DS_SUBMERGED_SUB = 27
 
 
+def _nds_files(rom):
+    fnt, fat = struct.unpack_from("<I", rom, 0x40)[0], struct.unpack_from("<I", rom, 0x48)[0]
+    files = {}
+    stack = [(0, "")]
+    while stack:
+        d, path = stack.pop()
+        sub, first = struct.unpack_from("<IH", rom, fnt + 8 * d)
+        p, fid = fnt + sub, first
+        while True:
+            n = rom[p]
+            p += 1
+            if n == 0:
+                break
+            name = rom[p:p + (n & 0x7F)].decode("latin1")
+            p += n & 0x7F
+            if n & 0x80:
+                child = struct.unpack_from("<H", rom, p)[0] & 0xFFF
+                p += 2
+                stack.append((child, path + name + "/"))
+            else:
+                a, b = struct.unpack_from("<II", rom, fat + 8 * fid)
+                files[path + name] = rom[a:b]
+                fid += 1
+    return files
+
+
+def lz10(b):
+    """LZ77 type 0x10, as the GBA/DS BIOS decompresses it."""
+    size = int.from_bytes(b[1:4], "little")
+    out, p = bytearray(), 4
+    while len(out) < size:
+        flags = b[p]
+        p += 1
+        for bit in range(8):
+            if len(out) >= size:
+                break
+            if flags & (0x80 >> bit):
+                b1, b2 = b[p], b[p + 1]
+                p += 2
+                disp = ((b1 & 15) << 8 | b2) + 1
+                for _ in range((b1 >> 4) + 3):
+                    out.append(out[-disp])
+            else:
+                out.append(b[p])
+                p += 1
+    return bytes(out)
+
+
 class DualStrike:
     def __init__(self, path=None):
         with open(path or paths.ds_rom(), "rb") as f:
@@ -218,6 +266,12 @@ class DualStrike:
         self.ov0 = rom[a:b]
         a9, a9_size = struct.unpack_from("<I", rom, 0x20)[0], struct.unpack_from("<I", rom, 0x2C)[0]
         self.arm9 = rom[a9:a9 + a9_size]
+        self.files = _nds_files(rom)
+
+    def file(self, path, decompress=True):
+        """A file of the .nds file system ('bmap/05f'), LZ77-decompressed when it is."""
+        data = self.files[path]
+        return lz10(data) if decompress and data[:1] == b"\x10" else data
 
     def record(self, t):
         o = DS_UNITS - DS_OVERLAY0_BASE + DS_RECORD * t

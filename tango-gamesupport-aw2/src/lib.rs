@@ -31,6 +31,7 @@ pub mod co_powers;
 pub mod co_roster;
 pub mod heal_effect;
 pub mod lz77;
+pub mod map_anim;
 pub mod roster;
 pub mod unit_names;
 pub mod unit_actions;

@@ -385,6 +385,28 @@ fn grain_tiles() -> Vec<u8> {
     out
 }
 
+/// Dual Strike's own sand (`bmap/0b2`, loaded by its sandstorm,
+/// `0x020D2260`): a 32x32 speckle of single dots in colours 5 and 6, laid
+/// by Dual Strike over the map as it blows. Its three busiest 8x8 tiles
+/// stand in for the grains, with the pale sand of the specks as they show
+/// over Dual Strike's map (their colours are the texture palette of its 3D
+/// engine, not in any file).
+static DS_SAND: std::sync::OnceLock<Option<Vec<u8>>> = std::sync::OnceLock::new();
+const DS_SAND_COLOURS: [u16; 3] = [0x4BDF, 0x439F, 0x1D91];
+
+fn ds_sand() -> Option<&'static Vec<u8>> {
+    DS_SAND
+        .get_or_init(|| {
+            let pack = crate::ds_pack::pack()?;
+            let t = crate::ds_art::lz10(pack.file("bmap/0b2")?)?;
+            let dots = |k: usize| t[32 * k..32 * k + 32].iter().map(|b| (b & 15 != 0) as u32 + (b >> 4 != 0) as u32).sum::<u32>();
+            let mut order: Vec<usize> = (0..t.len() / 32).collect();
+            order.sort_by_key(|&k| (std::cmp::Reverse(dots(k)), k));
+            Some(order.iter().take(3).flat_map(|&k| t[32 * k..32 * k + 32].to_vec()).collect())
+        })
+        .as_ref()
+}
+
 fn effects(core: &mut Core) {
     if crate::cpu_tactics::effects_pass(core) {
         return;
@@ -394,7 +416,10 @@ fn effects(core: &mut Core) {
         return;
     }
     let weather = core.gba().cpu().gpr(0) as u8;
-    let grains = grain_tiles();
+    let (grains, grain_colours) = match ds_sand() {
+        Some(t) => (t.clone(), DS_SAND_COLOURS),
+        None => (grain_tiles(), GRAIN_COLOURS),
+    };
     let mut now = vec![0u8; grains.len()];
     core.raw_read_range(PARTICLE_VRAM, -1, &mut now);
     if weather == RAIN {
@@ -412,7 +437,7 @@ fn effects(core: &mut Core) {
         core.raw_write_range(PARTICLE_VRAM, -1, &grains);
     }
     for base in [PAL_BUFFER, PAL_RAM] {
-        for (i, c) in GRAIN_COLOURS.iter().enumerate() {
+        for (i, c) in grain_colours.iter().enumerate() {
             let at = base + GRAIN_COLOURS_AT + 2 * i as u32;
             if core.raw_read_16(at, -1) != *c {
                 core.raw_write_16(at, -1, *c);
