@@ -193,7 +193,7 @@ const DESCRIPTION_TEXT: u16 = 16;
 const DESCRIPTION_SIZE: u32 = 0x80;
 
 /// Text ids from 0x3D72 read their pointers from the ROM image's free space
-/// (see `crate::five_map`, which uses 0x3D72..0x3D7C); these start at +32.
+/// (see `crate::five_map`, which uses 0x3D72..0x3D84); these start at +32.
 const TEXT_TABLE: u32 = 0x0861_0A38;
 const TEXT_BASE: u16 = 0x3D72 + 32;
 const TEXT_STRINGS: u32 = 0x0862_0100 + 0x20 * 32;

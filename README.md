@@ -77,7 +77,8 @@ Both press Ready; the game starts from power-on for both. Go to
   Oozium eats what it moves onto), its 9 new COs with their power
   animations, its CO and damage numbers, Com Towers, Sandstorm, the
   Wasteland and the healing Black Crystal and Obelisk, in the Design Room
-  too, and the computer uses all of it. Without the ROM nothing changes;
+  too, eight new Versus maps (2P to 5P) to use them on, and the computer
+  uses all of it. Without the ROM nothing changes;
   online, both players need it.
 
 <table>

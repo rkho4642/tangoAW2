@@ -59,10 +59,20 @@ pub fn is_wasteland(core: &Core) -> bool {
     is_on(core) && biome(core) == WASTELAND && colours().is_some()
 }
 
-/// At every map start: a map that is not a design map is Normal.
+/// At every map start: tangoAW2's Wasteland maps are Wasteland
+/// ([`crate::five_map::is_wasteland_map`]); any other map that is not a
+/// design map (0xB4..0xB7, their biome is read from their record) is Normal.
 pub fn map_start(core: &mut Core) {
-    if !(0xB4..=0xBF).contains(&core.raw_read_8(MAP_ID, -1)) && biome(core) != NORMAL {
-        set_biome(core, NORMAL);
+    let id = core.raw_read_8(MAP_ID, -1);
+    let want = if crate::five_map::is_wasteland_map(id) {
+        WASTELAND
+    } else if (0xB4..=0xB7).contains(&id) {
+        return;
+    } else {
+        NORMAL
+    };
+    if biome(core) != want {
+        set_biome(core, want);
     }
 }
 

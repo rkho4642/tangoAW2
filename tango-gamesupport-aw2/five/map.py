@@ -10,6 +10,9 @@ starting colour: 1 Orange Star .. 5 Black Hole), `units ARMY TYPE...` lines,
 then its rows, one character per tile:
   ~ sea   r reef   . plain   f wood   ^ mountain
   R road (straights, bends, junctions)   I pipe   Z pipe seam (in a straight)
+  - river   = bridge (over a river or the sea; roads join it)   , shoal
+  t T     Com Tower (the Lab, crate::com_tower): neutral, or the army whose
+          HQ is nearest
   1..5    the HQ of army 1..5 (Orange Star, Blue Moon, Green Earth,
           Yellow Comet, Black Hole)
   B C A P base, city, airport, port of the army whose HQ is nearest
@@ -23,11 +26,14 @@ then its rows, one character per tile:
   D Deathray (3x3)
   X O     Black Crystal (1 tile) and Black Obelisk (3x3), tangoAW2's healing
           structures (obelisk.rs); they belong to the Black Hole army
+A `look wasteland` line draws the map in Dual Strike's Wasteland colours
+(crate::wasteland); such a map is listed only with the Dual Strike pack on.
 Unit types: 1 Infantry, 2 Mech, 3 Md Tank, 5 Tank, 6 Recon, 7 APC,
 8 Neotank, 10 Artillery, 11 Rockets, 14 Anti-Air, 15 Missiles, 16 Fighter,
 17 Bomber, 19 Battle Copter, 20 Transport Copter, 21 Battleship, 22 Cruiser,
 23 Lander, 24 Submarine. Ships start in the sea next to the army's ports,
-aircraft next to its airports, the rest nearest its HQ.
+aircraft next to its airports, Piperunners (9) on its nearest pipe, the rest
+nearest its HQ.
 """
 import os
 import struct
@@ -41,6 +47,7 @@ PROPS = {
     'C': [0x1C2, 0x1C7, 0x1CC, 0x1D1, 0x1D6, 0x1B6],
     'A': [0x1C3, 0x1C8, 0x1CD, 0x1D2, 0x1D7, 0x1B7],
     'P': [0x1C4, 0x1C9, 0x1CE, 0x1D3, 0x1D8, 0x1B8],
+    'T': [0x1D9, 0x1DA, 0x1DB, 0x1DC, 0x1DD, 0x1B9],
 }
 PLAIN, PLAIN_SHADE, WOOD, MOUNTAIN, SEA, REEF = 0x001, 0x021, 0x086, 0x022, 0x02A, 0x168
 # Tiles by which neighbours (N, E, S, W; bit 3 is N) connect, as the game's
@@ -55,6 +62,25 @@ ROAD_SHADED = {0x61: 0xA1, 0x40: 0x80, 0x41: 0x81, 0x60: 0xA0}
 PIPE = {0b0101: 0x142, 0b1010: 0x143, 0b0110: 0x140, 0b0011: 0x141, 0b1100: 0x160, 0b1001: 0x161,
         0b0001: 0x121, 0b0100: 0x120, 0b0010: 0x102, 0b1000: 0x103}
 SEAM_ACROSS, SEAM_DOWN = 0x162, 0x163
+# Rivers, bridges and shoals, by what lies N, E, S, W: learned from the
+# game's own maps (the tile they use most for each neighbourhood). Rivers:
+# r river or bridge, s sea or shoal, l anything else. Bridges: w water, b
+# bridge or road, l else. Shoals: s sea, h shoal, l else. The map's edge is
+# read as the cell inside it would be.
+RIVER = {'rlrl': 0x18, 'lrlr': 0x19, 'llrr': 0x5B, 'lrrl': 0x58, 'rllr': 0x7B, 'rrll': 0x78,
+         'rrlr': 0x1A, 'rrrl': 0xDA, 'rlrr': 0x9D, 'lrrr': 0x3A, 'rrrr': 0x1B,
+         'llrl': 0x18, 'rlll': 0x18, 'lrll': 0x19, 'lllr': 0x19,
+         'slrl': 0x18, 'rlsl': 0x18, 'lslr': 0x19, 'lrls': 0x19,
+         'rsss': 0x11C, 'ssrs': 0xFC, 'sssr': 0xFD, 'srss': 0x11D}
+BRIDGE_ACROSS, BRIDGE_DOWN = 0x14, 0x36
+SHOAL = {'shlh': 0x10, 'lhsh': 0x50, 'hlhs': 0x2E, 'hshl': 0x32,
+         'shll': 0xF2, 'sllh': 0xF3, 'lhsl': 0x112, 'llsh': 0x113,
+         'llhs': 0xB2, 'hlls': 0xD2, 'lshl': 0xB3, 'hsll': 0xD3,
+         'shls': 0x6D, 'sslh': 0x6E, 'lhss': 0xCD, 'lssh': 0xCE,
+         'slhs': 0xAF, 'sshl': 0xB0, 'hlss': 0xCF, 'hssl': 0xD0,
+         'slls': 0xB6, 'ssll': 0xB7, 'llss': 0xD6, 'lssl': 0xD7,
+         'ssls': 0x8F, 'slss': 0x92, 'sssl': 0x93, 'lsss': 0xEF,
+         'hhll': 0x31, 'hllh': 0x2F, 'llhh': 0x4F, 'lhhl': 0x51}
 UNDERLAY, RIM = 0x1A4, 0x1A5
 # anchor char -> (rows of tiles, anchor column, anchor row)
 INVENTIONS = {
@@ -73,8 +99,9 @@ INVENTIONS = {
 }
 WATER = set('~r')
 # What casts a shadow on the plain (or road) to its right.
-TALL = 'f^HBCAPbcap12345#SNWELvnFVDXOIZ'
+TALL = 'f^HBCAPbcaptT12345#SNWELvnFVDXOIZ'
 SHIPS = {21, 22, 23, 24}
+PIPERUNNER = 9
 AIR = {16, 17, 19, 20}
 
 
@@ -85,17 +112,35 @@ def parse(path):
         if line.startswith('#') or not line.strip():
             continue
         if line.startswith('map '):
-            cur = {'name': line[4:].strip(), 'units': {}, 'rows': [], 'armies': 5, 'tab': 9, 'colours': [1, 2, 3, 4, 5]}
+            cur = {'name': line[4:].strip(), 'units': {}, 'rows': [], 'armies': 5, 'tab': 9, 'colours': [1, 2, 3, 4, 5],
+                   'wasteland': False}
             maps.append(cur)
         elif line.startswith('armies '):
             f = [int(x) for x in line.split()[1:]]
             cur['armies'], cur['tab'], cur['colours'] = f[0], f[1], f[2:]
+        elif line.startswith('look '):
+            cur['wasteland'] = line.split()[1] == 'wasteland'
         elif line.startswith('units '):
             f = line.split()
             cur['units'][int(f[1])] = [int(x) for x in f[2:]]
         else:
             cur['rows'].append(line.split()[0])
     return maps
+
+
+def water_tile(c, around):
+    """A river, bridge or shoal tile for the neighbours `around` (N, E, S, W)."""
+    if c == '-':
+        key = ''.join('r' if n in '-=' else 's' if n in '~r,' else 'l' for n in around)
+        assert key in RIVER, ('river', key)
+        return RIVER[key]
+    if c == '=':
+        # water above and below: the bridge runs across
+        wet = lambda n: n in '~r-'
+        return BRIDGE_ACROSS if wet(around[0]) or wet(around[2]) else BRIDGE_DOWN
+    key = ''.join('s' if n in '~r' else 'h' if n == ',' else 'l' for n in around)
+    assert key in SHOAL, ('shoal', key)
+    return SHOAL[key]
 
 
 def build(m, edge):
@@ -110,6 +155,11 @@ def build(m, edge):
     hqs = {int(c): (x, y) for y in range(H) for x in range(W) for c in [ch(x, y)] if c in '12345'}
     n = m['armies']
     assert sorted(hqs) == list(range(1, n + 1)) and len(m['colours']) == n, (m['name'], hqs)
+
+    def look(x, y):
+        """The four neighbours (N, E, S, W); off the map, the cell itself."""
+        return [ch(X, Y) if 0 <= X < W and 0 <= Y < H else ch(x, y)
+                for X, Y in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y))]
 
     def owner(x, y):
         return min(hqs, key=lambda a: (abs(hqs[a][0] - x) + abs(hqs[a][1] - y), a))
@@ -133,7 +183,8 @@ def build(m, edge):
             elif c == '^':
                 tiles[y][x] = MOUNTAIN
             elif c == 'R':
-                link = (ch(x, y - 1) == 'R') << 3 | (ch(x + 1, y) == 'R') << 2 | (ch(x, y + 1) == 'R') << 1 | (ch(x - 1, y) == 'R')
+                road = lambda X, Y: ch(X, Y) in 'R='
+                link = road(x, y - 1) << 3 | road(x + 1, y) << 2 | road(x, y + 1) << 1 | road(x - 1, y)
                 t = ROAD[link]
                 if ch(x - 1, y) in TALL:
                     t = ROAD_SHADED.get(t, t)
@@ -147,14 +198,16 @@ def build(m, edge):
                 else:
                     assert link in PIPE, (m['name'], 'pipe junction', x, y)
                     tiles[y][x] = PIPE[link]
+            elif c in '-=,':
+                tiles[y][x] = water_tile(c, look(x, y))
             elif c in '12345':
                 tiles[y][x] = PROPS['H'][int(c)]
                 counts[int(c)] += 1
-            elif c in 'BCAP':
+            elif c in 'BCAPT':
                 o = owner(x, y)
                 tiles[y][x] = PROPS[c][o]
                 counts[o] += 1
-            elif c in 'bcap':
+            elif c in 'bcapt':
                 tiles[y][x] = PROPS[c.upper()][0]
                 counts[0] += 1
             elif c in INVENTIONS or c == '#':
@@ -181,6 +234,7 @@ def build(m, edge):
         hx, hy = hqs[army]
         near = lambda c: abs(c[0] - hx) + abs(c[1] - hy)
         mine = lambda x, y: owner(x, y) == army
+        pipes = sorted(((x, y) for y in range(H) for x in range(W) if ch(x, y) == 'I' and mine(x, y)), key=near)
         free_land = sorted(((x, y) for y in range(H) for x in range(W) if ch(x, y) in '.f' and mine(x, y)), key=near)
         ports = [(x, y) for y in range(H) for x in range(W) if ch(x, y) == 'P' and mine(x, y)]
         airports = [(x, y) for y in range(H) for x in range(W) if ch(x, y) == 'A' and mine(x, y)]
@@ -194,7 +248,7 @@ def build(m, edge):
                       if 0 <= ax + dx < W and 0 <= ay + dy < H and ch(ax + dx, ay + dy) in '.f'},
                      key=lambda c: min(abs(c[0] - a[0]) + abs(c[1] - a[1]) for a in airports))
         for kind in m['units'].get(army, []):
-            pool = sea if kind in SHIPS else (sky or free_land) if kind in AIR else free_land
+            pool = sea if kind in SHIPS else (sky or free_land) if kind in AIR else pipes if kind == PIPERUNNER else free_land
             spot = next((c for c in pool if c not in taken), None)
             assert spot, (m['name'], army, kind)
             taken.add(spot)
@@ -212,20 +266,31 @@ def build(m, edge):
     return lz, b''.join(units), (W, H), counts
 
 
+def needs_pack(m):
+    """Com Towers, Piperunners and the Wasteland look come with the Dual Strike pack."""
+    return (m['wasteland'] or any(c in r for r in m['rows'] for c in 'tT')
+            or any(PIPERUNNER in u for u in m['units'].values()))
+
+
+def sea_edges(rom):
+    """The game's sea-edge table (the ROM file's bytes)."""
+    return lambda mask: struct.unpack_from('<h', rom, 0x485DC4 + 2 * mask)[0]
+
+
 def main():
     rom = open(sys.argv[1], 'rb').read()
-    edge = lambda mask: struct.unpack_from('<h', rom, 0x485DC4 + 2 * mask)[0]
+    edge = sea_edges(rom)
     maps = parse(os.path.join(HERE, 'maps.txt'))
     out = os.path.join(HERE, '..', 'src', 'five_map_data.rs')
     with open(out, 'w') as o:
         o.write('// Generated from five/maps.txt by five/map.py; do not edit.\n\n')
-        o.write('pub struct Map {\n    pub name: &\'static str,\n    /// Armies (5: a 5-army map), the Versus tab, the armies\' colours.\n    pub armies: u8,\n    pub tab: u16,\n    pub colours: &\'static [u8],\n    /// Has a Black Crystal or Black Obelisk (shown only with their art).\n    pub obelisk: bool,\n    /// The tiles, LZ77 (literal blocks) as the game loads them.\n'
+        o.write('pub struct Map {\n    pub name: &\'static str,\n    /// Armies (5: a 5-army map), the Versus tab, the armies\' colours.\n    pub armies: u8,\n    pub tab: u16,\n    pub colours: &\'static [u8],\n    /// Has a Black Crystal or Black Obelisk (shown only with their art).\n    pub obelisk: bool,\n    /// Needs the Dual Strike pack (Com Towers, Piperunners, the Wasteland\n    /// look): shown only with it on.\n    pub ds: bool,\n    /// Drawn in Dual Strike\'s Wasteland colours (crate::wasteland).\n    pub wasteland: bool,\n    /// The tiles, LZ77 (literal blocks) as the game loads them.\n'
                 '    pub tiles: &\'static [u8],\n    /// Pre-deployed units (12-byte records; FE army, FF end).\n    pub units: &\'static [u8],\n}\n\n')
         o.write('pub const MAPS: &[Map] = &[\n')
         for m in maps:
             lz, units, (W, H), counts = build(m, edge)
             o.write(f'    // {m["name"]}: {W}x{H}, properties {counts}\n')
-            o.write(f'    Map {{\n        name: "{m["name"]}",\n        armies: {m["armies"]},\n        tab: {m["tab"]},\n        colours: &{m["colours"]},\n        obelisk: {str(any(c in r for r in m["rows"] for c in "XO")).lower()},\n        tiles: &[\n')
+            o.write(f'    Map {{\n        name: "{m["name"]}",\n        armies: {m["armies"]},\n        tab: {m["tab"]},\n        colours: &{m["colours"]},\n        obelisk: {str(any(c in r for r in m["rows"] for c in "XO")).lower()},\n        ds: {str(needs_pack(m)).lower()},\n        wasteland: {str(m["wasteland"]).lower()},\n        tiles: &[\n')
             for i in range(0, len(lz), 16):
                 o.write('            ' + ', '.join(f'0x{b:02X}' for b in lz[i:i + 16]) + ',\n')
             o.write('        ],\n        units: &[\n')
@@ -236,4 +301,5 @@ def main():
         o.write('];\n')
 
 
-main()
+if __name__ == '__main__':
+    main()

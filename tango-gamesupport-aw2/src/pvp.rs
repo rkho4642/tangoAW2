@@ -469,10 +469,10 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         // The Black Crystal and Black Obelisk appear only with their art,
         // imported from the player's Dual Strike ROM (see ds_art.rs).
         let ds_features = crate::ds_art::features(mode);
-        crate::five_map::show_obelisk_maps(core, ds_features);
         crate::branding::tick(core);
         // Dual Strike's unit stats and damage chart, with the pack on.
         let ds = crate::ds_pack::features(mode);
+        crate::five_map::show_maps(core, ds_features, ds);
         crate::design_bar::patch_rom(core, ds_features, ds);
         crate::design5::patch_rom(core);
         crate::roster::tick(core, ds);

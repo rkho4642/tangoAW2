@@ -44,7 +44,7 @@ const DESIGN_MAPS: std::ops::RangeInclusive<u8> = 0xB4..=0xB7;
 
 fn on_design_map(core: &Core) -> bool {
     let id = core.raw_read_8(MAP_ID, -1);
-    DESIGN_MAPS.contains(&id) || crate::five::is_five_map(id)
+    DESIGN_MAPS.contains(&id) || crate::five::is_five_map(id) || crate::five_map::is_ds_map(id)
 }
 
 fn after_ai_table_stored(core: &mut Core) {

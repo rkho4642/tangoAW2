@@ -248,16 +248,69 @@ original instruction against the ROM and writes `src/five_patches.rs`.
   literal-pool pointers (the table, and +0x3C/+0x40 of entry 0) are
   repointed, and the two loops that walk it (`sub_080206B0`, find a map by
   its tiles; the map list builder at `0x08037482`) go up to 0xC0 instead
-  of 0xBF. Black Rampart is id 0xC0.
+  of 0xBF, and to 0xC8 while the Dual Strike maps can be listed (eight more
+  ids to walk shift the menus' timing by a frame, so without the pack the
+  loops stay as they were). Black Rampart is id 0xC0, the Dual Strike maps 0xC1..0xC8 (see
+  below). A tab lists its maps by id, so new maps come last. Each map's
+  tiles and units take 4 KiB: the first ten at `0x08622000`, the rest at
+  `0x08655000` (after the moved table).
 - **Terrain in `five/map.py`.** Roads, pipes and pipe seams pick their
   tile from which neighbours connect, as the game's own maps do (learned
   from every built-in map): roads have straights, bends, T-junctions,
   crossroads and shaded variants; pipes have straights, bends and end caps
-  (no junctions).
+  (no junctions). Rivers (`-`), bridges (`=`) and shoals (`,`) take the tile
+  the game's own maps use most for the same neighbours (sea, shoal, river,
+  bridge or road on each side); roads join bridges.
 - **Switching.** A RAM flag set when a 5P map is picked (trap on
   `sub_0803BCD0`) decides; each frame the ROM is switched to match, so
   rollback (which restores RAM, not ROM) stays deterministic. Resuming a
   suspended game switches the patches off first.
+
+## The Dual Strike maps (`five/design_ds_maps.py`)
+
+Eight Versus maps for the Dual Strike pack, drawn by `five/design_ds_maps.py`
+(called from `design_maps.py`) into `five/maps.txt`, built like the others by
+`five/map.py`. Every Com Tower on them starts neutral.
+
+| Id | Map | Armies, size | Tab | Look | What is on it |
+|---|---|---|---|---|---|
+| 0xC1 | Rust Basin | 2P, 23x15 | Vs. | Wasteland | a river with three bridges down the middle, a bay and beach each side, pipes with seams, 2 Com Towers, 2 Black Crystals |
+| 0xC2 | Dune Fork | 3P, 27x20 | 3P | Wasteland | a river forking between the three armies, bridges, bays, pipes with seams, 3 Com Towers (one between each pair of armies), 3 Crystals |
+| 0xC3 | Cinder Flats | 4P, 27x27 | 4P | Wasteland | four corners, rivers from four bays to a Black Obelisk ringed by 4 Crystals and 4 Com Towers, pipes with seams |
+| 0xC4 | Black Wastes | 5P, 29x29 | 5P | Wasteland | four corners round Black Hole's fortress: a Black Cannon facing north and one facing south, 2 Lasers, 4 minicannons, 4 Crystals; rivers, bays, pipes with seams, 4 Com Towers on the axes |
+| 0xC5 | Coral Strait | 2P, 25x17 | Vs. | AW2 | two islands across a strait, bridged to a middle isle with 2 Com Towers (and one on each island); each side's bases sit on a pipe that runs through the sea to the middle isle |
+| 0xC6 | Trident Isles | 3P, 29x20 | 3P | AW2 | three home islands round a middle isle with 3 Com Towers, a pipe from a base on each island to it |
+| 0xC7 | Harbor Cross | 4P, 27x27 | 4P | AW2 | four corner islands, a pipe from each one's base across the channel to the middle isle and its 4 Com Towers |
+| 0xC8 | Coral Crown | 5P, 29x29 | 5P | AW2 | four corner islands and Black Hole's middle island, a Com Tower on each of the four islets between them, reached by the corner islands' pipes |
+
+- **Fair.** The 2P maps turn about their centre, the 3P maps are mirrored
+  left to right with army 3 on the middle line (the three HQs about as far
+  from each other), the 4P and 5P maps are mirrored both ways (Black Hole,
+  army 5, in the middle of the 5P ones). On a map every army but Black
+  Hole starts with the same properties (HQ, two bases, an airport, a port
+  (two on Cinder Flats), three cities) and units (two Infantry, a Mech, a
+  Recon, a Piperunner on its pipe, and on the Wasteland maps a Tank and
+  Artillery, on the sea maps a Lander and a Cruiser); Black Hole's middle
+  holds fewer, with its fortress or its ports.
+- **With the pack only.** Com Towers, Piperunners and the Wasteland look
+  are the pack's, so these maps (`ds` in `five_map_data.rs`) are listed
+  only when the pack is on (for a match, when both players have it) and the
+  Crystal's art too; otherwise they sit on the hidden tab like the obelisk
+  maps without their art (`five_map::show_maps`), so without the pack every
+  map list is as before.
+- **The Wasteland look** (`wasteland: true`): at every map start
+  (`wasteland::map_start`) a tangoAW2 Wasteland map sets the biome to
+  Wasteland, any other map that is not a design map (0xB4..0xB7) to Normal.
+- The Crystals on the 2P-4P maps heal a Black Hole army (a player who picks
+  Black Hole on the Teams screen); by default no army is Black Hole there,
+  and they are only obstacles to shoot at.
+- `factory.rs` gives these maps Factory Blues' factory table too (the map
+  header table the computer's turn reads has no entry for them).
+- Tests: `tools/aw2test/tests/test_ds_maps.py` opens each map from its tab
+  (the list's preview checked tile by tile), checks every tile, owner and
+  unit against `five/map.py`'s build, photographs the whole map (screenshots
+  stitched as the cursor sweeps it), plays six all-CPU days on each (two in
+  netplay), and checks the maps are not listed without the pack.
 
 ## Black Crystal and Black Obelisk (`obelisk.rs`, `five/obelisk_art.py`)
 
@@ -293,7 +346,7 @@ so real minicannons and Black Cannons run the game's code unchanged.
   have it (`SHARED_CONTENT`, tango-net-protocol), the lobby ignores the
   bit when comparing match types, and the terms keep it only when both
   set it, so both peers and every replay agree. Off, the four maps sit on
-  a tab no list shows (`five_map::show_obelisk_maps`) and the Design
+  a tab no list shows (`five_map::show_maps`) and the Design
   Room's bar is 27 entries long instead of 29 (`design_bar::patch_rom`).
   A console without the art in a match that has it (someone else's
   replay) draws the structures as nothing; the sprite layout is the same
@@ -334,9 +387,11 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 | CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike |
 | Terrain | `com_tower.rs`, `wasteland.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), the Wasteland look, the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
 | Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation for each (arm9 0x0213E078 / 0x0213E2A0), the camera visiting each |
+| Maps | `five_map.rs`, `five/design_ds_maps.py` | Eight Versus maps (2P to 5P, a Wasteland set and a sea set) with Com Towers, Piperunner pipes and Black Hole's structures (above) |
 
 Free ROM used: 0x08620000.. (text slots), 0x0862C000.. (new CO text ids 0x6D72..),
-0x08640000..0x08672FFF (earlier features), 0x08680000..0x08691FFF (units),
+0x08640000..0x08672FFF (earlier features; the map table and the maps past the tenth at
+0x08650000..0x0865CFFF), 0x08680000..0x08691FFF (units),
 0x086A0000..0x086AFFFF (CO table), 0x08740000..0x0877FFFF (CO pictures, texts,
 powers' code, heal wait), 0x087C0000..0x087C0FFF (power animations),
 0x087C1000..0x087C3FFF (map animations), 0x087D0000..0x087DFFFF (unit pictures),

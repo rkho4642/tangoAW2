@@ -1,7 +1,10 @@
 //! tangoAW2's Versus maps (five/maps.txt): their tiles, units and names in
 //! the ROM image's free space, through map-table entries the game never
 //! uses ([`IDS`]). The 5-army ones are listed on a new Versus tab, "5P
-//! Maps"; the 2-, 3- and 4-army obelisk maps on the game's own tabs. Also
+//! Maps"; the 2-, 3- and 4-army ones on the game's own tabs. Maps with a
+//! Black Crystal or Obelisk are listed only with their art, maps with Dual
+//! Strike content (Com Towers, Piperunners, the Wasteland look) only with
+//! the Dual Strike pack ([`show_maps`]). Also
 //! Black Hole's own property tiles
 //! (0x1B4..0x1B9), which army 5 owns: they look like the other property
 //! tiles (the buildings are sprites drawn over plain grass).
@@ -20,7 +23,7 @@ const ENTRY: u32 = 0x5C;
 /// loops that walk it (`sub_080206B0`, find a map by its tiles, and the
 /// map list builder at `0x08037482`), which stop after id 0xBF.
 const MAP_TABLE: u32 = 0x0865_0000;
-const MAP_IDS: u32 = 0xC1;
+const MAP_IDS: u32 = 0xC9;
 const TABLE_POINTERS: [(u32, u32); 37] = [
     (0x0801_96EC, 0x00),
     (0x0802_06E0, 0x00),
@@ -60,11 +63,27 @@ const TABLE_POINTERS: [(u32, u32); 37] = [
     (0x0809_0D68, 0x00),
     (0x0809_0EC0, 0x00),
 ];
-/// `cmp rN, #0xBF` in the two loops -> `#0xC0` (the last id, [`MAP_IDS`] - 1).
-const TABLE_LOOPS: [(u32, u16, u16); 2] = [(0x0802_06C8, 0x29BF, 0x29C0), (0x0803_74B4, 0x2CBF, 0x2CC0)];
-/// Each map's tiles and units: 4 KiB apiece from here.
+/// `cmp rN, #0xBF` in the two loops: the game's, then the last id without
+/// the Dual Strike maps (0xC0), then with them (0xC8, [`MAP_IDS`] - 1). The
+/// loops only reach the Dual Strike maps' ids while those can be listed:
+/// eight more ids a walk would shift the game's timing by a frame here and
+/// there, and without the pack everything runs as before
+/// ([`show_maps`]).
+const TABLE_LOOPS: [(u32, u16, u16, u16); 2] =
+    [(0x0802_06C8, 0x29BF, 0x29C0, 0x29C8), (0x0803_74B4, 0x2CBF, 0x2CC0, 0x2CC8)];
+/// Each map's tiles and units: 4 KiB apiece, the first ten from here (up to
+/// the CO texts at 0x0862C000), the rest after the moved map table.
 const MAP_DATA: u32 = 0x0862_2000;
+const MAP_DATA_MORE: u32 = 0x0865_5000;
 const MAP_DATA_SIZE: u32 = 0x1000;
+
+fn map_data(k: usize) -> u32 {
+    if k < 10 {
+        MAP_DATA + MAP_DATA_SIZE * k as u32
+    } else {
+        MAP_DATA_MORE + MAP_DATA_SIZE * (k as u32 - 10)
+    }
+}
 
 /// Tile -> terrain table (copied to RAM when a map loads) and metatiles.
 const TERRAIN_TABLE: u32 = 0x080C_1BC4;
@@ -94,8 +113,10 @@ pub const CATEGORY: u16 = 9;
 /// Each map's id, in five/maps.txt's order: map-table entry 0 (a dummy the
 /// game never lists), design-map ids 0xB8..0xBF (the Design Room has three
 /// slots, 0xB4..0xB6, and a suspend copy, 0xB7; the rest serve only
-/// multi-cartridge link play), and 0xC0, one past the game's own table.
-pub const IDS: [u8; 10] = [0, 0xBC, 0xBD, 0xBE, 0xBF, 0xB8, 0xB9, 0xBA, 0xBB, 0xC0];
+/// multi-cartridge link play), and 0xC0.., past the game's own table.
+pub const IDS: [u8; 18] = [
+    0, 0xBC, 0xBD, 0xBE, 0xBF, 0xB8, 0xB9, 0xBA, 0xBB, 0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8,
+];
 
 /// Map ids 0xB4..0xBF are design maps to the game. These make 0xB8..0xBF
 /// ordinary maps (header blob, name, unit list, preview): (address,
@@ -156,7 +177,22 @@ pub const TAB_NAME_TEXT: &str = "5P Maps";
 
 /// A 5-army map's id.
 pub fn is_five_map(id: u8) -> bool {
-    MAPS.iter().zip(IDS.iter()).any(|(m, &i)| i == id && m.armies == 5)
+    map_of(id).is_some_and(|m| m.armies == 5)
+}
+
+/// tangoAW2's map with this id, if any.
+pub fn map_of(id: u8) -> Option<&'static crate::five_map_data::Map> {
+    MAPS.iter().zip(IDS.iter()).find(|(_, &i)| i == id).map(|(m, _)| m)
+}
+
+/// A map with Dual Strike content (listed only with the pack).
+pub fn is_ds_map(id: u8) -> bool {
+    id != 0 && map_of(id).is_some_and(|m| m.ds)
+}
+
+/// A map drawn in the Wasteland look ([`crate::wasteland`]).
+pub fn is_wasteland_map(id: u8) -> bool {
+    id != 0 && map_of(id).is_some_and(|m| m.wasteland)
 }
 
 pub fn install(core: &mut Core) {
@@ -185,15 +221,17 @@ pub fn install(core: &mut Core) {
             core.raw_write_32(at, -1, MAP_TABLE + field);
         }
     }
-    for (at, old, new) in TABLE_LOOPS {
+    for (at, old, new, _) in TABLE_LOOPS {
         if core.raw_read_16(at, -1) == old {
             core.raw_write_16(at, -1, new);
         }
     }
     assert_eq!(MAPS.len(), IDS.len());
     assert!(IDS.iter().all(|&id| (id as u32) < MAP_IDS));
+    assert!(map_data(MAPS.len() - 1) + MAP_DATA_SIZE <= 0x0866_0000);
+    assert!(MAP_TABLE + ENTRY * MAP_IDS <= MAP_DATA_MORE);
     for (k, (map, &id)) in MAPS.iter().zip(IDS.iter()).enumerate() {
-        let tiles = MAP_DATA + MAP_DATA_SIZE * k as u32;
+        let tiles = map_data(k);
         let units = tiles + map.tiles.len() as u32;
         assert!(map.tiles.len() + map.units.len() <= MAP_DATA_SIZE as usize);
         core.raw_write_range(tiles, -1, map.tiles);
@@ -236,17 +274,65 @@ pub fn install(core: &mut Core) {
 const HIDDEN_TAB: u16 = 0x7F;
 
 /// Every frame: list the maps with a Black Crystal or Black Obelisk on
-/// their tabs only when `on` ([`crate::ds_art::features`]); otherwise they
-/// sit on a tab no list shows.
-pub fn show_obelisk_maps(core: &mut Core, on: bool) {
+/// their tabs only when `art` ([`crate::ds_art::features`]), and the maps
+/// with Dual Strike content only when `pack` is on too
+/// ([`crate::ds_pack::features`]); otherwise they sit on a tab no list
+/// shows.
+pub fn show_maps(core: &mut Core, art: bool, pack: bool) {
+    for (at, _, without, with) in TABLE_LOOPS {
+        let now = core.raw_read_16(at, -1);
+        let want = if art && pack { with } else { without };
+        if (now == without || now == with) && now != want {
+            core.raw_write_16(at, -1, want);
+        }
+    }
     for (map, &id) in MAPS.iter().zip(IDS.iter()) {
-        if !map.obelisk {
+        if !map.obelisk && !map.ds {
             continue;
         }
+        let on = (!map.obelisk || art) && (!map.ds || (art && pack));
         let at = MAP_TABLE + 0x5C * id as u32 + 0x1A;
         let tab = if on { map.tab } else { HIDDEN_TAB };
         if core.raw_read_16(at, -1) != tab {
             core.raw_write_16(at, -1, tab);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_fit_their_slots() {
+        assert_eq!(MAPS.len(), IDS.len());
+        let mut ids = IDS.to_vec();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), IDS.len(), "every map has its own id");
+        assert!(IDS.iter().all(|&id| (id as u32) < MAP_IDS));
+        assert!(map_data(MAPS.len() - 1) + MAP_DATA_SIZE <= 0x0866_0000);
+        assert!(MAP_TABLE + ENTRY * MAP_IDS <= MAP_DATA_MORE);
+        for m in MAPS {
+            assert!(m.name.len() < 0x20, "{}", m.name);
+            assert!(m.tiles.len() + m.units.len() <= MAP_DATA_SIZE as usize, "{}", m.name);
+            // the Wasteland look is the pack's
+            assert!(!m.wasteland || m.ds, "{}", m.name);
+        }
+    }
+
+    #[test]
+    fn dual_strike_maps_are_the_new_ids() {
+        // The loops walk past 0xC0 only while the Dual Strike maps can be
+        // listed, so every map up to 0xC0 must not need the pack.
+        for (m, &id) in MAPS.iter().zip(IDS.iter()) {
+            assert_eq!(m.ds, id > 0xC0, "{}", m.name);
+        }
+        assert_eq!(MAPS.iter().filter(|m| m.wasteland).count(), 4);
+        for armies in 2..=5 {
+            assert_eq!(MAPS.iter().filter(|m| m.ds && m.armies == armies).count(), 2);
+        }
+        assert!(is_wasteland_map(0xC1) && !is_wasteland_map(0xC5) && !is_wasteland_map(0));
+        assert!(is_five_map(0xC4) && is_five_map(0xC8) && !is_five_map(0xC3));
     }
 }
