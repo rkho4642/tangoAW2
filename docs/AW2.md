@@ -198,7 +198,8 @@ from the ROM table `0x080C1BC4`.
 
 ## Title and menu badge (`tango-gamesupport-aw2/src/branding.rs`)
 
-- A "tangoAW2" badge drawn by the game's sprite hardware while
+- A "tangoAW2" badge, with the app's version on a plate under it (read
+  from `tango/Cargo.toml` at build time), drawn by the game's sprite hardware while
   `ProcScr_TitleScreen` (`0x08581CF8`) or `ProcScr_MainMenu` (`0x0849E818`)
   is running (the process pool is `sProcArray`, `0x0200D610`, 0x6C bytes
   each, script pointer first; names from aw2bhr): its tiles in unused OBJ

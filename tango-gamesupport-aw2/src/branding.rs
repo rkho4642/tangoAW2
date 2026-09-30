@@ -51,6 +51,17 @@ fn glyph(c: char) -> [&'static str; 7] {
         'A' => [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
         'W' => ["#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#"],
         '2' => [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"],
+        'v' => [".....", ".....", "#...#", "#...#", "#...#", ".#.#.", "..#.."],
+        '.' => [".....", ".....", ".....", ".....", ".....", ".##..", ".##.."],
+        '0' => [".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."],
+        '1' => ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."],
+        '3' => ["####.", "....#", "....#", ".###.", "....#", "....#", "####."],
+        '4' => ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."],
+        '5' => ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."],
+        '6' => ["..##.", ".#...", "#....", "####.", "#...#", "#...#", ".###."],
+        '7' => ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."],
+        '8' => [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."],
+        '9' => [".###.", "#...#", "#...#", ".####", "....#", "...#.", ".##.."],
         _ => [".....", ".....", ".....", ".....", ".....", ".....", "....."],
     }
 }
@@ -74,8 +85,63 @@ const fn bgr(r: u16, g: u16, b: u16) -> u16 {
 
 const TEXT: &str = "tangoAW2";
 
-/// The badge at `scale` on a `w` x `h` canvas of palette indices.
+/// The app's version ("v0.3.1"), from the app crate's manifest at build
+/// time, so every build of one version draws the same picture (netplay
+/// peers of one version stay identical).
+fn version() -> String {
+    let manifest = include_str!("../../tango/Cargo.toml");
+    let v = manifest
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("version = \""))
+        .and_then(|l| l.strip_suffix('"'))
+        .unwrap_or("");
+    format!("v{v}")
+}
+
+/// Draws `text` at (x0, y0) in the 5x7 font, 1 pixel per dot, with a shadow.
+fn small_text(px: &mut [u8], w: usize, h: usize, x0: usize, y0: usize, text: &str, colour: u8) {
+    for pass in 0..2 {
+        for (i, ch) in text.chars().enumerate() {
+            for (r, row) in glyph(ch).iter().enumerate() {
+                for (c, b) in row.bytes().enumerate() {
+                    if b != b'#' {
+                        continue;
+                    }
+                    let (x, y) = (x0 + i * 6 + c + (pass == 0) as usize, y0 + r + (pass == 0) as usize);
+                    if x < w && y < h {
+                        px[y * w + x] = if pass == 0 { SHADOW } else { colour };
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The badge at `scale` on a `w` x `h` canvas of palette indices, with the
+/// version under it, right-aligned.
 fn badge(scale: usize, w: usize, h: usize) -> Vec<u8> {
+    let mut px = badge_only(scale, w, h);
+    let bw = TEXT.len() * 6 * scale - scale + 6;
+    let bh = 7 * scale + 6;
+    // The version on its own small plate, right-aligned under the badge.
+    let v = version();
+    let (pw, ph) = (v.len() * 6 - 1 + 5, 7 + 5);
+    let (px0, py0) = (bw.saturating_sub(pw), bh + 1);
+    for y in 0..ph {
+        for x in 0..pw {
+            let corner = (x == 0 || x == pw - 1) && (y == 0 || y == ph - 1);
+            let (cx, cy) = (px0 + x, py0 + y);
+            if !corner && cx < w && cy < h {
+                let edge = x == 0 || x == pw - 1 || y == 0 || y == ph - 1;
+                px[cy * w + cx] = if edge { WHITE } else { NAVY };
+            }
+        }
+    }
+    small_text(&mut px, w, h, px0 + 2, py0 + 2, &v, YELLOW);
+    px
+}
+
+fn badge_only(scale: usize, w: usize, h: usize) -> Vec<u8> {
     let mut px = vec![0u8; w * h];
     let bw = TEXT.len() * 6 * scale - scale + 6;
     let bh = 7 * scale + 6;
