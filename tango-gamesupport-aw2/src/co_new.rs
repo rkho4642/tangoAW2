@@ -267,11 +267,21 @@ pub fn wrap_page(t: &[u8], widths: &[u8]) -> Vec<u8> {
 /// A new CO's texts, by [`text_id`] slot.
 fn texts(ds: u8, widths: &[u8]) -> Vec<(u16, Vec<u8>)> {
     let mut out = Vec::new();
+    let name = ds_text(record_ref(ds, 0x00)).unwrap_or_default();
+    // Every slot gets a text: one the game reads but Dual Strike leaves
+    // empty (Von Bolt has no CO Power) would otherwise point at nothing.
     let mut put = |which: u16, off: u32| {
-        if let Some(t) = ds_text(record_ref(ds, off)) {
-            let page = [T_BIO, T_D2D, T_COP, T_SCOP].contains(&which);
-            out.push((which, if page { wrap_page(&t, widths) } else { t }));
-        }
+        let t = ds_text(record_ref(ds, off)).filter(|t| !t.is_empty()).unwrap_or_else(|| {
+            if which == T_COP {
+                // As AW2 says of Sturm, who has none either.
+                let n = String::from_utf8_lossy(&name);
+                format!("{n} has no CO Power. He saves all his energy for his Super CO Power.").into_bytes()
+            } else {
+                Vec::new()
+            }
+        });
+        let page = [T_BIO, T_D2D, T_COP, T_SCOP].contains(&which);
+        out.push((which, if page { wrap_page(&t, widths) } else { t }));
     };
     put(T_NAME, 0x00);
     put(T_BIO, 0x04);
