@@ -40,8 +40,8 @@ pub const CARRIER: u8 = 26;
 pub const OOZIUM: u8 = 27;
 /// The Oozium's price at a base (Dual Strike has none: it never sells it).
 /// It destroys any ground or naval unit it attacks but moves one square a
-/// day: under a Neotank's 22000.
-pub const OOZIUM_PRICE: u16 = 20000;
+/// day (the player chose 18900).
+pub const OOZIUM_PRICE: u16 = 18900;
 pub const NEW_UNITS: [u8; 7] = [MEGATANK, PIPERUNNER, STEALTH, BLACK_BOMB, BLACK_BOAT, CARRIER, OOZIUM];
 /// Records in use in the grown table (0..27).
 pub const TYPES: u32 = 28;
