@@ -90,7 +90,7 @@ Both press Ready; the game starts from power-on for both. Go to
 <tr>
 <td><img src="docs/screenshots/ds-build-base.png" width="240" alt="The base's build menu with the Piperunner and Oozium"></td>
 <td><img src="docs/screenshots/ds-von-bolt-ex-machina.png" width="240" alt="Von Bolt's Ex Machina"></td>
-<td><img src="docs/screenshots/ds-wasteland-battle.png" width="240" alt="A battle on a Wasteland map"></td>
+<td><img src="docs/screenshots/ds-black-wastes.png" width="240" alt="Black Wastes, a five-army Wasteland map"></td>
 </tr>
 </table>
 
