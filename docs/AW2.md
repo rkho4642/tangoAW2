@@ -414,6 +414,7 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 | CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike; a base builds Piperunners (for the CPU and in the build menu) only by a pipe or an intact seam |
 | Terrain | `com_tower.rs`, `wasteland.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), the Wasteland look, the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
 | Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation for each (arm9 0x0213E078 / 0x0213E2A0), the camera visiting each |
+| Music | `ds_music.rs` | The nine new COs' own map themes, Dual Strike's, converted to AW2's sound engine (below) |
 | Maps | `five_map.rs`, `five/design_ds_maps.py` | Eight Versus maps (2P to 5P, a Wasteland set and a sea set) with Com Towers, Piperunner pipes and Black Hole's structures (above) |
 
 Free ROM used: 0x08620000.. (text slots), 0x0862C000.. (new CO text ids 0x6D72..),
@@ -422,13 +423,78 @@ Free ROM used: 0x08620000.. (text slots), 0x0862C000.. (new CO text ids 0x6D72..
 0x086A0000..0x086AFFFF (CO table), 0x08740000..0x0877FFFF (CO pictures, texts,
 powers' code, heal wait), 0x087C0000..0x087C0FFF (power animations),
 0x087C1000..0x087C3FFF (map animations), 0x087D0000..0x087DFFFF (unit pictures),
-0x087F0000..0x087F4FFF (CO screen grid: the map sheet per country, the page lists).
+0x087F0000..0x087F4FFF (CO screen grid: the map sheet per country, the page lists),
+0x08800000..0x08D2FFFF (music, past the 8 MB cartridge: mGBA grows the image when it is written).
 Free RAM used: 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203FDC8..0x0203FDFB, stun, battle distance, Teams list),
 0x0203FF00.. (earlier features). `factory.rs` has a test that no two traps share
 an address.
+
+The new COs' music (`ds_music.rs`): each new CO's turn plays its own Dual
+Strike theme, converted at run time for AW2's sound engine (MP2K, "Sappy").
+
+- **Which theme.** Dual Strike's CO record (arm9 `0x0215360C + 0x220*id`)
+  names the CO's map music at `+0x14`, a sequence of `data/sound_data.sdat`
+  (whose symbols confirm it: Jugger `BGM_ZIPO1` 36, Koal `BGM_CHAKKA1` 39,
+  Kindle `BGM_CANDLE1` 27, Von Bolt `BGM_HAGEVOLT1` 38, Grimm `BGM_KOUZOU1`
+  34, Javier `BGM_BITTMANN1` 40, Sasha `BGM_SASHA1` 37, Jake `BGM_JOHN` 5,
+  Rachel `BGM_RACHEL1` 24; no two share one). The pack keeps those
+  sequences (SSEQ), their banks (SBNK) and sample archives (SWAR) as
+  `sound/seq/<id>`, `sound/bank/<id>`, `sound/wave/<id>` (about 4 MB;
+  nothing else of the 18 MB archive). The pack's version is 2: a saved
+  version-1 pack is rebuilt from the .nds on the next scan (or ignored
+  without it), so both netplay peers with the pack have the music. Power music stays AW2's
+  (Dual Strike's is shared too).
+- **Sequence.** Each SSEQ track is walked (calls inlined, loops and jumps
+  followed; the jump back is the loop) into timed notes and controls, and
+  written as an MP2K track that plays the intro, then the loop, then GOTOs
+  back. Dual Strike counts 48 ticks a beat, MP2K 24: the song's TEMPO byte is
+  the full beat count (not half), so every tick is kept (tempo accurate to
+  0.2%). Volume, expression and the sequence's volume are Dual Strike's
+  squared curves made linear (`VOL`), velocities likewise; pan, pitch bend
+  (halved to MP2K's range), modulation carry over; notes longer than `N96`
+  are `TIE`d and ended by `EOT`. The themes' music player (`0x03005AE0`,
+  songs with player 1) has 8 tracks: songs with 9 to 11 tracks (Jugger,
+  Koal, Kindle, Von Bolt, Grimm, Sasha, Rachel) have the tracks that sound
+  together least merged (VOICE/VOL/PAN switched before the other track's
+  notes).
+- **Instruments.** Each program played is an MP2K rhythm voice (type
+  `0x80`, 128 sub-voices) so every key plays its own region's sample at its
+  own root (sub-voice key `60 + key - root`); region pan is a forced pan.
+  Samples (IMA-ADPCM, 22 kHz) are decoded, low-passed and resampled to AW2's
+  mixing rate (13379 Hz; a loop keeps a whole number of samples and the
+  rate follows it) and stored 8-bit; one copy per sample. Envelopes: Dual
+  Strike steps every 5.2 ms in decibels, MP2K once a frame in linear
+  amplitude: decay and release become the per-frame factor for the same
+  dB fall, sustain the squared level, attack the step that reaches full in
+  the same time.
+- **Where.** From `0x08800000`: a mark, AW2's song table (`0x0824238C`, 505
+  entries) copied with the nine new songs after it (ids 505..513, player 1),
+  then voice groups, samples and tracks (about 5 MB). The table's six
+  literal-pool words (`0x080704A0`, `0x080704D4`, `0x08070520`,
+  `0x08070574`, `0x080705A8`, `0x08072B9C`) are switched while the pack is
+  on, and the new COs' rows name their song (row `+0x04`). The game starts
+  a CO's music with `sub_0803B524(id)` (id at `0x030005CA`).
+- **Channels.** Dual Strike plays up to 16 notes at once; AW2 mixes 8
+  DirectSound channels (SoundInfo `[0x03007FF0]+6`) of the 12 the engine
+  has (the other 4 sit unused before the PCM buffer at `0x03004AE0`). While
+  one of the new themes is the music (player `0x03005AE0`'s song), 12 are
+  mixed, 8 otherwise (the extra 4 stopped when it goes back).
+- **Compromises.** Notes past 12 at once are cut by MP2K's channel
+  stealing; merged tracks share one volume and pan at a time; the samples
+  are 8-bit at 13 kHz; Dual Strike's portamento, tie mode, sweep and
+  per-track envelope changes (none used by these nine) are not converted;
+  each loop sets its tracks' state in full where it starts, so its first
+  pass starts from the state later passes have;
+  the per-song level is Dual Strike's, scaled once (`GAIN`) to sit with
+  AW2's themes.
+- Tests: `tools/aw2test/tests/test_co_music.py` (every new CO's turn, human
+  and CPU, starts its song; Von Bolt's loops, survives his power and a
+  battle scene, and plays in a five-army game; AW2's COs and songs
+  unchanged; without the pack nothing changes). `aw2_script`'s `audio` /
+  `audioend FILE` record the console's sound (`Emu.audio_start/audio_end`).
 
 Com Towers (`com_tower.rs`, `design_bar.rs`): a Lab is a Com Tower in Versus
 and in the Design Room. In battle its sprite comes from `gProperty`

@@ -282,14 +282,18 @@ const CPU_POWER_THRESHOLD: u8 = 25;
 const CPU_POWER_CHANCE: u8 = 95;
 const AI_COND_START_OF_TURN: u32 = 0x0805_C1C5;
 
-/// A new CO's row: the CO it takes after for its music and the CPU's power
+/// A new CO's row: its own music (or the CO it takes after's), the CPU's power
 /// settings, Andy's movement and neutral stats, and the rest Dual Strike's.
 fn new_row(rows: &[Vec<u8>], andy: &[u8], co: u8, ds: u8) -> Option<Vec<u8>> {
     use crate::co_new::*;
     let r = record(ds)?;
     let like = &rows[crate::co_new::like(co) as usize];
     let mut row = andy.to_vec();
-    row[0x04..0x06].copy_from_slice(&like[0x04..0x06]); // music
+    // Music: its own Dual Strike theme (crate::ds_music), or the like CO's.
+    match crate::ds_music::song(co) {
+        Some(song) => row[0x04..0x06].copy_from_slice(&song.to_le_bytes()),
+        None => row[0x04..0x06].copy_from_slice(&like[0x04..0x06]),
+    }
     row[0x06..0x0A].fill(0); // weather bringers
     row[0x00..0x04].copy_from_slice(&(text_id(co, T_NAME) as u32).to_le_bytes());
     row[0x0C..0x10].copy_from_slice(&(r[0x1C] as u32).to_le_bytes());

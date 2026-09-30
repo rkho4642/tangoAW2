@@ -158,6 +158,16 @@ class Emu:
         self.cmd(f"shot {path}")
         return path + ".bmp"
 
+    def audio_start(self):
+        """Start recording the console's sound output."""
+        self.cmd("audio")
+
+    def audio_end(self, path):
+        """Stop recording; write a 16-bit stereo WAV to path. Returns (frames, rate)."""
+        out = self.cmd(f"audioend {path}")
+        parts = [l for l in out if l.startswith("audio ")][-1].split()
+        return int(parts[1]), int(parts[4])
+
     def dump_rom(self, path, length=0x800000):
         self.cmd(f"dumprange 08000000 {length} {path}")
         with open(path, "rb") as f:

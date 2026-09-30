@@ -29,6 +29,8 @@
 //!   dumprange ADDR LEN FILE  write LEN bytes at ADDR (e.g. the patched ROM
 //!                        image at 08000000) to FILE
 //!   frame                print the frame count
+//!   audio                start recording the console's sound output
+//!   audioend FILE        stop recording and write it to FILE (16-bit stereo WAV)
 //!   regs                 print the CPU registers
 //!   stepwatch32 ADDR N   single-step N instructions, printing each change
 //!                        of the word at ADDR
@@ -69,6 +71,40 @@ fn key_bits(s: &str) -> u32 {
 }
 
 static FRAME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Sound recorded since `audio` (interleaved stereo).
+static RECORDING: std::sync::Mutex<Option<Vec<i16>>> = std::sync::Mutex::new(None);
+
+fn drain_audio(core: &mut mgba::core::Core) {
+    let mut rec = RECORDING.lock().unwrap();
+    let buf = core.audio_buffer();
+    let n = buf.available();
+    let mut tmp = vec![0i16; n * 2];
+    buf.read(&mut tmp, n);
+    if let Some(r) = rec.as_mut() {
+        r.extend_from_slice(&tmp);
+    }
+}
+
+fn write_wav(path: &str, samples: &[i16], rate: u32) {
+    let mut out = Vec::new();
+    let data = (samples.len() * 2) as u32;
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&(rate * 4).to_le_bytes());
+    out.extend_from_slice(&4u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data.to_le_bytes());
+    for s in samples {
+        out.extend_from_slice(&s.to_le_bytes());
+    }
+    std::fs::write(path, out).unwrap();
+}
 
 /// tangoAW2's Advance Wars 2 support plus tracing traps.
 struct Traced(Vec<u32>);
@@ -226,6 +262,7 @@ fn main() {
                 link.core_mut(0).raw_write_8(a, -1, v);
             }
             link.tick(&[keys]);
+            drain_audio(link.core_mut(0));
             *frame += 1;
             FRAME.store(*frame, std::sync::atomic::Ordering::Relaxed);
         }
@@ -343,6 +380,16 @@ fn main() {
                 std::fs::write(parts[3], buf).unwrap();
             }
             "frame" => println!("frame {frame}"),
+            "audio" => {
+                drain_audio(link.core_mut(0));
+                *RECORDING.lock().unwrap() = Some(Vec::new());
+            }
+            "audioend" => {
+                let rec = RECORDING.lock().unwrap().take().unwrap_or_default();
+                let rate = link.core(0).audio_sample_rate();
+                write_wav(parts[1], &rec, rate);
+                println!("audio {} frames at {rate} Hz", rec.len() / 2);
+            }
             "poke16" => link.core_mut(0).raw_write_16(hex(parts[1]), -1, hex(parts[2]) as u16),
             "poke8" => link.core_mut(0).raw_write_8(hex(parts[1]), -1, hex(parts[2]) as u8),
             "peek" => {

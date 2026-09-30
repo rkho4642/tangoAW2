@@ -4,7 +4,8 @@
 //! tangoAW2 ships nothing from Dual Strike. When a Dual Strike (USA) ROM
 //! is in the ROMs folder, the library scan offers it here
 //! ([`crate::ds_art::offer`]); the pack keeps its ARM9 code image, its
-//! overlays and its file system (every file but the sound archive), and
+//! overlays and its file system (every file but the sound archive, of
+//! which only the new COs' themes are kept: [`crate::ds_music`]), and
 //! is saved next to the ROMs ([`CACHE_NAME`]) so the .nds is needed only
 //! once. Features built on it read their tables and pictures from here at
 //! run time.
@@ -20,12 +21,14 @@ pub const CACHE_NAME: &str = "Dual Strike pack.tangoaw2";
 const MAGIC: &[u8; 8] = b"TAW2DSPK";
 /// Bumped when the pack's contents change; an older pack is rebuilt from
 /// the .nds on the next scan, or ignored without it.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 /// The header CRC16 of Advance Wars: Dual Strike (USA).
 const HEADER_CRC: u16 = 0xB586;
 
-/// Directories not kept (the sound archive: 18 MB nothing reads).
+/// Directories not kept (the sound archive: 18 MB, of which
+/// [`crate::ds_music::keep`] takes the few files the music reads).
 const SKIPPED_DIRS: [&str; 1] = ["data/"];
+const SOUND_ARCHIVE: &str = "data/sound_data.sdat";
 
 pub struct Pack {
     /// The ARM9 code image (loaded at 0x02000000, uncompressed in this ROM).
@@ -148,6 +151,7 @@ fn from_rom(rom: &[u8]) -> Option<Pack> {
         overlays.push(fat_file(u32_at(rom, ovt + 32 * i + 0x18)?)?);
     }
     let mut files = HashMap::new();
+    let mut sound = None;
     let mut stack = vec![(0usize, String::new())];
     while let Some((dir, path)) = stack.pop() {
         let mut p = fnt + u32_at(rom, fnt + 8 * dir)?;
@@ -166,12 +170,18 @@ fn from_rom(rom: &[u8]) -> Option<Pack> {
                 stack.push((child, format!("{path}{name}/")));
             } else {
                 let full = format!("{path}{name}");
-                if !SKIPPED_DIRS.iter().any(|d| full.starts_with(d)) {
+                if full == SOUND_ARCHIVE {
+                    sound = fat_file(id);
+                } else if !SKIPPED_DIRS.iter().any(|d| full.starts_with(d)) {
                     files.insert(full, fat_file(id)?);
                 }
                 id += 1;
             }
         }
+    }
+    // The new COs' themes, with their instruments and samples.
+    for (name, data) in crate::ds_music::keep(&sound?, &arm9)? {
+        files.insert(name, data);
     }
     Some(Pack { arm9, overlays, files })
 }
@@ -253,6 +263,7 @@ mod tests {
             assert!(q.file(f).is_some(), "{f}");
         }
         assert!(!q.files.keys().any(|k| k.starts_with("data/")));
+        assert!(q.files.keys().any(|k| k.starts_with("sound/seq/")));
         // Overlay 0 holds the unit records: Infantry (id 1) costs 1000.
         let inf = q
             .overlay_at(0, 0x022A_D560, 0x022A_D560 + 0x47A58 + 0x6C, 0x6C)
