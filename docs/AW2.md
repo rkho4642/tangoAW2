@@ -305,7 +305,8 @@ Eight Versus maps for the Dual Strike pack, drawn by `five/design_ds_maps.py`
   and near each HQ, with cliff coast between so a beach is worth holding.
   The test checks that the armies the symmetry maps onto each other get as
   many beaches and an enemy beach as far from their HQ (`beach_balance`;
-  a 3P map's army 3, on the mirror line, and Black Hole are left out).
+  a 3P map's army 3, on the mirror line, is matched to the other two by
+  hand; Black Hole in the middle of a 5P map is left out).
 - **Piperunner bases behind seams.** Each army's Piperunner base touches
   its pipe only through a pipe seam (in `five/map.py` a seam's straight
   run may end at a base: `B Z I I`). A base offers the Piperunner only

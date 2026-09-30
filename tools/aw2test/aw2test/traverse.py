@@ -175,7 +175,7 @@ def beach_balance(g):
 
 
 def symmetric_armies(armies):
-    """The armies a Dual Strike map's symmetry maps onto each other: all but
-    army 3 of a 3P map (on the mirror line) and Black Hole in the middle of a
-    5P map."""
-    return {2: [1, 2], 3: [1, 2], 4: [1, 2, 3, 4], 5: [1, 2, 3, 4]}[armies]
+    """The armies whose beaches must match: every army but Black Hole in the
+    middle of a 5P map (a 3P map's army 3, on the mirror line, is matched by
+    hand to the other two)."""
+    return {2: [1, 2], 3: [1, 2, 3], 4: [1, 2, 3, 4], 5: [1, 2, 3, 4]}[armies]

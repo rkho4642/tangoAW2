@@ -103,7 +103,7 @@ def draw(emit):
         "~,,,,,..fC....",
         "~.....^.B....f",
         "~..1RRRRRRRRRR",
-        "~.f....R...I..",
+        "~,f....R...I..",
         "~.C....R..BZ..",
         "~...A.CR...Ic.",
         "~^f....R...I.^",
@@ -204,28 +204,29 @@ def draw(emit):
     # leaves a base through a seam and runs out to the middle isle.
     g = mirror_x([
         "~~~~~~~~~~~~~~",
-        "~~,,,,,,~~~r~~",
+        "~~,,,,,~~~~r~~",
         "~.C..f..P~~~~~",
-        "~..^...C.~~~,,",
+        "~..^...C.~~~,~",
         "~.A.1RRR.~~~.c",
         "~..f...RBZII..",
         "~.^..C.R.~~~f.",
         "~~.CBRRR.~~~..",
-        "~~~,,,,~~~~~t.",
-        "~~~~~~~~~~~~,,",
+        "~~~,,,,~,~~~t.",
+        "~~~~~~~~~~~~,~",
         "~~~r~~~~~~~~~~",
-        "~~~~~~~~~~,,,,",
+        "~~~~~~~~~~,,~~",
         "~~~~~~~~~.c..C",
         "~~~~~~~~~..f.R",
         "~~~~~~~~~.C.RR",
         "~~~~~~~~~^....",
         "~~~~~~~~~~.f..",
-        "~~~~~~~~~~,...",
-        "~~~~~~~~~~~,,,",
+        "~~~~~~~~~~~...",
+        "~~~~~~~~~~~~,,",
         "~~~~~~~~~~~~r~",
-    ], "~~~,t.^.cIIIZBR3BAP~")
+    ], "~~~~t.^.cIIIZBR3BAP~")
     # Landings: each home island faces the middle isle, Green Earth's the
-    # two others.
+    # two others; every army has 12 beaches and the nearest enemy beach 13
+    # from its HQ (Green Earth, on the mirror line, included).
     g = beach(g, [(8, 4), (9, 13)], 'x')
     emit('Trident Isles', {1: NAVAL, 2: NAVAL, 3: NAVAL}, g, armies=3, tab=5, colours=(1, 2, 3))
 
