@@ -125,7 +125,7 @@ def check_page(ctx, g, army, slots, want_types, label):
         fp = ctx.rules.co_bonus(co, mode, t, 0)
         rng = ctx.rules.co_bonus(co, mode, t, 3)
         mv = ctx.rules.co_bonus(co, mode, t, 2)
-        if "bar" in s or t not in (7, 13, 18, 20, 23):
+        if "bar" in s or t not in (7, 13, 18, 20, 23, 27):
             want = BAR_SPRITE[bar_level(fp)] if ctx.ds else BAR_SPRITE.get(fp, 0x9E)
             ctx.eq(s.get("bar"), want, f"{label}: {name}'s firepower bar ({fp:+d}%)")
         else:
