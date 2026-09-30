@@ -463,6 +463,9 @@ Strike theme, converted at run time for AW2's sound engine (MP2K, "Sappy").
 - **Instruments.** Each program played is an MP2K rhythm voice (type
   `0x80`, 128 sub-voices) so every key plays its own region's sample at its
   own root (sub-voice key `60 + key - root`); region pan is a forced pan.
+  Dual Strike's PSG square and noise (Kindle's theme) play made-up
+  DirectSound samples (a square of the region's duty, an LFSR noise), so
+  the themes never use the GB sound channels AW2's sound effects share.
   Samples (IMA-ADPCM, 22 kHz) are decoded, low-passed and resampled to AW2's
   mixing rate (13379 Hz; a loop keeps a whole number of samples and the
   rate follows it) and stored 8-bit; one copy per sample. Envelopes: Dual

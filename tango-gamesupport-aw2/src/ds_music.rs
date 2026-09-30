@@ -575,6 +575,54 @@ fn convert_sample(s: &Sample) -> Wave {
     }
 }
 
+/// Keys of the made-up PSG samples in the wave cache.
+const PSG_SQUARE: u16 = 0xFFFE;
+const PSG_NOISE: u16 = 0xFFFD;
+/// Middle C (MP2K's key 60 at a sample's own rate).
+const MIDDLE_C: f64 = 261.625_565_3;
+
+/// Dual Strike's PSG square, duty `(d + 1) / 8`: one 64-sample period that
+/// sounds middle C at its rate (quieter than full scale, as the DS's PSG).
+fn psg_square(d: u16) -> Wave {
+    let high = 8 * (d as usize + 1);
+    Wave {
+        data: (0..64).map(|i| if i < high { 48 } else { -48 }).collect(),
+        rate: MIDDLE_C * 64.0,
+        loop_start: Some(0),
+    }
+}
+
+/// Dual Strike's PSG noise: a looped stretch of a 15-bit LFSR's output.
+fn psg_noise() -> Wave {
+    let mut lfsr: u16 = 0x7FFF;
+    let data = (0..8192)
+        .map(|_| {
+            let bit = (lfsr ^ (lfsr >> 1)) & 1;
+            lfsr = (lfsr >> 1) | (bit << 14);
+            if lfsr & 1 != 0 { 40 } else { -40 }
+        })
+        .collect();
+    Wave { data, rate: MIX_RATE, loop_start: Some(0) }
+}
+
+/// An MP2K sample: header (type, loop flag, rate * 1024, loop start,
+/// length), the 8-bit data and one more sample for the mixer's
+/// interpolation (the loop's first, or silence).
+fn wave_bytes(w: &Wave) -> Vec<u8> {
+    let mut h = Vec::with_capacity(16 + w.data.len() + 1);
+    h.extend_from_slice(&0u16.to_le_bytes());
+    h.extend_from_slice(&(if w.loop_start.is_some() { 0x4000u16 } else { 0 }).to_le_bytes());
+    h.extend_from_slice(&((w.rate * 1024.0).round() as u32).to_le_bytes());
+    h.extend_from_slice(&(w.loop_start.unwrap_or(0) as u32).to_le_bytes());
+    h.extend_from_slice(&(w.data.len() as u32).to_le_bytes());
+    h.extend(w.data.iter().map(|&x| x as u8));
+    h.push(match w.loop_start {
+        Some(l) => w.data[l] as u8,
+        None => 0,
+    });
+    h
+}
+
 // --- Envelopes and volumes --------------------------------------------------------
 
 /// Dual Strike's volume curve: `(v / 127)^2`, linear.
@@ -1118,30 +1166,30 @@ fn build() -> Option<Music> {
                 let mut v = [0u8; 12];
                 let pan = if r.pan != 64 { 0x80 | (0x40 + r.pan as i32 - 64).clamp(0, 0x7F) as u8 } else { 0 };
                 match r.kind {
-                    1 => {
+                    1..=3 => {
+                        // PCM regions play their sample; Dual Strike's PSG
+                        // square (duty 0..6 of 8) and noise play a sample
+                        // made for them, so everything goes through MP2K's
+                        // DirectSound channels (no GB channels).
                         let arc = arcs.get(r.arc as usize).copied().unwrap_or(0xFFFF);
-                        let key = (arc, r.wave);
+                        let key = match r.kind {
+                            1 => (arc, r.wave),
+                            2 => (PSG_SQUARE, r.wave.min(6)),
+                            _ => (PSG_NOISE, 0),
+                        };
                         let at = match waves.get(&key) {
                             Some(&w) => w,
                             None => {
-                                let Some(s) = pack_file(&format!("sound/wave/{arc}")).and_then(|f| sample(f, r.wave)) else {
+                                let w = match r.kind {
+                                    1 => pack_file(&format!("sound/wave/{arc}")).and_then(|f| sample(f, r.wave)).map(|s| convert_sample(&s)),
+                                    2 => Some(psg_square(key.1)),
+                                    _ => Some(psg_noise()),
+                                };
+                                let Some(w) = w else {
                                     sub.extend_from_slice(&voice_silent);
                                     continue;
                                 };
-                                let w = convert_sample(&s);
-                                let mut h = Vec::with_capacity(16 + w.data.len() + 1);
-                                h.extend_from_slice(&0u16.to_le_bytes());
-                                h.extend_from_slice(&(if w.loop_start.is_some() { 0x4000u16 } else { 0 }).to_le_bytes());
-                                h.extend_from_slice(&((w.rate * 1024.0).round() as u32).to_le_bytes());
-                                h.extend_from_slice(&(w.loop_start.unwrap_or(0) as u32).to_le_bytes());
-                                h.extend_from_slice(&(w.data.len() as u32).to_le_bytes());
-                                h.extend(w.data.iter().map(|&x| x as u8));
-                                let next = match w.loop_start {
-                                    Some(l) => w.data[l] as u8,
-                                    None => 0,
-                                };
-                                h.push(next);
-                                let at = blob.put(&h);
+                                let at = blob.put(&wave_bytes(&w));
                                 waves.insert(key, at);
                                 at
                             }
@@ -1151,27 +1199,6 @@ fn build() -> Option<Music> {
                         v[3] = pan;
                         v[4..8].copy_from_slice(&at.to_le_bytes());
                         v[8..12].copy_from_slice(&adsr(&r));
-                    }
-                    2 => {
-                        // PSG square: MP2K's square channel 2, duty to the
-                        // nearest of 12.5 / 25 / 50 / 75 %.
-                        v[0] = 0x02;
-                        v[1] = k;
-                        v[3] = pan;
-                        let duty = match r.wave {
-                            0 => 0u32,
-                            1 | 2 => 1,
-                            3 | 4 => 2,
-                            _ => 3,
-                        };
-                        v[4..8].copy_from_slice(&duty.to_le_bytes());
-                        v[8..12].copy_from_slice(&[0, 0, (15.0 * square(r.sustain)).round() as u8, 2]);
-                    }
-                    3 => {
-                        v[0] = 0x04;
-                        v[1] = k;
-                        v[3] = pan;
-                        v[8..12].copy_from_slice(&[0, 0, (15.0 * square(r.sustain)).round() as u8, 2]);
                     }
                     _ => {
                         sub.extend_from_slice(&voice_silent);
