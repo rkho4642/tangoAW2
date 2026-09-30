@@ -152,3 +152,30 @@ def check(g, chart, armies, piperunners=()):
             if len(run) < 4 or not ok:
                 bad.append(f"army {a}: a Piperunner from {s} has nothing to do ({len(run)} cells)")
     return bad
+
+
+def beach_balance(g):
+    """Per army: (its beaches, the distance from its HQ to the nearest beach
+    of another army). A beach is an army's when that army's HQ is strictly
+    the nearest to it (Manhattan); beaches as near to two HQs are shared."""
+    hqs = {g.owner(*c): c for c in g.cells() if g.kind(*c) == HQ}
+    dist = lambda a, b: abs(a[0] - b[0]) + abs(a[1] - b[1])
+    mine = {a: [] for a in hqs}
+    for c in g.cells():
+        if g.kind(*c) != SHOAL:
+            continue
+        d = sorted((dist(c, h), a) for a, h in hqs.items())
+        if len(d) == 1 or d[0][0] < d[1][0]:
+            mine[d[0][1]].append(c)
+    out = {}
+    for a, h in hqs.items():
+        theirs = [c for b, cs in mine.items() if b != a for c in cs]
+        out[a] = (len(mine[a]), min((dist(h, c) for c in theirs), default=None))
+    return out
+
+
+def symmetric_armies(armies):
+    """The armies a Dual Strike map's symmetry maps onto each other: all but
+    army 3 of a 3P map (on the mirror line) and Black Hole in the middle of a
+    5P map."""
+    return {2: [1, 2], 3: [1, 2], 4: [1, 2, 3, 4], 5: [1, 2, 3, 4]}[armies]

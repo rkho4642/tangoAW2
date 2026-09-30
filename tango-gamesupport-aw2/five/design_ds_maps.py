@@ -50,6 +50,21 @@ def mirror_xy(q):
     return top + [[c.translate(FLIP_Y) for c in r] for r in top[:n][::-1]]
 
 
+def beach(g, cells, sym):
+    """Beaches placed by hand at `cells` (x, y) and at their images under the
+    map's symmetry (`sym`: 'turn', 'x' or 'xy'), so every army gets the same
+    landings."""
+    h, w = len(g), len(g[0])
+    for x, y in cells:
+        images = {(x, y), {'turn': (w - 1 - x, h - 1 - y), 'x': (w - 1 - x, y), 'xy': (w - 1 - x, y)}[sym]}
+        if sym == 'xy':
+            images |= {(x, h - 1 - y), (w - 1 - x, h - 1 - y)}
+        for X, Y in images:
+            assert g[Y][X] in '.f~,', ('beach on', g[Y][X], X, Y)
+            g[Y][X] = ','
+    return g
+
+
 def draw(emit):
     # ==== The Wasteland set ==================================================
     ARMY = [1, 1, 2, 5, 6, 10, 9]
@@ -179,6 +194,9 @@ def draw(emit):
         "~,,,,,~~~~~~~",
         "~~~~~~~~~~~~~",
     ], "~~~~~~.tRt.~~~~~~")
+    # Landings: facing the strait and the middle isle, and on the west
+    # coast by the HQ; the rest of the east coasts is cliff.
+    g = beach(g, [(8, 9), (11, 10), (1, 9), (1, 10)], 'turn')
     emit('Coral Strait', {1: NAVAL, 2: NAVAL}, g, armies=2, tab=3, colours=(1, 2))
 
     # Trident Isles (3P, 29x20): three home islands round a middle isle with
@@ -206,6 +224,9 @@ def draw(emit):
         "~~~~~~~~~~~,,,",
         "~~~~~~~~~~~~r~",
     ], "~~~,t.^.cIIIZBR3BAP~")
+    # Landings: each home island faces the middle isle, Green Earth's the
+    # two others.
+    g = beach(g, [(8, 4), (9, 13)], 'x')
     emit('Trident Isles', {1: NAVAL, 2: NAVAL, 3: NAVAL}, g, armies=3, tab=5, colours=(1, 2, 3))
 
     # Harbor Cross (4P, 29x29): four corner islands inside a sea ring; each
@@ -228,6 +249,9 @@ def draw(emit):
         "~~~~~~~~~~~..^R",
         "~~~~~r~~~~,RRRR",
     ])
+    # Landings: each corner island faces the channel, the middle isle
+    # takes a Lander at every corner.
+    g = beach(g, [(8, 5), (11, 11)], 'xy')
     emit('Harbor Cross', {a: NAVAL for a in range(1, 5)}, g, armies=4, tab=6, colours=(1, 2, 3, 4))
 
     # Coral Crown (5P, 29x29): four corner islands and Black Hole's middle
@@ -250,4 +274,7 @@ def draw(emit):
         "c...,~~~~~.I.RR",
         "..t.,~~r~~.ZBR5",
     ])
+    # Landings: each corner island faces its side islet and the top or
+    # bottom islet; Black Hole's island at its four corners.
+    g = beach(g, [(4, 8), (5, 8), (8, 6), (8, 7), (10, 11), (11, 10)], 'xy')
     emit('Coral Crown', {**{a: NAVAL for a in range(1, 5)}, 5: [1, 1, 2, 5, 9, 23]}, g)

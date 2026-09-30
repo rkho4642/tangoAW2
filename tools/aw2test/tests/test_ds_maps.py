@@ -165,7 +165,17 @@ def check_map(ctx, g, name):
     bad = traverse.check(grid, chart, range(1, m["armies"] + 1),
                          [(a, x, y) for a, x, y, t in units if t == PIPERUNNER])
     ctx.check(not bad, f"{name}: every army can get everywhere, in play ({len(bad)} failures: {bad[:6]})")
+    beach_check(ctx, name, grid, m["armies"])
     return m, w, h
+
+
+def beach_check(ctx, name, grid, armies):
+    """Every army the map's symmetry maps onto another has as many beaches,
+    and an enemy beach as far from its HQ."""
+    bal = traverse.beach_balance(grid)
+    ctx.log(f"{name}: beaches (count, HQ to nearest enemy beach) per army {bal}")
+    same = {bal[a] for a in traverse.symmetric_armies(armies)}
+    ctx.check(len(same) == 1, f"{name}: every army gets the same beaches ({bal})")
 
 
 def stitch(ctx, g, name, w, h):
@@ -333,3 +343,4 @@ def ds_maps_traversal_static(ctx):
         bad = traverse.check(grid, chart, range(1, m["armies"] + 1),
                              [(a, x, y) for a, x, y, t in units if t == PIPERUNNER])
         ctx.check(not bad, f"{name}: every army can get everywhere ({len(bad)} failures: {bad[:6]})")
+        beach_check(ctx, name, grid, m["armies"])

@@ -81,7 +81,12 @@ SHOAL = {'shlh': 0x10, 'lhsh': 0x50, 'hlhs': 0x2E, 'hshl': 0x32,
          'slhs': 0xAF, 'sshl': 0xB0, 'hlss': 0xCF, 'hssl': 0xD0,
          'slls': 0xB6, 'ssll': 0xB7, 'llss': 0xD6, 'lssl': 0xD7,
          'ssls': 0x8F, 'slss': 0x92, 'sssl': 0x93, 'lsss': 0xEF,
-         'hhll': 0x31, 'hllh': 0x2F, 'llhh': 0x4F, 'lhhl': 0x51}
+         'hhll': 0x31, 'hllh': 0x2F, 'llhh': 0x4F, 'lhhl': 0x51,
+         # rarer ones: a lone beach cell, and strips meeting beach at a corner
+         'slll': 0x55, 'lsll': 0x53, 'llsl': 0x75, 'llls': 0x54,
+         'lhhh': 0x50, 'hlhh': 0x2E, 'hhlh': 0x10, 'lhhs': 0xCD, 'lshh': 0xCE,
+         'slhh': 0xAF, 'shhl': 0xB0, 'hlsh': 0xCF, 'hhsl': 0xD0, 'hhls': 0x6D,
+         'hslh': 0x6E, 'lshs': 0xEF}
 UNDERLAY, RIM = 0x1A4, 0x1A5
 # anchor char -> (rows of tiles, anchor column, anchor row)
 INVENTIONS = {

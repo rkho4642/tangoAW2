@@ -299,6 +299,13 @@ Eight Versus maps for the Dual Strike pack, drawn by `five/design_ds_maps.py`
   stop ships, so the seas meet round a ring of sea where needed), no base
   or port is boxed in, and every Piperunner has something in range on its
   pipe.
+- **Beaches where they matter.** On the sea maps beach stretches are placed
+  by hand (`beach` in `design_ds_maps.py`, mirrored with the map): landings
+  facing each neighbour's island, the Com Tower isles and the middle isle,
+  and near each HQ, with cliff coast between so a beach is worth holding.
+  The test checks that the armies the symmetry maps onto each other get as
+  many beaches and an enemy beach as far from their HQ (`beach_balance`;
+  a 3P map's army 3, on the mirror line, and Black Hole are left out).
 - **Piperunner bases behind seams.** Each army's Piperunner base touches
   its pipe only through a pipe seam (in `five/map.py` a seam's straight
   run may end at a base: `B Z I I`). A base offers the Piperunner only
