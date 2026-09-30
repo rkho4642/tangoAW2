@@ -1,7 +1,7 @@
 //! Black Hole's Black Crystal and Black Obelisk, after Advance Wars: Dual
 //! Strike: structures that heal and resupply Black Hole's units at the start
 //! of its turn (Crystal: units within 2 spaces, +2 HP; Obelisk: within 4
-//! spaces of it, +4 HP), and that can be attacked and destroyed.
+//! spaces of it, +2 HP, as in Dual Strike), and that can be attacked and destroyed.
 //!
 //! They ride on two of AW2's own inventions, so the game registers, targets
 //! and destroys them: the Crystal is a minicannon (1 tile) and the Obelisk a
@@ -292,7 +292,7 @@ fn heal(core: &mut Core) {
         let (x, y) = (core.raw_read_8(e, -1) as i32, core.raw_read_8(e + 1, -1) as i32);
         match structure(core, e) {
             Some(Structure::Crystal) => sources.push((x, y, x, y, 2, 20)),
-            Some(Structure::Obelisk) => sources.push((x, y, x + 2, y + 2, 4, 40)),
+            Some(Structure::Obelisk) => sources.push((x, y, x + 2, y + 2, 4, 20)),
             None => {}
         }
     }

@@ -54,7 +54,7 @@ def watch_heal(ctx, g, prefix):
     ctx.eq(g.e.read(0x0203FD84, 1)[0], 0, "the animation is over")
     ctx.require(hp is not None, "units read during the heal")
     ctx.eq(hp[(8, 7)], 60, "Crystal: +2 HP within 2")
-    ctx.eq(hp[(20, 9)], 80, "Obelisk: +4 HP within 4")
+    ctx.eq(hp[(20, 9)], 60, "Obelisk: +2 HP within 4 (Dual Strike)")
     ctx.eq(hp[(2, 15)], 40, "far away: nothing")
     return shows
 

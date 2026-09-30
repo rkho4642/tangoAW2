@@ -305,7 +305,7 @@ so real minicannons and Black Cannons run the game's code unchanged.
 - **Healing.** A trap at `sub_0803EAD0` (turn start, before inventions
   act): if the army moving now has colour 5 (Black Hole), each of its
   units within 2 of a live Crystal or 4 of a live Obelisk's footprint gets
-  +20 or +40 (of 100) HP, capped at 100, and full ammo and fuel from the
+  +20 (of 100) HP, as in Dual Strike, capped at 100, and full ammo and fuel from the
   unit table `0x085D5ABC` (+0x0B, +0x10). Only that army's own unit ids are
   walked, so enemies and allies are never healed.
 - **Panel.** The terrain panel (`sub_0802A8DC`, cell in r8/r5) gets the
