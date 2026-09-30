@@ -64,7 +64,6 @@ const MAX_INVENTIONS: usize = 15;
 const KEY_A: u32 = 1;
 const KEY_SELECT: u32 = 1 << 2;
 const KEY_UP: u32 = 1 << 6;
-const KEY_DOWN: u32 = 1 << 7;
 
 /// One placeable invention: its label, the tile carrying its class (the
 /// anchor), and its footprint rows starting at (anchor.x + dx, anchor.y + dy).
@@ -324,17 +323,6 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
         keys &= !KEY_SELECT;
     }
     let terrain_bar = core.raw_read_8(E_BAR, -1) == 0;
-    // The Com Tower's army, stepped by the tower's own entry.
-    if bar_open && terrain_bar && crate::com_tower::active(core) {
-        let window = core.raw_read_8(E_TERRAIN_WINDOW, -1) as u32;
-        if let Some(at) = crate::design_bar::highlighted_tower(core, window) {
-            if pressed & (KEY_UP | KEY_DOWN) != 0 {
-                crate::design_bar::step_tower_owner(core, at, pressed & KEY_DOWN != 0);
-            }
-            keys &= !(KEY_UP | KEY_DOWN);
-            pressed &= !(KEY_UP | KEY_DOWN);
-        }
-    }
     // While a bar is open the tool is only chosen on A: read the
     // highlighted entry. On the map, the chosen tool.
     let word = if bar_open && terrain_bar {
@@ -349,10 +337,7 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
         }
     };
     if bar_open && terrain_bar && pressed & KEY_A != 0 {
-        // The Com Tower's entry carries its army (owner << 5) too.
-        let window = core.raw_read_8(E_TERRAIN_WINDOW, -1) as u32;
-        let full = crate::design_bar::highlighted_tower(core, window).map(|at| core.raw_read_16(at, -1));
-        core.raw_write_16(PICKED, -1, full.unwrap_or(word));
+        core.raw_write_16(PICKED, -1, word);
     }
     // In the bars UP/DOWN (and SELECT) step through the armies: neutral,
     // Orange Star, Blue Moon, Green Earth, Yellow Comet and Black Hole
@@ -376,8 +361,9 @@ pub fn editor_tick(core: &mut Core, keys: u32, prev: u32) -> u32 {
         let x = core.raw_read_16(E_CURSOR_X, -1) as i32;
         let y = core.raw_read_16(E_CURSOR_Y, -1) as i32;
         if structure_at(core, x, y).is_none() {
-            // The army is in the picked entry (class | owner << 5).
-            let owner = (core.raw_read_16(PICKED, -1) >> 5) as u8 & 7;
+            // The army is in the picked tool (class | owner << 5), as the
+            // bar showed it (crate::design_bar::is_property).
+            let owner = core.raw_read_8(E_TERRAIN, -1) >> 5;
             set_tile(core, x, y, crate::com_tower::tile_for(owner));
         }
         keys &= !KEY_A;

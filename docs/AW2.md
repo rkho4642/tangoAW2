@@ -348,6 +348,33 @@ scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203FF00.. (earlier features). `factory.rs` has a test that no two traps share
 an address.
 
+Com Towers (`com_tower.rs`, `design_bar.rs`): a Lab is a Com Tower in Versus
+and in the Design Room. In battle its sprite comes from `gProperty`
+(0x03003150, the buildings `RecountArmyProperties` lists; `sub_0803F990` draws
+them), so the tower stays in that list; only in the editor, which tangoAW2
+draws the towers in itself (OBJ tiles 524..531) and where the towers skip the
+editor's property bookkeeping, is a Lab left out of it (trap `0x08021C4C`;
+0.3.0 and 0.3.1 left it out in battle too, and no tower was drawn on the
+battle map). Capturing one never ends the battle (`0x0804281E`). In the
+terrain bar the Tower entry (word `0x14 | owner << 5`, tiles `0x1D9..0x1DD`,
+Black Hole's `0x1B9`) is one of the editor's properties: the editor's "is a
+property" (`sub_0800C7E8`) answers 1 for a Lab to the bar's and the Feature
+panel's twelve calls (checked by return address; its map-cell callers
+`sub_0800C840`/`sub_0800C608` are left alone), so UP, DOWN and SELECT change
+the bar's army on it (neutral, the four armies, Black Hole) and it is redrawn
+in that army's colours. The army change is committed by `sub_080077EC`
+(`0x0800701A`), which rewrites the list's five property entries (9..13) and
+then places them among the shown entries (`0x0200B0D0`, 0x1C each, word at
++4) by the highlighted word's kind; a trap after the list is rewritten
+(`0x0800782A`) gives the tower's list entry the new army too, and with the
+tower highlighted writes only its shown entry and returns (`0x080078C2`),
+since the game's placement has no case for a Lab. The list builder's trap
+(`0x080079B2`) builds the tower for the builder's army (r5). A on the map
+places the picked tool's army (`0x0200B02A`, class | owner << 5). 0.3.1 kept
+its own army for the tower entry, which the shown entry, the picked tool and
+the placed tile did not follow: the bar showed and placed the army it was
+opened with.
+
 The Oozium (`oozium.rs`, the Dual Strike rule): it has no weapon (no Fire, no
 counter-attack). Its move takes in the squares next to it holding a unit of
 another team, any unit (air units and ships in port too) on a square it can
@@ -384,3 +411,7 @@ fires every CO's COP and SCOP, and replays netplay runs on two rollback peers.
   have colours for four armies; Black Hole's buildings show there as
   neutral grey. The editor's Intel screen counts the four armies and
   neutral, not Black Hole.
+- Com Towers in the Design Room are not counted in the editor's "Surplus"
+  (its 60-property limit) nor on its Intel screen (cities, bases, airports
+  and ports only); the overview map shows them in their army's colour
+  (Black Hole's dark).

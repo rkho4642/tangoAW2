@@ -126,7 +126,6 @@ pub fn sync(core: &mut Core) {
         // The editor opens on a new map: Normal until one is loaded or
         // switched (a battle's biome must not carry over).
         crate::wasteland::set_biome(core, crate::wasteland::NORMAL);
-        core.raw_write_8(crate::design_bar::TOWER_OWNER, -1, 0);
         core.raw_write_8(EDITOR_READY, -1, 1);
     }
     for (at, old, new) in EDITOR_HALVES {

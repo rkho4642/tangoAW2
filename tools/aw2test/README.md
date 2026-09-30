@@ -70,6 +70,12 @@ decompilation. Its tables come from the AW2 ROM file (units, COs, terrain) and,
 in `ds` mode, the damage chart from the Dual Strike .nds (overlay 0). Tests also
 pin base damage to the published charts (e.g. Fighter vs B Copter 100 / 120).
 
+The Design Room's editor has its own driver, `aw2test/editor.py` (`Editor(emu)`:
+`boot`, `place(kind, owner, x, y)` from the terrain bar, `place_unit`,
+`set_wasteland`, `save`/`load` through the File menu); see
+`tests/test_design_com_tower.py`, which builds a map there, saves it, loads it
+back and plays it in Versus.
+
 ## How the driver works
 
 `aw2_script <rom> - --save <sav>` reads commands from stdin and answers each

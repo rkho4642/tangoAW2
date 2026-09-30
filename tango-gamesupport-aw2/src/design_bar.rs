@@ -209,13 +209,9 @@ pub fn list_built(core: &mut Core) {
     for (k, e) in ENTRIES_ADDED.iter().take(added as usize).enumerate() {
         list.insert(at + k, *e);
     }
-    // The Com Tower keeps the army last stepped to, else the bar's.
-    let kept = core.raw_read_8(TOWER_OWNER, -1) as u16;
-    let owner = if (1..=6).contains(&kept) {
-        kept - 1
-    } else {
-        (core.raw_read_8(BAR_OWNER, -1) as u16).min(5)
-    };
+    // The Com Tower is built for the bar's army (the builder's owner
+    // argument, still in r5), like the editor's own properties.
+    let owner = (core.gba().cpu().gpr(5) as u16).min(5);
     for e in list.iter_mut() {
         if e.0 == TOWER_WORD {
             *e = tower_entry(owner);
@@ -227,35 +223,92 @@ pub fn list_built(core: &mut Core) {
     }
 }
 
-/// The army the editor's bars place for (0 neutral .. 5 Black Hole).
-const BAR_OWNER: u32 = 0x0200_B02E;
-
-/// The Com Tower's army while the editor is open (owner + 1; 0: the bar's
-/// army, [`BAR_OWNER`]), kept when the bar is rebuilt.
-pub const TOWER_OWNER: u32 = 0x0203_FFAD;
-
 /// The Com Tower's entry for `owner`.
 fn tower_entry(owner: u16) -> (u16, u16) {
     (TOWER_WORD | owner << 5, crate::com_tower::tile_for(owner as u8))
 }
 
-/// The bar's Com Tower entry, if it is the highlighted one (its list
-/// address).
-pub fn highlighted_tower(core: &Core, window: u32) -> Option<u32> {
-    let at = LIST + 4 * ((window + 4) % entries(core));
-    (core.raw_read_16(at, -1) & 0x11F & !0xE0 == TOWER_WORD).then_some(at)
+/// `sub_0800C7E8(class)`, the editor's "is this a property" (1, 2 for an
+/// HQ, 0 not), which the terrain bar asks of each shown entry (UP/DOWN and
+/// SELECT change the army only on a property, and only property entries
+/// are redrawn in the new army's colours) and the Feature panel of the
+/// picked tool. A Lab is none, so the tower's entry kept the army the bar
+/// was opened with, and its own army stepping (0.3.1) left the bar's
+/// entries, the picked tool and the placed tile disagreeing. With the
+/// towers on, a Lab is a property for those callers (the return
+/// addresses below; the editor's map-cell checks, `sub_0800C840` and
+/// `sub_0800C608`, are left alone).
+pub const IS_PROPERTY: u32 = 0x0800_C7E8;
+const IS_PROPERTY_BAR_CALLS: [u32; 12] = [
+    0x0800_22D8, // Feature panel (the picked tool)
+    0x0800_2348,
+    0x0800_23D0,
+    0x0800_2440,
+    0x0800_6BDA, // terrain bar: UP/DOWN changes the army
+    0x0800_6C50, //   and marks the property entries for redrawing
+    0x0800_6DEE, // terrain bar: scrolling
+    0x0800_6E4A,
+    0x0800_6F44,
+    0x0800_705C,
+    0x0800_70D8,
+    0x0800_71A8,
+];
+
+/// `sub_080077EC(word, owner)` commits a change of the bar's army (UP/DOWN
+/// or SELECT on a property entry, `0x0800701A`): it stores the owner
+/// (`+0x2E`), rewrites the five property entries of the list (9..13) from
+/// the owner table, and then puts them into the shown entries around the
+/// highlighted one, placed by the highlighted word's kind. Here, after the
+/// list is rewritten, r6 is the highlighted word. The tower's list entry
+/// takes the new army too; with the tower highlighted (a kind the game's
+/// placement has no case for: it would write the five over the wrong shown
+/// entries), only the shown tower entry changes and the function returns.
+pub const OWNER_CHANGED: u32 = 0x0800_782A;
+const OWNER_CHANGED_RETURN: u32 = 0x0800_78C2;
+const SHOWN: u32 = 0x0200_B0D0;
+const SHOWN_SIZE: u32 = 0x1C;
+const SHOWN_FIRST: u32 = 0x0200_B03A;
+const BAR_OWNER: u32 = 0x0200_B02E;
+
+/// Trap at [`OWNER_CHANGED`].
+pub fn owner_changed(core: &mut Core) {
+    if !crate::design::in_map_editor(core) || !crate::com_tower::active(core) {
+        return;
+    }
+    let owner = (core.raw_read_8(BAR_OWNER, -1) as u16).min(5);
+    let (word, tile) = tower_entry(owner);
+    for i in 0..entries(core) {
+        if core.raw_read_16(LIST + 4 * i, -1) & 0x11F & !0xE0 == TOWER_WORD {
+            core.raw_write_16(LIST + 4 * i, -1, word);
+            core.raw_write_16(LIST + 4 * i + 2, -1, tile);
+        }
+    }
+    let highlighted = core.gba().cpu().gpr(6) as u16;
+    if highlighted & 0x11F & !0xE0 != TOWER_WORD {
+        return;
+    }
+    let mut shown = core.raw_read_16(SHOWN_FIRST, -1) as i16 as i32 + 4;
+    if shown > 9 {
+        shown -= 10;
+    }
+    core.raw_write_16(SHOWN + SHOWN_SIZE * shown as u32 + 4, -1, word);
+    core.gba_mut().cpu_mut().set_thumb_pc(OWNER_CHANGED_RETURN);
 }
 
-/// UP/DOWN on the highlighted Com Tower: the editor switches armies only on
-/// its own property entries, so the tower's entry steps through neutral,
-/// the four armies and Black Hole itself.
-pub fn step_tower_owner(core: &mut Core, at: u32, forward: bool) {
-    let owner = (core.raw_read_16(at, -1) >> 5) & 7;
-    let next = if forward { (owner + 1) % 6 } else { (owner + 5) % 6 };
-    core.raw_write_8(TOWER_OWNER, -1, next as u8 + 1);
-    let (w, t) = tower_entry(next);
-    core.raw_write_16(at, -1, w);
-    core.raw_write_16(at + 2, -1, t);
+/// Trap at [`IS_PROPERTY`].
+pub fn is_property(core: &mut Core) {
+    let cpu = core.gba().cpu();
+    let (class, lr) = (cpu.gpr(0) as u32, cpu.gpr(14) as u32);
+    if class & 0x1F != TOWER_WORD as u32
+        || !IS_PROPERTY_BAR_CALLS.contains(&(lr.wrapping_sub(5)))
+        || !crate::design::in_map_editor(core)
+        || !crate::com_tower::active(core)
+    {
+        return;
+    }
+    let cpu = core.gba_mut().cpu_mut();
+    cpu.set_gpr(0, 1);
+    cpu.set_thumb_pc(lr & !1);
 }
 
 /// The bar's sprite loader (`sub_0803F6BC(kind, variant, dest, load)`).

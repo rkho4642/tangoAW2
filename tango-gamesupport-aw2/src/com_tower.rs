@@ -114,16 +114,21 @@ fn firepower_done(core: &mut Core) {
     }
 }
 
-/// `RecountArmyProperties` lists each army's key properties in `gProperty`
-/// (0x03003150): its HQs, and its Labs, which count as HQs: capturing one
-/// defeats its army (the campaign's Lab rule; in Versus too). A Com Tower
-/// is no such thing, so with the towers on a Lab is left out of the list
-/// (r0 = its class, about to be stored; 0x08021C5A moves on to the next
-/// cell without adding it).
+/// `RecountArmyProperties` lists the map's buildings in `gProperty`
+/// (0x03003150: class, x, y; at most 92), which the map's building sprites
+/// are drawn from (`sub_0803F990`) and a defeated army's buildings are
+/// handed over from. In the Design Room's editor tangoAW2 draws the towers
+/// itself ([`append_editor`]) and places them without the editor's
+/// property bookkeeping (its "Surplus" count and that list), so there a Lab
+/// is left out of the list (r0 = its class, about to be stored; 0x08021C5A
+/// moves on to the next cell without adding it). In battle the towers stay
+/// in it: 0.3.0 and 0.3.1 left them out there too, which drew no tower on
+/// the battle map. (Capturing a tower not ending the battle is
+/// [`captured`]'s.)
 const KEY_PROPERTY: u32 = 0x0802_1C4C;
 const NEXT_CELL: u32 = 0x0802_1C5A;
 fn key_property(core: &mut Core) {
-    if active(core) && core.gba().cpu().gpr(0) as u8 & 0x1F == LAB {
+    if active(core) && crate::design::in_map_editor(core) && core.gba().cpu().gpr(0) as u8 & 0x1F == LAB {
         core.gba_mut().cpu_mut().set_thumb_pc(NEXT_CELL);
     }
 }

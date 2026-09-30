@@ -94,6 +94,8 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (crate::design_bar::ICON_LOADER, Box::new(crate::design_bar::icon_loader)),
         (crate::design_bar::ICON_LOADED, Box::new(crate::design_bar::icon_loaded)),
         (crate::design_bar::BAR_NAME, Box::new(crate::design_bar::bar_name)),
+        (crate::design_bar::IS_PROPERTY, Box::new(crate::design_bar::is_property)),
+        (crate::design_bar::OWNER_CHANGED, Box::new(crate::design_bar::owner_changed)),
         (
             crate::design_bar::ICON_PALETTE,
             Box::new(crate::design_bar::icon_palette),
