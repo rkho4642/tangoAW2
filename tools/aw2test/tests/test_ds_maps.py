@@ -15,7 +15,7 @@ import shutil
 import struct
 import sys
 
-from aw2test import paths, ram
+from aw2test import paths, ram, traverse
 from aw2test import rom as romlib
 from aw2test.emu import Emu
 from aw2test.game import MAP_TAB, SELECT_MODE_CURSOR, SELECT_MODE_VERSUS, Game, NavError
@@ -43,6 +43,8 @@ BIOME = 0x03004493
 GMAP = 0x0201E450
 DAY = 0x03004080
 LAB = 0x14
+PIPERUNNER = 9
+CO_TABLE_POOL = 0x08042DDC
 IMAGES = os.environ.get("AW2TEST_MAP_IMAGES")
 
 
@@ -155,6 +157,14 @@ def check_map(ctx, g, name):
                   for y in range(h) for x in range(w)), f"{name}: every Com Tower starts neutral")
     have = sorted((u["army"], u["x"], u["y"], u["type"]) for u in g.units())
     ctx.eq(have, sorted(units), f"{name}: the pre-deployed units")
+    # Every army gets everywhere, with the game's own movement chart (the one
+    # army 1's CO moves by: tangoAW2's copy with the pack, pipe row included).
+    chart_at = e.u32(e.u32(CO_TABLE_POOL) + romlib.CO_RECORD * g.player(1)["co"] + 0x38 + 0x18)
+    chart = [list(e.read(chart_at + 32 * r, 32)) for r in range(8)]
+    grid = traverse.Grid(w, h, [classes[rows[y] + x] for y in range(h) for x in range(w)])
+    bad = traverse.check(grid, chart, range(1, m["armies"] + 1),
+                         [(a, x, y) for a, x, y, t in units if t == PIPERUNNER])
+    ctx.check(not bad, f"{name}: every army can get everywhere, in play ({len(bad)} failures: {bad[:6]})")
     return m, w, h
 
 
@@ -307,3 +317,19 @@ def ds_maps_hidden_without_pack(ctx):
         ctx.check(not found, f"{name} is not listed without the pack")
         ctx.shot(g, name.lower().replace(" ", "_"))
         g.e.close()
+
+
+@test(modes=("aw2",))
+def ds_maps_traversal_static(ctx):
+    """The same traversal check on five/map.py's build, with the movement
+    chart from the ROM file (no pack needed): ports reach ports, every island
+    has a beach, bases are not boxed in, Piperunner bases sit behind seams."""
+    rom = open(paths.aw2_rom(), "rb").read()
+    chart = traverse.aw2_chart(rom)
+    army5 = {0x1B4: 0xA8, 0x1B5: 0xAE, 0x1B6: 0xA6, 0x1B7: 0xAA, 0x1B8: 0xAB, 0x1B9: 0xB4}  # five_map::ARMY5_TILES
+    for name in MAPS:
+        m, w, h, tiles, units = built(name)
+        grid = traverse.Grid(w, h, [army5.get(t, rom[romlib.TILE_CLASS - romlib.ROM_BASE + t]) for t in tiles])
+        bad = traverse.check(grid, chart, range(1, m["armies"] + 1),
+                             [(a, x, y) for a, x, y, t in units if t == PIPERUNNER])
+        ctx.check(not bad, f"{name}: every army can get everywhere ({len(bad)} failures: {bad[:6]})")

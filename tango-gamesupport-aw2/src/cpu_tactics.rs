@@ -314,8 +314,38 @@ fn buy(core: &mut Core) {
     }
 }
 
+/// The build menu (`sub_0802D5E8`): the property's class sets which unit
+/// domains it builds (r4; a base's includes the Piperunner's pipe bit, 8,
+/// [`crate::roster`]), r3 still pointing at the cell's class. A base offers
+/// the Piperunner only while a pipe or an intact pipe seam is next to it, as
+/// the CPU buys it ([`next_to_pipes`]): once the seam joining a base to its
+/// pipe is broken (class 17), that base builds no more Piperunners.
+const BUILD_DOMAINS: u32 = 0x0802_D65E;
+const PIPE_DOMAIN: i32 = 8;
+fn build_domains(core: &mut Core) {
+    let cpu = core.gba().cpu();
+    let (mask, cell) = (cpu.gpr(4), cpu.gpr(3) as u32);
+    if !is_on(core) || mask & PIPE_DOMAIN == 0 {
+        return;
+    }
+    let Some(off) = cell.checked_sub(MAP + 0x1432) else { return };
+    let (w, h) = map_size(core);
+    let Some((x, y)) = (0..h).find_map(|y| {
+        let row = core.raw_read_16(ROWS + 2 * y as u32, -1) as u32;
+        (off >= row && off < row + w as u32).then(|| ((off - row) as i32, y))
+    }) else {
+        return;
+    };
+    if !next_to_pipes(core, x, y) {
+        core.gba_mut().cpu_mut().set_gpr(4, mask & !PIPE_DOMAIN);
+    }
+}
+
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
-    BUYS.iter().map(|&at| (at, Box::new(buy) as Box<dyn Fn(&mut Core)>)).collect()
+    let mut t: Vec<(u32, Box<dyn Fn(&mut Core)>)> =
+        BUYS.iter().map(|&at| (at, Box::new(buy) as Box<dyn Fn(&mut Core)>)).collect();
+    t.push((BUILD_DOMAINS, Box::new(build_domains)));
+    t
 }
 
 // --- Stealth and Black Boat ---------------------------------------------------

@@ -35,14 +35,17 @@ def menu_at(ctx, g, x, y, name):
 def build_menus(ctx):
     m = ctx.map()
     m.terrain(5, 5, "base", 1).terrain(7, 5, "airport", 1).terrain(9, 5, "port", 1)
+    m.terrain(5, 10, "base", 1).terrain(6, 10, "pipe")
     g = ctx.start(m, ["andy", "andy"])
     g.e.w32(g.player(1)["addr"], 90000)
-    base = menu_at(ctx, g, 5, 5, "base")
+    base = menu_at(ctx, g, 5, 10, "base")
+    lone = menu_at(ctx, g, 5, 5, "lone_base")
     air = menu_at(ctx, g, 7, 5, "airport")
     port = menu_at(ctx, g, 9, 5, "port")
     ctx.log(f"base {base}\nairport {air}\nport {port}")
     if ctx.mode == "ds":
-        ctx.eq(base, [1, 2, 6, 5, 3, 8, 4, 7, 10, 11, 14, 15, 9, 27], "base: the game's list with Megatank, Piperunner and Oozium")
+        ctx.eq(base, [1, 2, 6, 5, 3, 8, 4, 7, 10, 11, 14, 15, 9, 27], "base by a pipe: the game's list with Megatank, Piperunner and Oozium")
+        ctx.eq(lone, [1, 2, 6, 5, 3, 8, 4, 7, 10, 11, 14, 15, 27], "base with no pipe: no Piperunner")
         ctx.eq(air, [16, 17, 19, 20, 12, 13], "airport: with Stealth and Black Bomb")
         ctx.eq(port, [21, 22, 23, 24, 18, 26], "port: with Black Boat and Carrier")
     else:

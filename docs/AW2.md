@@ -274,24 +274,40 @@ Eight Versus maps for the Dual Strike pack, drawn by `five/design_ds_maps.py`
 
 | Id | Map | Armies, size | Tab | Look | What is on it |
 |---|---|---|---|---|---|
-| 0xC1 | Rust Basin | 2P, 23x15 | Vs. | Wasteland | a river with three bridges down the middle, a bay and beach each side, pipes with seams, 2 Com Towers, 2 Black Crystals |
-| 0xC2 | Dune Fork | 3P, 27x20 | 3P | Wasteland | a river forking between the three armies, bridges, bays, pipes with seams, 3 Com Towers (one between each pair of armies), 3 Crystals |
-| 0xC3 | Cinder Flats | 4P, 27x27 | 4P | Wasteland | four corners, rivers from four bays to a Black Obelisk ringed by 4 Crystals and 4 Com Towers, pipes with seams |
-| 0xC4 | Black Wastes | 5P, 29x29 | 5P | Wasteland | four corners round Black Hole's fortress: a Black Cannon facing north and one facing south, 2 Lasers, 4 minicannons, 4 Crystals; rivers, bays, pipes with seams, 4 Com Towers on the axes |
-| 0xC5 | Coral Strait | 2P, 25x17 | Vs. | AW2 | two islands across a strait, bridged to a middle isle with 2 Com Towers (and one on each island); each side's bases sit on a pipe that runs through the sea to the middle isle |
-| 0xC6 | Trident Isles | 3P, 29x20 | 3P | AW2 | three home islands round a middle isle with 3 Com Towers, a pipe from a base on each island to it |
-| 0xC7 | Harbor Cross | 4P, 27x27 | 4P | AW2 | four corner islands, a pipe from each one's base across the channel to the middle isle and its 4 Com Towers |
+| 0xC1 | Rust Basin | 2P, 25x17 | Vs. | Wasteland | a river with three bridges down the middle, a sea ring joining the two bays, beaches, a pipe along each coast, 2 Com Towers, 2 Black Crystals |
+| 0xC2 | Dune Fork | 3P, 29x22 | 3P | Wasteland | a river forking between the three armies, bridges, three bays joined by a sea ring, pipes, 3 Com Towers (one between each pair of armies), 3 Crystals |
+| 0xC3 | Cinder Flats | 4P, 29x29 | 4P | Wasteland | four corners inside a sea ring, rivers from four bays to a Black Obelisk ringed by 4 Crystals and 4 Com Towers, pipes |
+| 0xC4 | Black Wastes | 5P, 29x29 | 5P | Wasteland | four corners round Black Hole's fortress: a Black Cannon facing north and one facing south, 2 Lasers, 4 minicannons, 4 Crystals; rivers, lakes (no ports: they would not reach each other), pipes, 4 Com Towers on the axes |
+| 0xC5 | Coral Strait | 2P, 27x17 | Vs. | AW2 | two islands across a strait inside a sea ring, bridged to a middle isle with 2 Com Towers (and one on each island); each side's two bases sit on a pipe that runs through the sea to the middle isle |
+| 0xC6 | Trident Isles | 3P, 29x20 | 3P | AW2 | three home islands round a middle isle with 3 Com Towers and a beach north and south, a pipe from a base on each island to it |
+| 0xC7 | Harbor Cross | 4P, 29x29 | 4P | AW2 | four corner islands inside a sea ring, a pipe from each one's base across the channel to the middle isle, its 4 Com Towers and 4 beaches |
 | 0xC8 | Coral Crown | 5P, 29x29 | 5P | AW2 | four corner islands and Black Hole's middle island, a Com Tower on each of the four islets between them, reached by the corner islands' pipes |
 
 - **Fair.** The 2P maps turn about their centre, the 3P maps are mirrored
   left to right with army 3 on the middle line (the three HQs about as far
   from each other), the 4P and 5P maps are mirrored both ways (Black Hole,
   army 5, in the middle of the 5P ones). On a map every army but Black
-  Hole starts with the same properties (HQ, two bases, an airport, a port
-  (two on Cinder Flats), three cities) and units (two Infantry, a Mech, a
-  Recon, a Piperunner on its pipe, and on the Wasteland maps a Tank and
-  Artillery, on the sea maps a Lander and a Cruiser); Black Hole's middle
-  holds fewer, with its fortress or its ports.
+  Hole starts with the same properties (HQ, two bases, an airport, ports,
+  cities) and units (two Infantry, a Mech, a Recon, a Piperunner on its
+  pipe, and on the Wasteland maps a Tank and Artillery, on the sea maps a
+  Lander and a Cruiser); Black Hole's middle holds fewer, with its fortress
+  or its ports, and a Piperunner base too.
+- **Everyone gets everywhere.** Checked with the game's own movement chart
+  (`tools/aw2test/aw2test/traverse.py`): foot, treads and tires reach every
+  enemy HQ and Com Tower overland or by Lander (beach or port to beach or
+  port; foot every property too), ships reach every enemy port (bridges
+  stop ships, so the seas meet round a ring of sea where needed), no base
+  or port is boxed in, and every Piperunner has something in range on its
+  pipe.
+- **Piperunner bases behind seams.** Each army's Piperunner base touches
+  its pipe only through a pipe seam (in `five/map.py` a seam's straight
+  run may end at a base: `B Z I I`). A base offers the Piperunner only
+  while a pipe or an intact seam is next to it: the build menu
+  (`sub_0802D5E8`, trap at `0x0802D65E` in `cpu_tactics.rs`: the pipe
+  domain bit is dropped from the base's mask) as the CPU's buying already
+  did. A broken seam is rubble (walked on like plain, never a pipe), so
+  breaking the seam ends that base's Piperunners, and no Piperunner
+  crosses it.
 - **With the pack only.** Com Towers, Piperunners and the Wasteland look
   are the pack's, so these maps (`ds` in `five_map_data.rs`) are listed
   only when the pack is on (for a match, when both players have it) and the
@@ -308,9 +324,12 @@ Eight Versus maps for the Dual Strike pack, drawn by `five/design_ds_maps.py`
   header table the computer's turn reads has no entry for them).
 - Tests: `tools/aw2test/tests/test_ds_maps.py` opens each map from its tab
   (the list's preview checked tile by tile), checks every tile, owner and
-  unit against `five/map.py`'s build, photographs the whole map (screenshots
-  stitched as the cursor sweeps it), plays six all-CPU days on each (two in
-  netplay), and checks the maps are not listed without the pack.
+  unit against `five/map.py`'s build and the traversal check on the map in
+  play (and on the build, `ds_maps_traversal_static`), photographs the whole
+  map (screenshots stitched as the cursor sweeps it), plays six all-CPU days
+  on each (two in netplay), and checks the maps are not listed without the
+  pack; `test_pipe_seams.py` checks the build menu and the CPU against intact
+  and broken seams.
 
 ## Black Crystal and Black Obelisk (`obelisk.rs`, `five/obelisk_art.py`)
 
@@ -384,7 +403,7 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 | Units | `roster.rs`, `ds_units.rs`, `unit_actions.rs`, `oozium.rs`, `unit_names.rs`, `ds_unit_art.rs`, `ds_unit_pictures.rs`, `ds_battle.rs`, `ds_backdrop.rs`, `map_anim.rs` | Unit table grown to 64 rows (0x08680000), 7 new units (ids 4, 9, 12, 13, 18, 26, 27), Dual Strike's stats and damage chart, their actions (Hide, Explode, Repair, Carrier; the Oozium eats: no weapon, moving onto a unit of another team next to it destroys that unit with the game's own destruction, and no CO, power, silo or Black Bomb touches it), map art, their own information pictures (build menu panel, R on a unit) in each army's colours, every unit in the Intel unit list, battle scenes with Dual Strike's figures, effects and volleys, Dual Strike's battle backgrounds (a Piperunner on its pipe; every battle on a Wasteland map; a Com Tower's city), and Dual Strike's map animations played through AW2's own map effects (a Black Bomb's explosion, a Stealth hiding and appearing, a Black Boat's REPAIR label, Oozium's death in its army's colours; for the CPU at its turn's end, before the turn passes) |
 | COs | `co_roster.rs`, `co_new.rs`, `co_powers.rs`, `ds_co_art.rs`, `ds_power_art.rs`, `power_anim.rs` | CO table grown to 96 rows (0x086A0000), Dual Strike's numbers for AW2's COs (and its 200% defence cap), 9 new COs at ids 72..80 (face ids stay unambiguous), their pictures, texts, powers and Dual Strike's power animations (Ex Machina, Covering Fire, Urban Blight), and Dual Strike's choice of power effect on their units |
 | CO screen | `co_grid.rs` | The unit grid (map menu > CO, its last page) gets a second page: ground units, then air and naval units, in the build menus' order, every unit with its icon in the viewed army's colours (the new units in the map sheet's slots for other countries' Infantry and Mech) and its firepower bar (Dual Strike's bonuses take the nearest of AW2's 13 bars) and move / range change |
-| CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike |
+| CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike; a base builds Piperunners (for the CPU and in the build menu) only by a pipe or an intact seam |
 | Terrain | `com_tower.rs`, `wasteland.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), the Wasteland look, the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
 | Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation for each (arm9 0x0213E078 / 0x0213E2A0), the camera visiting each |
 | Maps | `five_map.rs`, `five/design_ds_maps.py` | Eight Versus maps (2P to 5P, a Wasteland set and a sea set) with Com Towers, Piperunner pipes and Black Hole's structures (above) |

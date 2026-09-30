@@ -9,7 +9,8 @@ Each map in maps.txt is a `map NAME` line, an `armies N TAB COLOURS...` line
 starting colour: 1 Orange Star .. 5 Black Hole), `units ARMY TYPE...` lines,
 then its rows, one character per tile:
   ~ sea   r reef   . plain   f wood   ^ mountain
-  R road (straights, bends, junctions)   I pipe   Z pipe seam (in a straight)
+  R road (straights, bends, junctions)   I pipe   Z pipe seam (in a straight
+          run, which may end at a base: B Z I I ...)
   - river   = bridge (over a river or the sea; roads join it)   , shoal
   t T     Com Tower (the Lab, crate::com_tower): neutral, or the army whose
           HQ is nearest
@@ -193,6 +194,12 @@ def build(m, edge):
                 pipe = lambda X, Y: ch(X, Y) in 'IZ'
                 link = pipe(x, y - 1) << 3 | pipe(x + 1, y) << 2 | pipe(x, y + 1) << 1 | pipe(x - 1, y)
                 if c == 'Z':
+                    # A seam sits in a straight run; a base may end the run
+                    # (the seam is then all that joins the base to the pipe).
+                    joins = lambda X, Y: ch(X, Y) in 'IZB'
+                    ends = joins(x, y - 1) << 3 | joins(x + 1, y) << 2 | joins(x, y + 1) << 1 | joins(x - 1, y)
+                    if link not in (0b0101, 0b1010):
+                        link = ends if ends in (0b0101, 0b1010) else ends & (0b0101 if link & 0b0101 else 0b1010)
                     assert link in (0b0101, 0b1010), (m['name'], 'seam not in a straight pipe', x, y)
                     tiles[y][x] = SEAM_ACROSS if link == 0b0101 else SEAM_DOWN
                 else:
