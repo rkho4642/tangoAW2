@@ -39,8 +39,8 @@ pub const JAKE: u8 = 79;
 pub const RACHEL: u8 = 80;
 const EAGLE: u8 = 8;
 
-const COP: u8 = 1;
-const SCOP: u8 = 2;
+pub(crate) const COP: u8 = 1;
+pub(crate) const SCOP: u8 = 2;
 
 // --- ROM ------------------------------------------------------------------------
 
@@ -50,7 +50,7 @@ const EX_MACHINA_FN: u32 = DATA + 0x200;
 const COVERING_FIRE_FN: u32 = DATA + 0x240;
 const URBAN_BLIGHT_FN: u32 = DATA + 0x280;
 const SENTINEL: u32 = DATA + 0x3FC;
-const MAGIC: u32 = 0x3743_5344; // "DSC7"
+const MAGIC: u32 = 0x3843_5344; // "DSC8"
 
 const METEOR_SCRIPT: u32 = 0x084A_0858;
 /// The meteor script's commands: 3 to start, 7 for one strike (pick the
@@ -100,8 +100,9 @@ fn strike_fn(script: u32, damage: u16) -> Vec<u8> {
 }
 
 /// Hawke's Black Wave (`sub_08044CF8`) at 3 HP and no healing:
-/// `sub_08044D70(script, gfx, pal, army, 3, 0, -1, 0, proc)`.
-fn urban_blight_fn() -> Vec<u8> {
+/// `sub_08044D70(script, gfx, pal, army, 3, 0, -1, 0, proc)`, with the
+/// overlay's map and palette `gfx`, `pal`.
+fn urban_blight_fn(gfx: u32, pal: u32) -> Vec<u8> {
     let mut b = halfwords(&[
         0xB530, // push {r4, r5, lr}
         0xB085, // sub sp, #0x14
@@ -130,7 +131,7 @@ fn urban_blight_fn() -> Vec<u8> {
         0xBC01, // pop {r0}
         0x4700, // bx r0
     ]);
-    for w in [MASS_DAMAGE_SCRIPT, BLACK_WAVE_GFX, BLACK_WAVE_PAL, CURRENT_ARMY, MASS_DAMAGE] {
+    for w in [MASS_DAMAGE_SCRIPT, gfx, pal, CURRENT_ARMY, MASS_DAMAGE] {
         b.extend_from_slice(&w.to_le_bytes());
     }
     b
@@ -170,16 +171,23 @@ pub fn power_assembly(co: u8, mode: u8) -> Option<u32> {
 static SCRIPT: OnceLock<Vec<u8>> = OnceLock::new();
 
 /// Writes the functions and the script once (the same bytes on every
-/// peer).
+/// peer). With Dual Strike's pictures ([`crate::power_anim`]) the powers
+/// run its copies of the meteor script and its overlay map.
 pub fn install(core: &mut Core) {
     if core.raw_read_32(SENTINEL, -1) == MAGIC {
         return;
     }
     let script = SCRIPT.get_or_init(|| covering_fire_script(core)).clone();
     core.raw_write_range(COVERING_FIRE_SCRIPT, -1, &script);
-    core.raw_write_range(EX_MACHINA_FN, -1, &strike_fn(METEOR_SCRIPT, THREE_HP));
-    core.raw_write_range(COVERING_FIRE_FN, -1, &strike_fn(COVERING_FIRE_SCRIPT, THREE_HP));
-    core.raw_write_range(URBAN_BLIGHT_FN, -1, &urban_blight_fn());
+    let (exm, cf, gfx, pal) = if crate::power_anim::install(core) {
+        use crate::power_anim as anim;
+        (anim::EXM_SCRIPT, anim::CF_SCRIPT, anim::URBAN_MAP, anim::URBAN_PALETTE)
+    } else {
+        (METEOR_SCRIPT, COVERING_FIRE_SCRIPT, BLACK_WAVE_GFX, BLACK_WAVE_PAL)
+    };
+    core.raw_write_range(EX_MACHINA_FN, -1, &strike_fn(exm, THREE_HP));
+    core.raw_write_range(COVERING_FIRE_FN, -1, &strike_fn(cf, THREE_HP));
+    core.raw_write_range(URBAN_BLIGHT_FN, -1, &urban_blight_fn(gfx, pal));
     core.raw_write_32(SENTINEL, -1, MAGIC);
 }
 
@@ -236,7 +244,7 @@ fn owned(core: &Core, army: u32, kinds: &[u8]) -> i32 {
 
 /// An army's CO and the power it is setting off (player +0x1F): the
 /// power level (+0x1E) is only set once the power's effects are over.
-fn activating(core: &Core, army: u32) -> (u8, u8) {
+pub(crate) fn activating(core: &Core, army: u32) -> (u8, u8) {
     let p = player(core, army);
     (core.raw_read_8(p + 0x1D, -1), core.raw_read_8(p + 0x1F, -1))
 }
@@ -563,7 +571,7 @@ mod tests {
     #[test]
     fn code_sizes() {
         assert_eq!(strike_fn(0, 30).len(), 36);
-        assert_eq!(urban_blight_fn().len(), 72);
+        assert_eq!(urban_blight_fn(0, 0).len(), 72);
         assert!(COVERING_FIRE_SCRIPT + 8 * 29 <= EX_MACHINA_FN);
         assert!(URBAN_BLIGHT_FN + 72 <= SENTINEL);
     }

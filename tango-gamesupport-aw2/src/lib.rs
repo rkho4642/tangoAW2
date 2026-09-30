@@ -43,6 +43,7 @@ mod five_patches;
 pub mod invention_art;
 pub mod obelisk;
 mod obelisk_art;
+pub mod power_anim;
 pub mod pvp;
 mod volcano;
 

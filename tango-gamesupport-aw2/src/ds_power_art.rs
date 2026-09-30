@@ -304,6 +304,100 @@ impl BgLayer {
         map[..32 * rows].fill(0);
         map
     }
+
+    /// The layer with at most `max` tiles: the tile that costs least to
+    /// drop (its difference from the closest other tile, allowing flips,
+    /// times how often the map uses it) is repeatedly replaced by that
+    /// tile. Tile 0 stays (blank). For the GBA's smaller free BG space
+    /// (the bolt's 253 tiles into the 128 AW2's wave overlays use); under
+    /// additive blending the merged tiles are hard to tell apart.
+    pub fn reduced(&self, max: usize) -> BgLayer {
+        let n = self.tiles.len() / 32;
+        if n <= max {
+            return self.clone();
+        }
+        let rgb = |c: u16| [(c & 31) as i32, (c >> 5 & 31) as i32, (c >> 10 & 31) as i32];
+        let pal: Vec<[i32; 3]> = self.palette.iter().map(|&c| rgb(c)).collect();
+        let px = |t: usize, x: usize, y: usize| (self.tiles[32 * t + 4 * y + x / 2] >> (4 * (x & 1))) & 15;
+        let diff = |a: u8, b: u8| -> i32 {
+            match (a, b) {
+                (0, 0) => 0,
+                (0, _) | (_, 0) => 48,
+                _ => (0..3).map(|k| (pal[a as usize][k] - pal[b as usize][k]).abs()).sum(),
+            }
+        };
+        // dist[i][j] = (difference, flip) of tile i drawn as tile j flipped.
+        let mut dist = vec![vec![(i32::MAX, 0u16); n]; n];
+        for (i, row) in dist.iter_mut().enumerate() {
+            for (j, d_ij) in row.iter_mut().enumerate() {
+                if i == j {
+                    continue;
+                }
+                for f in 0..4u16 {
+                    let mut d = 0;
+                    for y in 0..8 {
+                        for x in 0..8 {
+                            let fx = if f & 1 != 0 { 7 - x } else { x };
+                            let fy = if f & 2 != 0 { 7 - y } else { y };
+                            d += diff(px(i, x, y), px(j, fx, fy));
+                        }
+                    }
+                    if d < d_ij.0 {
+                        *d_ij = (d, f);
+                    }
+                }
+            }
+        }
+        let mut uses = vec![0i64; n];
+        for &m in &self.map {
+            uses[(m & 0x3FF) as usize] += 1;
+        }
+        // to[i] = (tile, flip) tile i is drawn as.
+        let mut to: Vec<(usize, u16)> = (0..n).map(|i| (i, 0)).collect();
+        let mut alive = vec![true; n];
+        let mut left = n;
+        while left > max {
+            let mut best = (i64::MAX, 0, 0);
+            for i in 1..n {
+                if !alive[i] {
+                    continue;
+                }
+                for j in 0..n {
+                    if j != i && alive[j] {
+                        let c = dist[i][j].0 as i64 * uses[i].max(1);
+                        if c < best.0 {
+                            best = (c, i, j);
+                        }
+                    }
+                }
+            }
+            let (_, i, j) = best;
+            alive[i] = false;
+            uses[j] += uses[i];
+            left -= 1;
+            let f = dist[i][j].1;
+            for t in to.iter_mut() {
+                if t.0 == i {
+                    *t = (j, t.1 ^ f);
+                }
+            }
+        }
+        let keep: Vec<usize> = (0..n).filter(|&i| alive[i]).collect();
+        let mut tiles = Vec::with_capacity(32 * keep.len());
+        for &k in &keep {
+            tiles.extend_from_slice(&self.tiles[32 * k..32 * k + 32]);
+        }
+        let map = self
+            .map
+            .iter()
+            .map(|&m| {
+                let (t, f) = to[(m & 0x3FF) as usize];
+                let flips = ((m >> 10) & 3) ^ f;
+                keep.iter().position(|&k| k == t).unwrap() as u16 | flips << 10
+            })
+            .collect();
+        BgLayer { tiles, map, ..self.clone() }
+    }
 }
 
 /// The whole screen brightened towards white: per frame from `start`,
