@@ -223,6 +223,12 @@ fn main() {
                 // the straight replay at the same row), then idle frames so
                 // no rollback reaches back past it.
                 "poke8" | "poke16" | "poke32" => {
+                    // Idle first, long enough (more than the wire's delay)
+                    // for every earlier input to reach both peers: a poke
+                    // is not in the rollback timeline, so a rollback to a
+                    // tick before it would drop it on the peer that rolls
+                    // back.
+                    (0..16).for_each(|_| rows.push_back(Row::Keys([0, 0])));
                     let v = hex(p[2]);
                     let n = match p[0] { "poke8" => 1, "poke16" => 2, _ => 4 };
                     rows.push_back(Row::Poke(hex(p[1]), v.to_le_bytes()[..n].to_vec()));
