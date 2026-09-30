@@ -64,8 +64,9 @@
 //! 0x28 * side + 0x18` counts its shots), the weapon layer plays its whole
 //! firing script, a volley: at each shot event a muzzle flash at the next
 //! of the unit's points and a projectile (flying at the enemy's figures and
-//! hitting one), or, for a direct shot, a hit on one (a Piperunner's shells
-//! at planes and copters are its record-29 anti-air ones). A side fires one
+//! hitting one), or, for a direct shot, a hit on one (a Piperunner fires
+//! record 29's shells at ground and sea targets and its own record's at
+//! planes and copters, as Dual Strike does). A side fires one
 //! volley a battle, timed from the donor's shot so that its last hit lands
 //! as the donor's own shot would ([`UnitSpec::wait`]): then AW2 starts the
 //! HP drain and the enemy's figures fall; should the drain start before all
@@ -148,14 +149,15 @@ const fn shots(event: u8, w1: std::ops::Range<usize>, w2: std::ops::Range<usize>
     Shots { event, points: [w1, w2], speed, launch: (0, 0, 0), burst: (0, 0) }
 }
 
-/// A new unit: its AW2 id, Dual Strike record (and the record it uses
-/// against planes and copters, if another: its projectile), layers, shots,
-/// whether it flies, and how far past the middle of its half its centre sits
-/// (outwards, px).
+/// A new unit: its AW2 id, Dual Strike record (and the record whose
+/// projectile it fires at ground and sea targets, if another: its own is
+/// then for planes and copters), layers, shots, whether it flies, how far
+/// past the middle of its half its centre sits (outwards, px) and how far
+/// above the ground it stands (lift, px: the Piperunner on its pipe).
 struct UnitSpec {
     id: u8,
     record: u32,
-    air_record: u32,
+    ground_record: u32,
     layers: &'static [LayerSpec],
     shots: Shots,
     /// Frames from the donor's shot to the volley (per weapon), so that its
@@ -164,78 +166,86 @@ struct UnitSpec {
     wait: [u8; 2],
     air: bool,
     outwards: i32,
+    lift: i32,
 }
 
 const UNITS: [UnitSpec; 7] = [
     UnitSpec {
         id: MEGATANK,
         record: 3,
-        air_record: 0,
+        ground_record: 0,
         layers: &[layer(1, 0, None, Some(1)), layer(3, 1, Some(1), Some(2)), layer(4, 2, Some(1), Some(2))],
         shots: shots(FIRE_EVENT, 0..5, 0..5, 0),
         wait: [14, 2],
         air: false,
         outwards: 0,
+        lift: 0,
     },
     UnitSpec {
         id: PIPERUNNER,
         record: 8,
-        air_record: 29,
+        ground_record: 29,
         layers: &[layer(1, 0, None, Some(1)), layer(3, 0, Some(1), Some(2))],
         shots: shots(FIRE_EVENT, 0..1, 0..1, 9),
         wait: [76, 76],
         air: false,
-        outwards: 0,
+        outwards: 2,
+        lift: 19,
     },
     UnitSpec {
         id: STEALTH,
         record: 11,
-        air_record: 0,
+        ground_record: 0,
         layers: &[layer(1, 0, None, None)],
         shots: Shots { event: 0, points: [0..5, 0..5], speed: 7, launch: (3, 1, 6), burst: (5, 5) },
         wait: [63, 63],
         air: true,
         outwards: 0,
+        lift: 0,
     },
     UnitSpec {
         id: BLACK_BOMB,
         record: 12,
-        air_record: 0,
+        ground_record: 0,
         layers: &[layer(1, 0, None, None)],
         shots: shots(0, 0..0, 0..0, 0),
         wait: [0, 0],
         air: true,
         outwards: 0,
+        lift: 0,
     },
     UnitSpec {
         id: BLACK_BOAT,
         record: 17,
-        air_record: 0,
+        ground_record: 0,
         layers: &[layer(1, 0, None, None), layer(5, 0, None, None)],
         shots: shots(0, 0..0, 0..0, 0),
         wait: [0, 0],
         air: false,
         outwards: 8,
+        lift: 0,
     },
     UnitSpec {
         id: CARRIER,
         record: 24,
-        air_record: 0,
+        ground_record: 0,
         layers: &[layer(1, 0, Some(1), None), layer(5, 0, None, None)],
         shots: Shots { event: 0x05, points: [0..5, 0..5], speed: 7, launch: (2, -5, 10), burst: (0, 0) },
         wait: [0, 0],
         air: false,
         outwards: -24,
+        lift: 0,
     },
     UnitSpec {
         id: OOZIUM,
         record: 25,
-        air_record: 0,
+        ground_record: 0,
         layers: &[layer(1, 0, None, Some(1))],
         shots: shots(0, 0..0, 0..0, 0),
         wait: [0, 0],
         air: false,
         outwards: 12,
+        lift: 0,
     },
 ];
 
@@ -456,8 +466,12 @@ fn convert(u: &UnitSpec, army: usize) -> Option<Figure> {
     let projectile = |rec: u32| word(rec + 4 * PROJECTILE).filter(|&a| a != 0).and_then(|a| effect(&name(a + 4 * army as u32)?, word(a + 0x14)?));
     let hit = hit_of(u.record, 1);
     let blast = word(rec + 4 * BLAST).and_then(effect_at);
-    let air = if u.air_record != 0 { projectile(RECORDS + RECORD * u.air_record) } else { None };
-    let fx = [muzzle(0), muzzle(1), projectile(rec), hit, blast, air];
+    let (ground, air) = if u.ground_record != 0 {
+        (projectile(RECORDS + RECORD * u.ground_record), projectile(rec))
+    } else {
+        (projectile(rec), None)
+    };
+    let fx = [muzzle(0), muzzle(1), ground, hit, blast, air];
     Some(Figure { layers, palettes, bounds: b, fx, points })
 }
 
@@ -1392,7 +1406,7 @@ fn flush(core: &mut Core) {
         let (b0, b1, b2, b3) = fig.bounds;
         let (cx, cy) = ((b0 + b2) / 2, (b1 + b3) / 2);
         let middle = if side == 0 { 60 - spec.outwards } else { 180 + spec.outwards };
-        let centre_y = if spec.air { SKY } else { GROUND - (b3 - cy) };
+        let centre_y = if spec.air { SKY } else { GROUND - spec.lift - (b3 - cy) };
         let (hx, hy) = (s16(core, rec + 4), s16(core, rec + 6));
         let placed = hx != 0 || hy != 0;
         if placed && (hx, hy) != (middle, centre_y) {
