@@ -10,7 +10,11 @@ same battle with animations off; an Oozium's attack has no scene (as in Dual
 Strike); the run replays identically on two rollback peers.
 
 Every new unit attacks and is attacked in all five army colours (Black Hole in
-a five-army map), by the player and by the CPU.
+a five-army map), by the player and by the CPU. An AW2 unit's hits on a new
+unit are Dual Strike's (that unit's own hit effect); a new unit's volley lands
+before the enemy's HP counter shows its damage (the counter never runs ahead
+of the hits landed); counters by the new units, a hidden Stealth attacked by a
+Fighter and every weather are covered too.
 """
 
 import struct
@@ -25,6 +29,9 @@ PAL = 0x05000200  # OBJ palettes
 MAIN_CALLBACK = 0x03000000  # 0 while a battle scene runs
 SIDE_TILES = 256
 FX_PALS = {12, 13}
+FX_AIR, FX_STRUCK = 5, 6  # effect kinds (a slot's +0 is kind + 1)
+S_HITS, S_LANDED, S_HP0 = 0x18, 0x19, 0x1C  # the volley's state
+HP_SHOWN, HP_AFTER = 0x02029B78, 0x02029B7C  # per side, u16
 COLOURS = {1: "Orange Star", 2: "Blue Moon", 3: "Green Earth", 4: "Yellow Comet", 5: "Black Hole"}
 
 CARRIER, OOZIUM = 26, 27
@@ -45,6 +52,8 @@ DEFENCES = {
     "carrier": (CARRIER, "bomber", 1, "sea", "plain"),
     "oozium": (OOZIUM, "tank", 1, "plain", "plain"),
 }
+# The new units that counter those attacks.
+COUNTERS = {"megatank", "stealth"}
 # The CPU's attacks: (new unit, the player's unit, distance, terrains) as ATTACKS,
 # at a distance the CPU closes.
 CPU_ATTACKS = {
@@ -86,10 +95,12 @@ def fx_sprites(g):
 def watch_scene(ctx, g, name, max_frames=1500, step=6):
     """Sample a battle scene while it runs: which sides drew a Dual Strike
     unit, their most figure sprites and palettes, effect sprites seen, the
-    sides' first OBJ palettes, and a few screenshots."""
+    sides' first OBJ palettes, the effect kinds each side ran, its volley
+    (hits, most landed), the samples where the enemy's HP counter ran ahead of
+    the hits landed, and a few screenshots."""
     e = g.e
     seen = {"frames": 0, "units": [0, 0], "sprites": [0, 0], "pals": [set(), set()], "fx": 0, "palette": [None, None],
-            "fx_state": 0}
+            "fx_state": 0, "kinds": [set(), set()], "hits": [0, 0], "landed": [0, 0], "ahead": []}
     waited = 0
     shots = 0
     while waited < max_frames:
@@ -111,6 +122,20 @@ def watch_scene(ctx, g, name, max_frames=1500, step=6):
         seen["fx"] = max(seen["fx"], fx_sprites(g))
         fx = e.read(FX, 0x180)
         seen["fx_state"] = max(seen["fx_state"], sum(1 for k in range(24) if fx[16 * k]))
+        for k in range(24):
+            if fx[16 * k]:
+                seen["kinds"][k // 12].add(fx[16 * k] - 1)
+        shown, after = struct.unpack("<2H", e.read(HP_SHOWN, 4)), struct.unpack("<2H", e.read(HP_AFTER, 4))
+        for side in (0, 1):
+            n, landed = st[0x40 * side + S_HITS], st[0x40 * side + S_LANDED]
+            seen["landed"][side] = max(seen["landed"][side], landed)
+            if n:
+                seen["hits"][side] = max(seen["hits"][side], n)
+                hp0 = struct.unpack_from("<H", st, 0x40 * side + S_HP0)[0]
+                enemy = 1 - side
+                goal = hp0 - (hp0 - after[enemy]) * min(landed, n) // n if hp0 > after[enemy] else after[enemy]
+                if shown[enemy] < goal:
+                    seen["ahead"].append((seen["frames"], side, landed, n, shown[enemy], goal))
         if seen["frames"] in (20, 40) and shots < 2:
             ctx.shot(g, f"{name}_{seen['frames']}")
             shots += 1
@@ -126,6 +151,19 @@ def check_unit(ctx, seen, side, label, effects):
     if effects:
         ctx.check(seen["fx_state"] > 0 and seen["fx"] > 0,
                   f"{label}: Dual Strike's effects flew ({seen['fx_state']}) and were drawn ({seen['fx']} sprites)")
+
+
+def check_volley(ctx, seen, side, label):
+    """The side's volley: all its hits landed, and the enemy's HP counter never
+    showed damage ahead of them."""
+    n, landed = seen["hits"][side], seen["landed"][side]
+    ctx.check(n > 0 and landed >= n, f"{label}: its volley's {n} hits all landed ({landed})")
+    ctx.eq(seen["ahead"], [], f"{label}: the enemy's HP counter never ran ahead of the hits")
+
+
+def check_struck(ctx, seen, side, label):
+    ctx.check(FX_STRUCK in seen["kinds"][side], f"{label}: the AW2 attacker's hits on it are Dual Strike's "
+              f"(effect kinds {sorted(seen['kinds'][side])})")
 
 
 def two_army_map(ctx, colours):
@@ -145,13 +183,13 @@ def other_colour(c):
     return 1 if c != 1 else 2
 
 
-def player_attack(ctx, unit, colour):
+def player_attack(ctx, unit, colour, weather="clear", match=None):
     """The player's new unit (army 1 in `colour`, 1..4) attacks an AW2 unit."""
-    new, target, dist, tn, tt = ATTACKS[unit]
+    new, target, dist, tn, tt = match or ATTACKS[unit]
     m, cos, enemy = two_army_map(ctx, (colour, other_colour(colour)))
     m.terrain(10, 10, tn).terrain(10 + dist, 10, tt)
     m.unit(1, new, 10, 10).unit(enemy, target, 10 + dist, 10)
-    g = ctx.start(m, cos, visuals="a")
+    g = ctx.start(m, cos, visuals="a", weather=weather)
     fire(g, (10, 10), (10 + dist, 10))
     seen = watch_scene(ctx, g, f"{unit}_attacks_{colour}")
     g.wait_for_input()
@@ -159,7 +197,7 @@ def player_attack(ctx, unit, colour):
     return seen
 
 
-def attacked(ctx, unit, colour):
+def attacked(ctx, unit, colour, weather="clear"):
     """The player's AW2 unit attacks the new unit (of army 2 in `colour`, or of
     Black Hole, army 5, when `colour` is 5)."""
     new, attacker, dist, tn, ta = DEFENCES[unit]
@@ -169,7 +207,7 @@ def attacked(ctx, unit, colour):
         m, cos, enemy = two_army_map(ctx, (other_colour(colour), colour))
     m.terrain(10, 10, ta).terrain(10 + dist, 10, tn)
     m.unit(1, attacker, 10, 10).unit(enemy, new, 10 + dist, 10)
-    g = ctx.start(m, cos, visuals="a")
+    g = ctx.start(m, cos, visuals="a", weather=weather)
     fire(g, (10, 10), (10 + dist, 10))
     seen = watch_scene(ctx, g, f"{unit}_attacked_{colour}")
     g.wait_for_input()
@@ -206,10 +244,12 @@ def make_attack_test(unit):
         for colour in (1, 2, 3, 4):
             seen = player_attack(ctx, unit, colour)
             check_unit(ctx, seen, 0, f"{unit} ({COLOURS[colour]}) attacks", True)
+            check_volley(ctx, seen, 0, f"{unit} ({COLOURS[colour]}) attacks")
             palettes.append(seen["palette"][0])
         seen = cpu_attack(ctx, unit, 5)
         side = 0 if seen["units"][0] else 1
         check_unit(ctx, seen, side, f"{unit} ({COLOURS[5]}, CPU) attacks", True)
+        check_volley(ctx, seen, side, f"{unit} ({COLOURS[5]}, CPU) attacks")
         palettes.append(seen["palette"][side])
         distinct_palettes(ctx, unit, palettes)
 
@@ -219,8 +259,12 @@ def make_defence_test(unit):
     def t(ctx):
         palettes = []
         for colour in (1, 2, 3, 4, 5):
+            label = f"{unit} ({COLOURS[colour]}) attacked"
             seen = attacked(ctx, unit, colour)
-            check_unit(ctx, seen, 1, f"{unit} ({COLOURS[colour]}) attacked", False)
+            check_unit(ctx, seen, 1, label, False)
+            check_struck(ctx, seen, 1, label)
+            if unit in COUNTERS:
+                check_volley(ctx, seen, 1, f"{label}, its counter")
             palettes.append(seen["palette"][1])
         distinct_palettes(ctx, unit, palettes)
 
@@ -232,6 +276,7 @@ def make_cpu_test(unit):
             seen = cpu_attack(ctx, unit, colour)
             side = 0 if seen["units"][0] else 1
             check_unit(ctx, seen, side, f"CPU {unit} ({COLOURS[colour]}) attacks", True)
+            check_volley(ctx, seen, side, f"CPU {unit} ({COLOURS[colour]}) attacks")
 
 
 for _u in ATTACKS:
@@ -351,3 +396,77 @@ def netplay_cpu_battle_scene(ctx):
     ctx.check(identical, "netplay: all identical: true (both peers and the straight replay)")
     for a, v in offline.items():
         ctx.eq(values.get(a, b"").hex(), v.hex(), f"netplay peer 0 RAM at {a:08x} equals the offline run")
+
+
+@test(modes=("ds",))
+def battle_scene_cpu_attacks_new_units(ctx):
+    """The CPU's AW2 units attack the player's new units (moving up, or firing
+    from where they stand): Dual Strike's hits on them, direct and indirect,
+    and a Stealth's counter volley."""
+    # (new unit, CPU attacker, distance, colour, whether the new unit counters)
+    cases = (("blackbomb", "antiair", 2, 4, False), ("piperunner", "artillery", 2, 3, False),
+             ("megatank", "bomber", 2, 2, False), ("stealth", "fighter", 2, 5, True))
+    for unit, attacker, dist, colour, counters in cases:
+        new, _, _, tn, _ = DEFENCES[unit]
+        if colour == 5:
+            m, cos, enemy = five_army_map(ctx)
+        else:
+            m, cos, enemy = two_army_map(ctx, (colour, other_colour(colour)))
+        m.terrain(10, 10, tn)
+        m.unit(1, new, 10, 10).unit(enemy, attacker, 10 + dist, 10)
+        g = ctx.start(m, cos, visuals="a")
+        out = {}
+        g.end_turn(human=1, observe=lambda gg: out.update(seen=watch_scene(ctx, gg, f"cpu_vs_{unit}", 3000)))
+        g.e.close()
+        seen = out["seen"]
+        side = 0 if seen["units"][0] else 1
+        label = f"CPU {attacker} attacks the {unit} ({COLOURS[colour]})"
+        check_unit(ctx, seen, side, label, False)
+        check_struck(ctx, seen, side, label)
+        if counters:
+            check_volley(ctx, seen, side, f"{label}, its counter")
+
+
+@test(modes=("ds",))
+def battle_scene_hidden_stealth(ctx):
+    """A hidden Stealth attacked by a Fighter: Dual Strike draws it as usual in
+    the battle, with the Fighter's hits on it, and it counters."""
+    m = ctx.map()
+    m.unit(1, "stealth", 10, 10).unit(2, "fighter", 11, 10)
+    g = ctx.start(m, ["andy", "olaf"], humans=(1, 2), visuals="a")
+    g.select(10, 10)
+    g.move_to(10, 10)
+    g.choose("Hide", g.ACTION_MENU)
+    g.wait_idle()
+    ctx.check(g.unit_at(10, 10)["flags"] & 0x20, "the Stealth is hidden")
+    g.end_turn(human=2)
+    fire(g, (11, 10), (10, 10))
+    seen = watch_scene(ctx, g, "hidden_stealth")
+    g.wait_for_input()
+    side = 0 if seen["units"][0] else 1  # the sides are the armies', not attacker and defender
+    check_unit(ctx, seen, side, "a hidden Stealth attacked", False)
+    check_struck(ctx, seen, side, "a hidden Stealth attacked")
+
+
+@test(modes=("ds",))
+def battle_scene_weathers(ctx):
+    """Snow, rain and sandstorm: the Megatank's volley on a Tank, and a Tank's
+    hits on the Megatank, are Dual Strike's."""
+    for weather in ("snow", "rain", "sandstorm"):
+        seen = player_attack(ctx, "megatank", 1, weather)
+        check_unit(ctx, seen, 0, f"the Megatank attacks in {weather}", True)
+        check_volley(ctx, seen, 0, f"the Megatank attacks in {weather}")
+        seen = attacked(ctx, "megatank", 2, weather)
+        check_unit(ctx, seen, 1, f"the Megatank attacked in {weather}", False)
+        check_struck(ctx, seen, 1, f"the Megatank attacked in {weather}")
+
+
+@test(modes=("ds",))
+def battle_scene_piperunner_anti_air(ctx):
+    """Against a copter the Piperunner fires Dual Strike's anti-air shells (its
+    record for air targets)."""
+    seen = player_attack(ctx, "piperunner", 2, match=("piperunner", "bcopter", 2, "pipe", "plain"))
+    check_unit(ctx, seen, 0, "the Piperunner attacks a copter", True)
+    ctx.check(FX_AIR in seen["kinds"][0] and 2 not in seen["kinds"][0],
+              f"its shells are the anti-air ones (effect kinds {sorted(seen['kinds'][0])})")
+    check_volley(ctx, seen, 0, "the Piperunner attacks a copter")

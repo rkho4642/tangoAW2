@@ -28,12 +28,15 @@
 //! - A sprite set: five sheet names (`char[4]`, one per army), five
 //!   animation pointers, a word. An animation is `[frame table, script 0,
 //!   script 1, ...]`.
-//! - A frame: `u16 count`, then 6-byte pieces: `s8 x`, width code << 4,
-//!   `s8 y`, height code << 4 (codes 0..3: 8, 16, 32, 64 px), `u16`: the
-//!   texels' offset in the sheet in 32-byte units (low 12 bits) and the
-//!   palette half (top 4). A piece's texels are 4bpp rows, low nibble
-//!   first (the sheets are 3D textures). A frame pointer past the
-//!   overlay's end is an empty frame (the blink of a destruction).
+//! - A frame: `u16 count`, then pieces of three u16 (as its drawing code,
+//!   `0x023538C0`, reads them): x (9 bits, signed), flipped across (bit 10)
+//!   and down (bit 11), width code (top 4: 0..3 for 8, 16, 32, 64 px); y (8
+//!   bits, signed), height code (top 4); the texels' offset in the sheet in
+//!   32-byte units (10 bits), depth (2 bits), palette half (top 4). A
+//!   piece's texels are 4bpp rows, low nibble first (the sheets are 3D
+//!   textures), drawn opaque (every piece's polygon has alpha 31, so the
+//!   smoke is not blended). A frame pointer past the overlay's end is an
+//!   empty frame (the blink of a destruction).
 //! - A script: `(duration, frame)` byte pairs; frame `0xFC` is an event
 //!   (`0x20`: a shot leaves; the Carrier's launches are `0x05`), `(0, 0xFD)`
 //!   loops, `(0, 0xFE)` holds, `(0, 0xFF)` ends (the object disappears).
@@ -61,8 +64,22 @@
 //! 0x28 * side + 0x18` counts its shots), the weapon layer plays its whole
 //! firing script, a volley: at each shot event a muzzle flash at the next
 //! of the unit's points and a projectile (flying at the enemy's figures and
-//! hitting one), or, for a direct shot, a hit on one. When the figure is
-//! destroyed its layers blink and its own blasts go off.
+//! hitting one), or, for a direct shot, a hit on one (a Piperunner's shells
+//! at planes and copters are its record-29 anti-air ones). A side fires one
+//! volley a battle, timed from the donor's shot so that its last hit lands
+//! as the donor's own shot would ([`UnitSpec::wait`]): then AW2 starts the
+//! HP drain and the enemy's figures fall; should the drain start before all
+//! hits have landed, it holds where the hits so far take it ([`hp_drain`]).
+//! When the figure is destroyed its layers blink and its own blasts go off.
+//!
+//! **Struck.** An AW2 enemy's hits on the unit are Dual Strike's: at each of
+//! its figure hits on the side (`0x020298E0 + 0x90 * side + 0x16`) the
+//! enemy's own Dual Strike hit effect (its record's hit, by weapon, or its
+//! indirect blast) where AW2's landed, and a few over the unit when an
+//! indirect or area shot lands; AW2's own hit sprites on the unit are dropped.
+//! A shot with no hit of its own (a missile, a shell) bursts on a plane or
+//! copter with the target's own blast, as in Dual Strike ([`hit_on`]).
+//! Dual Strike draws a hidden Stealth as usual in a battle, and so does this.
 //!
 //! Everything is worked out from emulated memory, and the animation state
 //! lives in EWRAM ([`STATE`], [`FX`]), so rollback and both netplay peers
@@ -131,14 +148,20 @@ const fn shots(event: u8, w1: std::ops::Range<usize>, w2: std::ops::Range<usize>
     Shots { event, points: [w1, w2], speed, launch: (0, 0, 0), burst: (0, 0) }
 }
 
-/// A new unit: its AW2 id, Dual Strike record, layers, shots, whether it
-/// flies, and how far past the middle of its half its centre sits
+/// A new unit: its AW2 id, Dual Strike record (and the record it uses
+/// against planes and copters, if another: its projectile), layers, shots,
+/// whether it flies, and how far past the middle of its half its centre sits
 /// (outwards, px).
 struct UnitSpec {
     id: u8,
     record: u32,
+    air_record: u32,
     layers: &'static [LayerSpec],
     shots: Shots,
+    /// Frames from the donor's shot to the volley (per weapon), so that its
+    /// last hit lands as the donor's would (when AW2's HP drain starts and
+    /// the enemy's figures fall).
+    wait: [u8; 2],
     air: bool,
     outwards: i32,
 }
@@ -147,56 +170,70 @@ const UNITS: [UnitSpec; 7] = [
     UnitSpec {
         id: MEGATANK,
         record: 3,
+        air_record: 0,
         layers: &[layer(1, 0, None, Some(1)), layer(3, 1, Some(1), Some(2)), layer(4, 2, Some(1), Some(2))],
         shots: shots(FIRE_EVENT, 0..5, 0..5, 0),
+        wait: [14, 2],
         air: false,
         outwards: 0,
     },
     UnitSpec {
         id: PIPERUNNER,
         record: 8,
+        air_record: 29,
         layers: &[layer(1, 0, None, Some(1)), layer(3, 0, Some(1), Some(2))],
         shots: shots(FIRE_EVENT, 0..1, 0..1, 9),
+        wait: [76, 76],
         air: false,
         outwards: 0,
     },
     UnitSpec {
         id: STEALTH,
         record: 11,
+        air_record: 0,
         layers: &[layer(1, 0, None, None)],
         shots: Shots { event: 0, points: [0..5, 0..5], speed: 7, launch: (3, 1, 6), burst: (5, 5) },
+        wait: [63, 63],
         air: true,
         outwards: 0,
     },
     UnitSpec {
         id: BLACK_BOMB,
         record: 12,
+        air_record: 0,
         layers: &[layer(1, 0, None, None)],
         shots: shots(0, 0..0, 0..0, 0),
+        wait: [0, 0],
         air: true,
         outwards: 0,
     },
     UnitSpec {
         id: BLACK_BOAT,
         record: 17,
+        air_record: 0,
         layers: &[layer(1, 0, None, None), layer(5, 0, None, None)],
         shots: shots(0, 0..0, 0..0, 0),
+        wait: [0, 0],
         air: false,
         outwards: 8,
     },
     UnitSpec {
         id: CARRIER,
         record: 24,
+        air_record: 0,
         layers: &[layer(1, 0, Some(1), None), layer(5, 0, None, None)],
         shots: Shots { event: 0x05, points: [0..5, 0..5], speed: 7, launch: (2, -5, 10), burst: (0, 0) },
+        wait: [0, 0],
         air: false,
         outwards: -24,
     },
     UnitSpec {
         id: OOZIUM,
         record: 25,
+        air_record: 0,
         layers: &[layer(1, 0, None, Some(1))],
         shots: shots(0, 0..0, 0..0, 0),
+        wait: [0, 0],
         air: false,
         outwards: 12,
     },
@@ -235,7 +272,7 @@ impl Fx {
     /// Where a new one starts: a projectile at its first drawn frame (its
     /// script opens with frames inside the barrel).
     fn first(&self, kind: u8) -> usize {
-        if kind != FX_PROJECTILE {
+        if !is_projectile(kind) {
             return 0;
         }
         let drawn = |f: u8| self.frames.get(f as usize).is_some_and(|p| !p.is_empty());
@@ -249,8 +286,9 @@ struct Figure {
     palettes: [[u16; 16]; 2],
     /// The idle picture's bounds, from the origin: x0, y0, x1, y1.
     bounds: (i32, i32, i32, i32),
-    /// Muzzle flashes (per weapon), projectile, hit, own blast.
-    fx: [Option<Fx>; 5],
+    /// Muzzle flashes (per weapon), projectile, hit, own blast, projectile
+    /// against planes and copters.
+    fx: [Option<Fx>; 6],
     points: [(i32, i32); 5],
 }
 
@@ -258,6 +296,13 @@ const FX_MUZZLE: u8 = 0;
 const FX_PROJECTILE: u8 = 2;
 const FX_HIT: u8 = 3;
 const FX_BLAST: u8 = 4;
+const FX_AIR: u8 = 5;
+/// Not the figure's: the enemy's hit on it ([`struck`]).
+const FX_STRUCK: u8 = 6;
+
+fn is_projectile(kind: u8) -> bool {
+    kind == FX_PROJECTILE || kind == FX_AIR
+}
 
 fn ov2() -> Option<&'static [u8]> {
     crate::ds_pack::pack()?.overlays.get(OVERLAY).map(|v| v.as_slice())
@@ -304,12 +349,22 @@ fn frame(addr: u32, sheet: &[u8]) -> Option<Vec<Piece>> {
     let mut out = Vec::new();
     for k in 0..count {
         let p = bytes(addr + 2 + 6 * k, 6)?;
-        let (w, h) = (SIZES[(p[1] >> 4) as usize & 3], SIZES[(p[3] >> 4) as usize & 3]);
-        let off = u16::from_le_bytes([p[4], p[5]]);
-        let at = 32 * (off & 0xFFF) as usize;
-        let raw = sheet.get(at..at + w * h / 2)?;
-        let texels = (0..w * h).map(|i| if i & 1 == 0 { raw[i / 2] & 15 } else { raw[i / 2] >> 4 }).collect();
-        out.push(Piece { x: p[0] as i8 as i32, y: p[2] as i8 as i32, w, half: (off >> 12) as u8 & 1, texels });
+        let h = |i: usize| u16::from_le_bytes([p[2 * i], p[2 * i + 1]]);
+        let (h0, h1, h2) = (h(0), h(1), h(2));
+        let (w, ht) = (SIZES[(h0 >> 12) as usize & 3], SIZES[(h1 >> 12) as usize & 3]);
+        let at = 32 * (h2 & 0x3FF) as usize;
+        let raw = sheet.get(at..at + w * ht / 2)?;
+        let texel = |i: usize| if i & 1 == 0 { raw[i / 2] & 15 } else { raw[i / 2] >> 4 };
+        let (hflip, vflip) = (h0 & 0x400 != 0, h0 & 0x800 != 0);
+        let texels = (0..w * ht)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                texel(if vflip { ht - 1 - y } else { y } * w + if hflip { w - 1 - x } else { x })
+            })
+            .collect();
+        // x: 9 bits signed; y: 8 bits signed.
+        let x = ((h0 & 0x1FF) as i32 ^ 0x100) - 0x100;
+        out.push(Piece { x, y: h1 as u8 as i8 as i32, w, half: (h2 >> 12) as u8 & 1, texels });
     }
     Some(out)
 }
@@ -398,14 +453,49 @@ fn convert(u: &UnitSpec, army: usize) -> Option<Figure> {
         *p = (i16::from_le_bytes([b[0], b[1]]) as i32, i16::from_le_bytes([b[2], b[3]]) as i32);
     }
     let muzzle = |w: usize| word(rec + 4 * MUZZLES[w]).and_then(effect_at);
-    let projectile = word(rec + 4 * PROJECTILE).filter(|&a| a != 0).and_then(|a| effect(&name(a + 4 * army as u32)?, word(a + 0x14)?));
-    let hit = word(rec + 4 * HIT).and_then(effect_at).or_else(|| word(rec + 4 * INDIRECT_HIT).and_then(effect_at));
+    let projectile = |rec: u32| word(rec + 4 * PROJECTILE).filter(|&a| a != 0).and_then(|a| effect(&name(a + 4 * army as u32)?, word(a + 0x14)?));
+    let hit = hit_of(u.record, 1);
     let blast = word(rec + 4 * BLAST).and_then(effect_at);
-    Some(Figure { layers, palettes, bounds: b, fx: [muzzle(0), muzzle(1), projectile, hit, blast], points })
+    let air = if u.air_record != 0 { projectile(RECORDS + RECORD * u.air_record) } else { None };
+    let fx = [muzzle(0), muzzle(1), projectile(rec), hit, blast, air];
+    Some(Figure { layers, palettes, bounds: b, fx, points })
+}
+
+/// The hit a unit's (Dual Strike record's) weapon makes: its own (the
+/// secondary's from word 13), or an indirect shot's blast.
+fn hit_of(record: u32, weapon: u8) -> Option<Fx> {
+    let rec = RECORDS + RECORD * record;
+    let own = if weapon == 2 { HIT + 1 } else { HIT };
+    word(rec + 4 * own).and_then(effect_at).or_else(|| word(rec + 4 * INDIRECT_HIT).and_then(effect_at))
 }
 
 static FIGURES: OnceLock<Vec<Option<Figure>>> = OnceLock::new();
 static FX_PALETTES: OnceLock<Option<[[u16; 16]; 2]>> = OnceLock::new();
+static HITS: OnceLock<Vec<[Option<Fx>; 3]>> = OnceLock::new();
+
+/// Dual Strike records with a battle scene (the units, then variants).
+const SCENE_RECORDS: u32 = 32;
+
+/// Whether record `record`'s weapon (1, 2) has a hit of its own (word 12,
+/// 13), not only an indirect blast.
+fn own_hit(record: u32, weapon: u8) -> bool {
+    let own = if weapon == 2 { HIT + 1 } else { HIT };
+    word(RECORDS + RECORD * record + 4 * own).is_some_and(|w| w != 0)
+}
+
+/// The hit of record `record`'s weapon (1, 2) on a target: its own hit, or
+/// its indirect blast; on a plane or copter (`air_target`, its record) a
+/// blast is the target's own (Dual Strike's missiles and shells burst in
+/// the air: `0c7`).
+fn hit_on(record: u32, weapon: u8, air_target: Option<u32>) -> Option<&'static Fx> {
+    let all = HITS.get_or_init(|| {
+        (0..SCENE_RECORDS).map(|r| [hit_of(r, 1), hit_of(r, 2), word(RECORDS + RECORD * r + 4 * BLAST).and_then(effect_at)]).collect()
+    });
+    match air_target {
+        Some(t) if !own_hit(record, weapon) => all.get(t as usize)?[2].as_ref(),
+        _ => all.get(record as usize)?[(weapon == 2) as usize].as_ref(),
+    }
+}
 
 fn figure(unit: usize, army: usize) -> Option<&'static Figure> {
     let all = FIGURES.get_or_init(|| UNITS.iter().flat_map(|u| (0..ARMIES).map(move |a| convert(u, a))).collect());
@@ -500,7 +590,12 @@ const STATE: u32 = 0x0203_F800;
 const SIDE_STATE: u32 = 0x40;
 /// +0 unit (index + 1, 0 none), +1 army, +2 weapon, +3 figure record,
 /// +4 shots seen (u16), +6 destroyed, +7 shots fired in the volley, +8 per
-/// layer 4 bytes: script, step, time left, frame (script 3: gone).
+/// layer 4 bytes: script, step, time left, frame (script 3: gone). Then:
+/// the enemy's Dual Strike record + 1 and weapon (for its hits on the unit),
+/// whether it flies, its figure hits on the side so far (u8); the
+/// volley's hits (0: none running), hits landed, frames, and whether the
+/// donor has fired; the enemy's HP shown when the volley started (u16); the
+/// frames left before the volley; whether the side's HP drain has started.
 const S_UNIT: u32 = 0;
 const S_ARMY: u32 = 1;
 const S_WEAPON: u32 = 2;
@@ -509,7 +604,34 @@ const S_SHOTS: u32 = 4;
 const S_DEAD: u32 = 6;
 const S_VOLLEY: u32 = 7;
 const S_LAYERS: u32 = 8;
+const S_ENEMY: u32 = 0x14;
+const S_ENEMY_WEAPON: u32 = 0x15;
+const S_ENEMY_AIR: u32 = 0x16;
+const S_STRUCK: u32 = 0x17;
+const S_HITS: u32 = 0x18;
+const S_LANDED: u32 = 0x19;
+const S_TIME: u32 = 0x1A;
+const S_FIRED: u32 = 0x1B;
+const S_WAIT: u32 = 0x1E;
+const S_AREA: u32 = 0x1F;
+const S_HP0: u32 = 0x1C;
 const GONE: u8 = 3;
+
+/// Per side (u16, HP x 10): the HP shown, and the HP after the battle.
+const HP_SHOWN: u32 = 0x0202_9B78;
+const HP_AFTER: u32 = 0x0202_9B7C;
+/// `sub_08057BDC`, each frame of the scene, drains the HP counters: per
+/// side, while [`DRAINING`] (u16) is set and the HP shown is not the HP
+/// after, a 16.16 value ([`DRAIN_VALUE`], u32) less a rate ([`DRAIN_RATE`],
+/// set up so that its last step lands on the HP after) is the HP shown; the
+/// figures fall and the counter redraws from it. A side's shot landing
+/// (`sub_08057BCC`) sets [`DRAINING`].
+pub const HP_DRAIN: u32 = 0x0805_7BDC;
+const DRAINING: u32 = 0x0300_05E8;
+const DRAIN_VALUE: u32 = 0x0300_05D8;
+const DRAIN_RATE: u32 = 0x0300_05E0;
+/// A volley's hold on the enemy's HP ends after this many frames.
+const VOLLEY_FRAMES: u8 = 240;
 
 /// Effects in flight, per side: 12 of 16 bytes. +0 kind + 1 (0 free: the
 /// [`Figure::fx`] index), +1 step, +2 time left, +3 frame, +4/+6 x, y (s16,
@@ -521,6 +643,17 @@ const FX_SIZE: u32 = 0x10;
 const FX_SLOTS: u32 = 12;
 /// A direct shot's hit comes this many frames after the flash.
 const HIT_DELAY: u8 = 5;
+/// An AW2 enemy's effect sprite this close to a unit (px) is its hit.
+const IMPACT_MARGIN: i32 = 12;
+/// Per side (0x90, u16 at `+0x16`): the figure hits it has taken (a direct
+/// shot landing on a figure, `sub_08054500`); an indirect or area shot
+/// lands with no figure hits and starts the side's HP drain.
+const FIGURE_HITS: u32 = 0x0202_98E0 + 0x16;
+const SIDE_HITS: u32 = 0x90;
+/// An area hit's Dual Strike hits on the unit (from its middle, in quarters
+/// of its size), frames apart.
+const AREA_HITS: [(i32, i32); 3] = [(0, 0), (-1, -1), (1, 1)];
+const AREA_GAP: u8 = 6;
 
 /// Whether the scene is on screen: its proc runs and the battle map's main
 /// callback is not back yet (the proc outlives the scene by a few frames).
@@ -617,6 +750,14 @@ fn figure_count(core: &mut Core) {
         }
     }
     let weapon = core.raw_read_16(ROWS + ROW * side + 4, -1) as u8;
+    let enemy = side_unit_type(core, 1 - side);
+    if let Some(ds) = crate::roster::ds_id(enemy) {
+        core.raw_write_8(state + S_ENEMY, -1, ds);
+        core.raw_write_8(state + S_ENEMY_WEAPON, -1, core.raw_read_16(ROWS + ROW * (1 - side) + 4, -1) as u8);
+    }
+    core.raw_write_8(state + S_ENEMY_AIR, -1, matches!(class_of(core, enemy), 2 | 3) as u8);
+    core.raw_write_8(state + S_STRUCK, -1, core.raw_read_16(FIGURE_HITS + SIDE_HITS * side, -1) as u8);
+    core.raw_write_8(state + S_AREA, -1, (core.raw_read_16(DRAINING + 2 * side, -1) != 0) as u8);
     core.raw_write_8(state + S_UNIT, -1, unit as u8 + 1);
     core.raw_write_8(state + S_ARMY, -1, army as u8);
     core.raw_write_8(state + S_WEAPON, -1, weapon);
@@ -884,12 +1025,42 @@ fn s16(core: &Core, at: u32) -> i32 {
     core.raw_read_16(at, -1) as i16 as i32
 }
 
+/// Effect `kind` of the side's figure: its own, or (struck) the enemy's hit
+/// on it; a secondary weapon's hit is its record's own.
+fn fx_of(core: &Core, side: u32, fig: &'static Figure, kind: u8) -> Option<&'static Fx> {
+    let state = STATE + SIDE_STATE * side;
+    let spec = UNITS.get((core.raw_read_8(state + S_UNIT, -1) as usize).checked_sub(1)?)?;
+    let enemy = (core.raw_read_8(state + S_ENEMY, -1) as u32).checked_sub(1);
+    match kind {
+        FX_STRUCK => hit_on(enemy?, core.raw_read_8(state + S_ENEMY_WEAPON, -1), spec.air.then_some(spec.record)),
+        FX_HIT => {
+            let air = enemy.filter(|_| core.raw_read_8(state + S_ENEMY_AIR, -1) != 0);
+            hit_on(spec.record, core.raw_read_8(state + S_WEAPON, -1).max(1), air).or(fig.fx[kind as usize].as_ref())
+        }
+        _ => fig.fx.get(kind as usize)?.as_ref(),
+    }
+}
+
+/// One of the side's volley's shots has landed (a hit shows, or a
+/// projectile left the screen).
+fn landed(core: &mut Core, side: u32) {
+    let at = STATE + SIDE_STATE * side + S_LANDED;
+    core.raw_write_8(at, -1, core.raw_read_8(at, -1).saturating_add(1));
+}
+
 /// Start effect `kind` of the side's figure at `(x, y)`, after `delay`
 /// frames, flying at `(dx, dy)` for `launch` frames and then at `target`.
 #[allow(clippy::too_many_arguments)]
-fn spawn(core: &mut Core, side: u32, fig: &Figure, kind: u8, (x, y): (i32, i32), d: (i32, i32, u8), delay: u8, target: (i32, i32)) {
-    let Some(fx) = fig.fx[kind as usize].as_ref() else { return };
-    let Some(k) = (0..FX_SLOTS).find(|&k| core.raw_read_8(fx_slot(side, k), -1) == 0) else { return };
+fn spawn(core: &mut Core, side: u32, fig: &'static Figure, kind: u8, (x, y): (i32, i32), d: (i32, i32, u8), delay: u8, target: (i32, i32)) {
+    let Some(fx) = fx_of(core, side, fig, kind) else { return };
+    // A hit or projectile takes a muzzle flash's slot if none is free.
+    let free = |core: &Core, muzzle: bool| {
+        (0..FX_SLOTS).find(|&k| match core.raw_read_8(fx_slot(side, k), -1) {
+            0 => true,
+            n => muzzle && n <= FX_MUZZLE + 2,
+        })
+    };
+    let Some(k) = free(core, false).or_else(|| free(core, kind > FX_MUZZLE + 1 && kind != FX_BLAST)) else { return };
     let at = fx_slot(side, k);
     let mut b = [0u8; FX_SIZE as usize];
     b[0] = kind + 1;
@@ -907,6 +1078,9 @@ fn spawn(core: &mut Core, side: u32, fig: &Figure, kind: u8, (x, y): (i32, i32),
     if delay == 0 {
         settle(core, at, &scripts, fx.first(kind), 0);
         // Kind + 1 again: settle wrote the script index (0) over it.
+        if kind == FX_HIT {
+            landed(core, side);
+        }
     }
     core.raw_write_8(at, -1, kind + 1);
     if delay != 0 {
@@ -936,7 +1110,7 @@ fn target(core: &Core, side: u32, n: usize) -> (i32, i32) {
 /// The side's unit fires one shot of its volley (the `n`-th) from its
 /// origin `o`: a muzzle flash at the next point, and a projectile or, for a
 /// direct shot, a hit on the target.
-fn shoot(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec, weapon: u8, n: usize, o: (i32, i32), delay: u8) {
+fn shoot(core: &mut Core, side: u32, fig: &'static Figure, spec: &UnitSpec, weapon: u8, n: usize, o: (i32, i32), delay: u8) {
     let w = (weapon.max(1) - 1).min(1) as usize;
     let pts = spec.shots.points[w].clone();
     let p = if pts.is_empty() { (0, 0) } else { fig.points[pts.start + n % pts.len()] };
@@ -954,12 +1128,14 @@ fn shoot(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec, weapon: u8, 
 }
 
 /// A projectile from `at` to `t`, or a direct hit on `t`.
-fn fly(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec, at: (i32, i32), delay: u8, t: (i32, i32)) {
+fn fly(core: &mut Core, side: u32, fig: &'static Figure, spec: &UnitSpec, at: (i32, i32), delay: u8, t: (i32, i32)) {
     let dir = if side == 0 { 1 } else { -1 };
-    if fig.fx[FX_PROJECTILE as usize].is_some() && spec.shots.speed > 0 {
+    let air = core.raw_read_8(STATE + SIDE_STATE * side + S_ENEMY_AIR, -1) != 0;
+    let kind = if air && fig.fx[FX_AIR as usize].is_some() { FX_AIR } else { FX_PROJECTILE };
+    if fig.fx[kind as usize].is_some() && spec.shots.speed > 0 {
         let (lx, ly, lf) = spec.shots.launch;
         let d = if lf > 0 { (dir * lx, ly, lf) } else { aim(at, t, dir * spec.shots.speed) };
-        spawn(core, side, fig, FX_PROJECTILE, at, d, delay, t);
+        spawn(core, side, fig, kind, at, d, delay, t);
     } else {
         spawn(core, side, fig, FX_HIT, t, (0, 0, 0), delay + HIT_DELAY, t);
     }
@@ -972,7 +1148,7 @@ fn aim(at: (i32, i32), t: (i32, i32), vx: i32) -> (i32, i32, u8) {
 }
 
 /// One frame of the side's effects.
-fn step_fx(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec) {
+fn step_fx(core: &mut Core, side: u32, fig: &'static Figure, spec: &UnitSpec) {
     let dir = if side == 0 { 1 } else { -1 };
     for k in 0..FX_SLOTS {
         let at = fx_slot(side, k);
@@ -981,7 +1157,7 @@ fn step_fx(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec) {
             continue;
         }
         let kind = kind - 1;
-        let Some(fx) = fig.fx.get(kind as usize).and_then(|f| f.as_ref()) else {
+        let Some(fx) = fx_of(core, side, fig, kind) else {
             core.raw_write_8(at, -1, 0);
             continue;
         };
@@ -993,13 +1169,16 @@ fn step_fx(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec) {
                 core.raw_write_8(at, -1, 0);
                 let fired = settle(core, at, &scripts, fx.first(kind), FIRE_EVENT);
                 core.raw_write_8(at, -1, kind + 1);
+                if kind == FX_HIT {
+                    landed(core, side);
+                }
                 emit(core, side, fig, spec, at, kind, fired);
             }
             continue;
         }
         let (x, y) = (s16(core, at + 4), s16(core, at + 6));
         let t = (s16(core, at + 0xC), s16(core, at + 0xE));
-        if kind == FX_PROJECTILE {
+        if is_projectile(kind) {
             let (mut dx, mut dy) = (core.raw_read_8(at + 8, -1) as i8 as i32, core.raw_read_8(at + 9, -1) as i8 as i32);
             let launch = core.raw_read_8(at + 0xA, -1);
             if launch > 0 {
@@ -1021,6 +1200,7 @@ fn step_fx(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec) {
             }
             if !(-64..304).contains(&nx) || !(-64..224).contains(&ny) {
                 core.raw_write_8(at, -1, 0);
+                landed(core, side);
                 continue;
             }
         }
@@ -1029,7 +1209,7 @@ fn step_fx(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec) {
         let fired = step_script(core, at, &scripts, FIRE_EVENT);
         let now = core.raw_read_8(at, -1);
         let held = core.raw_read_8(at + 2, -1) == 0;
-        if (now == GONE || held) && kind != FX_PROJECTILE {
+        if (now == GONE || held) && !is_projectile(kind) {
             core.raw_write_8(at, -1, 0);
         } else {
             core.raw_write_8(at, -1, kind + 1);
@@ -1039,7 +1219,7 @@ fn step_fx(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec) {
 }
 
 /// A muzzle flash whose script fires launches its projectile.
-fn emit(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec, at: u32, kind: u8, fired: u8) {
+fn emit(core: &mut Core, side: u32, fig: &'static Figure, spec: &UnitSpec, at: u32, kind: u8, fired: u8) {
     if fired == 0 || kind > 1 {
         return;
     }
@@ -1049,6 +1229,83 @@ fn emit(core: &mut Core, side: u32, fig: &Figure, spec: &UnitSpec, at: u32, kind
 }
 
 // --- Each frame -----------------------------------------------------------------
+
+/// Where the figure's origin is on screen (from its record's position).
+fn origin_of(core: &Core, side: u32, fig: &Figure) -> (i32, i32) {
+    let rec = FIGURE_RECORDS + SIDE_FIGURES * side + FIGURE_RECORD * core.raw_read_8(STATE + SIDE_STATE * side + S_FIGURE, -1) as u32;
+    let (b0, b1, b2, b3) = fig.bounds;
+    let (cx, cy) = ((b0 + b2) / 2, (b1 + b3) / 2);
+    let (px, py) = (s16(core, rec + 8), s16(core, rec + 0xA));
+    (if side == 0 { px + cx + 1 } else { px - cx }, py - cy)
+}
+
+/// The figure's idle picture on screen: x0, y0, x1, y1.
+fn screen_box(side: u32, fig: &Figure, o: (i32, i32)) -> (i32, i32, i32, i32) {
+    let (b0, b1, b2, b3) = fig.bounds;
+    let (x0, x1) = if side == 0 { (o.0 - b2, o.0 - b0) } else { (o.0 + b0, o.0 + b2) };
+    (x0, o.1 + b1, x1, o.1 + b3)
+}
+
+/// A sprite's width and height (shape, size).
+fn sprite_size(a0: u16, a1: u16) -> (i32, i32) {
+    const SIZES: [[(i32, i32); 4]; 3] = [
+        [(8, 8), (16, 16), (32, 32), (64, 64)],
+        [(16, 8), (32, 8), (32, 16), (64, 32)],
+        [(8, 16), (8, 32), (16, 32), (32, 64)],
+    ];
+    SIZES[((a0 >> 14) as usize).min(2)][(a1 >> 14) as usize]
+}
+
+/// The hits a volley makes: the firing script's shot events, or the burst.
+fn volley_hits(fig: &Figure, spec: &UnitSpec, weapon: u8) -> u8 {
+    let events = fig
+        .layers
+        .iter()
+        .filter(|l| l.weapon == 0 || l.weapon == weapon.max(1))
+        .map(|l| l.scripts[1].iter().filter(|&&(d, f)| f == EVENT && d == spec.shots.event && d != 0).count())
+        .max()
+        .unwrap_or(0);
+    if events > 0 {
+        events as u8
+    } else {
+        spec.shots.burst.0
+    }
+}
+
+/// Trap at [`HP_DRAIN`], before AW2 drains the HP counters: while a side's
+/// volley runs, the enemy's counter does not run ahead of its hits. The
+/// volley is timed to end as the donor's shot lands and starts the drain
+/// ([`UnitSpec::wait`]); should the drain start first, it holds at the HP
+/// the hits landed so far take it to (the whole damage once all have
+/// landed), each hold landing exactly on its HP as AW2's own steps do. The
+/// drain's pace, the figures' fall and the damage stay AW2's.
+pub fn hp_drain(core: &mut Core) {
+    if !is_on(core) || !scene_running(core) {
+        return;
+    }
+    for side in 0..2u32 {
+        let state = STATE + SIDE_STATE * side;
+        let n = core.raw_read_8(state + S_HITS, -1) as u32;
+        if n == 0 {
+            continue;
+        }
+        let enemy = 1 - side;
+        let landed = (core.raw_read_8(state + S_LANDED, -1) as u32).min(n);
+        let done = landed >= n || core.raw_read_8(state + S_TIME, -1) >= VOLLEY_FRAMES;
+        let (hp0, after) = (core.raw_read_16(state + S_HP0, -1) as u32, core.raw_read_16(HP_AFTER + 2 * enemy, -1) as u32);
+        if core.raw_read_16(DRAINING + 2 * enemy, -1) == 0 || core.raw_read_16(HP_SHOWN + 2 * enemy, -1) as u32 == after {
+            if done {
+                core.raw_write_8(state + S_HITS, -1, 0);
+            }
+            continue;
+        }
+        let goal = if done || after >= hp0 { after } else { hp0 - (hp0 - after) * landed / n };
+        let (value, rate) = (core.raw_read_32(DRAIN_VALUE + 4 * enemy, -1), core.raw_read_32(DRAIN_RATE + 4 * enemy, -1));
+        if value.saturating_sub(rate) < goal << 16 {
+            core.raw_write_32(DRAIN_VALUE + 4 * enemy, -1, (goal << 16) + rate);
+        }
+    }
+}
 
 /// Trap at [`OAM_COPY`], the scene's VBlank copy of the whole shadow OAM
 /// ([`SHADOW`]): the donor's figure and effect sprites are dropped and the
@@ -1071,8 +1328,19 @@ fn flush(core: &mut Core) {
     if ours.iter().all(|o| o.is_none()) {
         return;
     }
-    // Drop the donors' figure sprites (noting their priority and flash) and
-    // their effects; keep the rest in order.
+    // Where the units stand, for the enemy's hits on them.
+    let mut boxes = [None, None];
+    for side in 0..2u32 {
+        let Some(unit) = ours[side as usize] else { continue };
+        let army = core.raw_read_8(STATE + SIDE_STATE * side + S_ARMY, -1) as usize;
+        if let Some(fig) = figure(unit, army) {
+            boxes[side as usize] = Some(screen_box(side, fig, origin_of(core, side, fig)));
+        }
+    }
+    // Drop the donors' figure sprites (noting their priority and flash),
+    // their effects, and an AW2 enemy's hits on the units (noting where);
+    // keep the rest in order.
+    let mut impacts = [(0i32, 0i32, 0i32); 2];
     let mut prio = [FIGURE_PRIORITY; 2];
     let mut flash = [false; 2];
     let mut kept: Vec<[u16; 3]> = Vec::new();
@@ -1102,6 +1370,19 @@ fn flush(core: &mut Core) {
             };
             if owner.is_some_and(|o| ours[o].is_some()) {
                 continue;
+            }
+            if let (false, Some(o)) = (affine, owner) {
+                let (w, h) = sprite_size(a0, a1);
+                let x = (a1 & 0x1FF) as i32 - if a1 & 0x100 != 0 { 512 } else { 0 };
+                let y = (a0 & 0xFF) as i32 - if (a0 & 0xFF) as i32 >= SCREEN_H { 256 } else { 0 };
+                let (mx, my) = (x + w / 2, y + h / 2);
+                if let Some((x0, y0, x1, y1)) = boxes[1 - o] {
+                    if (x0 - IMPACT_MARGIN..x1 + IMPACT_MARGIN).contains(&mx) && (y0 - IMPACT_MARGIN..y1 + IMPACT_MARGIN).contains(&my) {
+                        let i = &mut impacts[1 - o];
+                        *i = (i.0 + mx, i.1 + my, i.2 + 1);
+                        continue;
+                    }
+                }
             }
         }
         kept.push(attrs);
@@ -1140,8 +1421,21 @@ fn flush(core: &mut Core) {
         let standing = core.raw_read_8(rec, -1) != 0;
         let mut volley = core.raw_read_8(state + S_VOLLEY, -1);
         let firing_layers = fig.layers.iter().any(|l| !l.scripts[1].is_empty());
+        // One volley a battle, as in Dual Strike (a donor may count more
+        // shots), after its wait from the donor's first shot.
+        let w = (weapon.max(1) - 1).min(1) as usize;
+        if !dead && shots > seen && core.raw_read_8(state + S_FIRED, -1) == 0 {
+            core.raw_write_8(state + S_FIRED, -1, 1);
+            core.raw_write_8(state + S_WAIT, -1, spec.wait[w] + 1);
+        }
+        let wait = core.raw_read_8(state + S_WAIT, -1);
+        if wait > 0 {
+            core.raw_write_8(state + S_WAIT, -1, wait - 1);
+        }
+        let new_shots = wait == 1 && !dead;
         let mut fired = 0;
         let mut burst = false;
+        let mut starts = false;
         for (l, layer) in fig.layers.iter().enumerate() {
             let at = state + S_LAYERS + 4 * l as u32;
             if !dead && !standing && placed {
@@ -1154,8 +1448,9 @@ fn flush(core: &mut Core) {
             }
             let shows = layer.weapon == 0 || layer.weapon == weapon.max(1);
             let event = if shows { spec.shots.event } else { 0 };
-            if !dead && shots > seen && shows && !layer.scripts[1].is_empty() && core.raw_read_8(at, -1) != 1 {
+            if new_shots && shows && !layer.scripts[1].is_empty() && core.raw_read_8(at, -1) != 1 {
                 volley = 0;
+                starts = true;
                 // From its first shot: AW2's shell is leaving now.
                 let first = layer.scripts[1].iter().position(|&(d, f)| f == EVENT && d == event).unwrap_or(0);
                 fired += start(core, at, &layer.scripts, 1, first, event);
@@ -1163,10 +1458,18 @@ fn flush(core: &mut Core) {
             }
             fired += step_script(core, at, &layer.scripts, event);
         }
-        if !dead && shots > seen && !firing_layers && spec.shots.burst.0 > 0 {
+        if new_shots && !firing_layers && spec.shots.burst.0 > 0 {
             burst = true;
+            starts = true;
         }
         core.raw_write_16(state + S_SHOTS, -1, shots);
+        if starts && placed {
+            let hp = core.raw_read_16(HP_SHOWN + 2 * (1 - side), -1);
+            core.raw_write_8(state + S_HITS, -1, volley_hits(fig, spec, weapon));
+            core.raw_write_8(state + S_LANDED, -1, 0);
+            core.raw_write_8(state + S_TIME, -1, 0);
+            core.raw_write_16(state + S_HP0, -1, hp);
+        }
         if placed {
             for _ in 0..fired {
                 shoot(core, side, fig, spec, weapon, volley as usize, origin, 0);
@@ -1190,6 +1493,31 @@ fn flush(core: &mut Core) {
             }
         }
         step_fx(core, side, fig, spec);
+        let time = core.raw_read_8(state + S_TIME, -1);
+        core.raw_write_8(state + S_TIME, -1, time.saturating_add(1));
+        // An AW2 enemy's hits: Dual Strike's, where AW2's landed (inside the
+        // unit); an indirect or area shot's (no figure hits, the HP drain
+        // starts) a few over its body.
+        let (hits, area) = (core.raw_read_16(FIGURE_HITS + SIDE_HITS * side, -1) as u8, core.raw_read_16(DRAINING + 2 * side, -1) != 0);
+        let new = hits.saturating_sub(core.raw_read_8(state + S_STRUCK, -1));
+        let area_starts = area && core.raw_read_8(state + S_AREA, -1) == 0;
+        core.raw_write_8(state + S_STRUCK, -1, hits);
+        core.raw_write_8(state + S_AREA, -1, area as u8);
+        if placed && ours[1 - side as usize].is_none() && (new > 0 || area_starts) {
+            let (x0, y0, x1, y1) = screen_box(side, fig, origin);
+            let (w, h) = (x1 - x0, y1 - y0);
+            let (ix, iy, n) = impacts[side as usize];
+            let (mx, my) = if n > 0 { (ix / n, iy / n) } else { ((x0 + x1) / 2, (y0 + y1) / 2) };
+            let inside = |(x, y): (i32, i32)| (x.clamp(x0 + w / 4, x1 - w / 4), y.clamp(y0 + h / 4, y1 - h / 4));
+            if new > 0 {
+                spawn(core, side, fig, FX_STRUCK, inside((mx, my)), (0, 0, 0), 0, (0, 0));
+            } else {
+                for (k, (fx_, fy)) in AREA_HITS.iter().enumerate() {
+                    let at = inside((mx + fx_ * w / 4, my + fy * h / 4));
+                    spawn(core, side, fig, FX_STRUCK, at, (0, 0, 0), AREA_GAP * k as u8, at);
+                }
+            }
+        }
         if !placed {
             continue;
         }
@@ -1218,7 +1546,7 @@ fn flush(core: &mut Core) {
             if kind == 0 || core.raw_read_8(at + 0xB, -1) != 0 {
                 continue;
             }
-            let Some(fx) = fig.fx.get(kind as usize - 1).and_then(|f| f.as_ref()) else { continue };
+            let Some(fx) = fx_of(core, side, fig, kind - 1) else { continue };
             let Some(pieces) = fx.frames.get(core.raw_read_8(at + 3, -1) as usize) else { continue };
             let o = (s16(core, at + 4), s16(core, at + 6));
             own.draw(pieces, o, mirror, 2);
@@ -1302,6 +1630,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (FIGURE_COUNT, Box::new(figure_count)),
         (DRAIN, Box::new(drain)),
         (OAM_COPY, Box::new(flush)),
+        (HP_DRAIN, Box::new(hp_drain)),
     ]
 }
 
