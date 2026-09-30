@@ -335,7 +335,8 @@ class DualStrike:
         b = self.co_block(co, mode)
         if b is None:
             return None
-        r = self.record(t)
+        # AW2's ids of the Carrier and the Oozium (Dual Strike's 25 and 26).
+        r = self.record({26: 25, 27: 26}.get(t, t))
         cls, combat = r[0x1C], r[0x20]
         v = self._class_stat(b, cls)[which] if cls < 7 else 0
         k = {5: 7, 4: 8, 2: 9, 6: 9, 7: 10}.get(combat)

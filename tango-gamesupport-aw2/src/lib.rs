@@ -26,6 +26,7 @@ pub mod ds_weather;
 pub mod sandstorm;
 pub mod wasteland;
 pub mod com_tower;
+pub mod co_grid;
 pub mod co_new;
 pub mod cpu_tactics;
 pub mod co_powers;

@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn round_trips() {
         let mut data: Vec<u8> = (0..5000u32).map(|i| ((i * 7) % 13) as u8).collect();
-        data.extend((0..300u32).map(|i| (i * 2654435761u32 >> 24) as u8));
+        data.extend((0..300u32).map(|i| (i.wrapping_mul(2654435761u32) >> 24) as u8));
         data.extend(std::iter::repeat(0).take(700));
         let c = compress(&data);
         assert!(c.len() < data.len());

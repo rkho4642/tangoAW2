@@ -75,10 +75,11 @@ class Ctx:
         g.boot_to_teams()
         return g
 
-    def start(self, m, cos, humans=(1,), fog=False, weather="clear", power=True, visuals="off", capt=None):
+    def start(self, m, cos, humans=(1,), fog=False, weather="clear", power=True, visuals="off", capt=None, trace=None):
+        """`trace`: a file of ROM addresses whose `trap` lines the runner prints (AW2_TRACE)."""
         save = os.path.join(self.out, "map.sav")
         m.write(paths.base_save(), save)
-        e = Emu(save=save, ds=self.ds)
+        e = Emu(save=save, ds=self.ds, trace=trace)
         g = Game(e, self.image)
         self.games.append(g)
         g.setup(cos, humans=humans, fog=fog, weather=weather, power=power, visuals=visuals, capt=capt)
