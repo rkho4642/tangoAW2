@@ -31,6 +31,11 @@
 //! (ids from [`FIRST_SONG`]) and its six literal-pool words switched while
 //! the pack is on. The new COs' rows then name their song
 //! ([`crate::co_roster`]). AW2's own songs, players and mixer are untouched.
+//!
+//! **Heal sounds.** The Black Crystal's and Black Obelisk's heal sound
+//! effects (ids read from Dual Strike's code, [`HEAL_SE_CALLS`]) are
+//! converted the same way after the themes, as sound effects on AW2's
+//! sound-effect player 2 ([`heal_se`], played by [`crate::heal_effect`]).
 
 use mgba::core::Core;
 use std::collections::HashMap;
@@ -70,6 +75,21 @@ const DS_MUSIC: u32 = 0x14;
 /// linear ones; this puts the new themes level with AW2's own.
 const GAIN: f64 = 1.1;
 
+/// Dual Strike's heal sounds: the Crystal's and the Obelisk's animation
+/// starts (0x020D84B8) play a sound effect with `mov r0, #id` at these
+/// addresses, then `bl 0x0200B76C` (its play-a-sound call). The ids are
+/// sequences of the archive (`SE_BLACKSTONE` 175 for the Crystal,
+/// `SE_BLACKCRYSTAL` 176 for the Obelisk: one note of a 1.9 s and a 3.1 s
+/// sample, played to its end).
+const HEAL_SE_CALLS: [u32; 2] = [0x020D_85D8, 0x020D_86E0];
+const DS_PLAY_SE: u32 = 0x0200_B76C;
+/// The player AW2's sound effects of the turn-start invention loop use (a
+/// cannon's shot, song 457: player 2, two tracks) and their priority.
+const SE_PLAYER: u16 = 2;
+const SE_PRIORITY: u8 = 10;
+/// Dual Strike's tempo when a sequence sets none.
+const DS_DEFAULT_TEMPO: u16 = 120;
+
 // --- The sound archive (SDAT) ------------------------------------------------
 
 fn u16_at(b: &[u8], o: usize) -> Option<u16> {
@@ -88,9 +108,27 @@ fn theme_ids(arm9: &[u8]) -> Option<Vec<u16>> {
         .collect()
 }
 
-/// From the sound archive, the files the new COs' themes need, as pack
-/// files: `sound/seq/<id>` (INFO record, 12 bytes, then the SSEQ),
-/// `sound/bank/<id>` (INFO record, then the SBNK), `sound/wave/<id>` (SWAR).
+/// The sequence ids of the Crystal's and the Obelisk's heal sounds, read
+/// from Dual Strike's code ([`HEAL_SE_CALLS`]).
+fn heal_se_ids(arm9: &[u8]) -> Option<[u16; 2]> {
+    let mut ids = [0u16; 2];
+    for (id, &at) in ids.iter_mut().zip(HEAL_SE_CALLS.iter()) {
+        let o = (at - 0x0200_0000) as usize;
+        let (mov, bl) = (u32_at(arm9, o)?, u32_at(arm9, o + 4)?);
+        // mov r0, #imm8; bl (ARM, always).
+        let off = ((bl & 0x00FF_FFFF) << 8) as i32 >> 6;
+        if mov & 0xFFFF_FF00 != 0xE3A0_0000 || bl & 0xFF00_0000 != 0xEB00_0000 || (at + 12).wrapping_add(off as u32) != DS_PLAY_SE {
+            return None;
+        }
+        *id = (mov & 0xFF) as u16;
+    }
+    Some(ids)
+}
+
+/// From the sound archive, the files the new COs' themes and the heal
+/// sounds need, as pack files: `sound/seq/<id>` (INFO record, 12 bytes,
+/// then the SSEQ), `sound/bank/<id>` (INFO record, then the SBNK),
+/// `sound/wave/<id>` (SWAR).
 pub fn keep(sdat: &[u8], arm9: &[u8]) -> Option<Vec<(String, Vec<u8>)>> {
     let info = u32_at(sdat, 0x18)? as usize;
     let fat = u32_at(sdat, 0x20)? as usize;
@@ -112,7 +150,7 @@ pub fn keep(sdat: &[u8], arm9: &[u8]) -> Option<Vec<(String, Vec<u8>)>> {
     };
     let mut out: Vec<(String, Vec<u8>)> = Vec::new();
     let mut have = std::collections::HashSet::new();
-    for id in theme_ids(arm9)? {
+    for id in theme_ids(arm9)?.into_iter().chain(heal_se_ids(arm9)?) {
         let seq = record(0, id)?;
         let bank = u16_at(seq, 4)?;
         if have.insert(format!("s{id}")) {
@@ -1057,6 +1095,8 @@ pub struct Music {
     pub songs: Vec<u16>,
     /// Each song's header address (in [`Music::songs`]' id order from [`FIRST_SONG`]).
     pub headers: Vec<u32>,
+    /// The Crystal's and the Obelisk's heal sounds' song ids (after the themes).
+    pub heal_se: [u16; 2],
 }
 
 struct Blob {
@@ -1084,15 +1124,22 @@ fn pack_file(path: &str) -> Option<&'static [u8]> {
     crate::ds_pack::pack()?.file(path)
 }
 
-/// Convert every new CO's theme.
+/// Convert every new CO's theme, then the heal sounds.
 fn build() -> Option<Music> {
     let pack = crate::ds_pack::pack()?;
     let ids = theme_ids(&pack.arm9)?;
+    let se_ids = heal_se_ids(&pack.arm9)?;
     let mut blob = Blob { bytes: vec![0; (TABLE - BASE) as usize] };
     // The song table: AW2's, then ours (filled in below).
     let mut distinct: Vec<u16> = Vec::new();
     for &id in &ids {
         if !distinct.contains(&id) {
+            distinct.push(id);
+        }
+    }
+    let themes = distinct.len();
+    for id in se_ids {
+        if !distinct[themes..].contains(&id) {
             distinct.push(id);
         }
     }
@@ -1119,7 +1166,15 @@ fn build() -> Option<Music> {
         v
     };
     for (n, &sid) in distinct.iter().enumerate() {
-        let seq = parse_seq(pack_file(&format!("sound/seq/{sid}"))?)?;
+        // A sound effect: AW2's sound-effect player and priority, no reverb,
+        // Dual Strike's default tempo if it sets none, and a note without a
+        // length (Dual Strike plays it until its sample ends) as long as its
+        // sample.
+        let se = n >= themes;
+        let mut seq = parse_seq(pack_file(&format!("sound/seq/{sid}"))?)?;
+        if se && !seq.tracks.iter().flat_map(|t| t.evs.iter()).any(|e| matches!(e.1, Ev::Ctl(Ctl::Tempo(_)))) {
+            seq.tracks.first_mut()?.evs.insert(0, (0, Ev::Ctl(Ctl::Tempo(DS_DEFAULT_TEMPO))));
+        }
         let bank = pack_file(&format!("sound/bank/{}", seq.bank))?;
         let (binfo, sbnk) = bank.split_at(12);
         let arcs: Vec<u16> = (0..4).map(|k| u16_at(binfo, 4 + 2 * k).unwrap_or(0xFFFF)).collect();
@@ -1139,6 +1194,29 @@ fn build() -> Option<Music> {
             .last()
             .unwrap_or(120);
         let tick_rate = bpm as f64 / (240.0 * DS_UPDATE);
+        if se {
+            for t in seq.tracks.iter_mut() {
+                for (_, e) in t.evs.iter_mut() {
+                    let Ev::Note { key, len, prog, .. } = e else { continue };
+                    if *len != 0 {
+                        continue;
+                    }
+                    let regs = regions(sbnk, *prog);
+                    let secs = regs
+                        .iter()
+                        .find(|(lo, hi, _)| (*lo..=*hi).contains(key))
+                        .filter(|(_, _, r)| r.kind == 1)
+                        .and_then(|(_, _, r)| {
+                            let arc = *arcs.get(r.arc as usize)?;
+                            let s = sample(pack_file(&format!("sound/wave/{arc}"))?, r.wave)?;
+                            let pitch = 2f64.powf((*key as f64 - r.root as f64) / 12.0);
+                            s.loop_start.is_none().then(|| s.pcm.len() as f64 / s.rate as f64 / pitch)
+                        })
+                        .unwrap_or(1.0);
+                    *len = (secs * tick_rate).ceil() as u32;
+                }
+            }
+        }
         // Instruments: every program played.
         let mut progs: Vec<u8> = seq
             .tracks
@@ -1227,24 +1305,26 @@ fn build() -> Option<Music> {
             blob.put(&bytes);
             track_at.push(at);
         }
-        let mut header = vec![track_at.len() as u8, 0, 0, REVERB];
+        let (priority, reverb, player) = if se { (SE_PRIORITY, 0, SE_PLAYER) } else { (0, REVERB, PLAYER) };
+        let mut header = vec![track_at.len() as u8, 0, priority, reverb];
         header.extend_from_slice(&group_at.to_le_bytes());
         for a in &track_at {
             header.extend_from_slice(&a.to_le_bytes());
         }
         let header_at = blob.put(&header);
-        headers.push(header_at);
+        if !se {
+            headers.push(header_at);
+        }
         let e = (table_at - BASE) as usize + 8 * (AW2_SONGS as usize + n);
         blob.bytes[e..e + 4].copy_from_slice(&header_at.to_le_bytes());
-        blob.bytes[e + 4..e + 6].copy_from_slice(&PLAYER.to_le_bytes());
-        blob.bytes[e + 6..e + 8].copy_from_slice(&PLAYER.to_le_bytes());
+        blob.bytes[e + 4..e + 6].copy_from_slice(&player.to_le_bytes());
+        blob.bytes[e + 6..e + 8].copy_from_slice(&player.to_le_bytes());
     }
     blob.bytes[0..4].copy_from_slice(&MAGIC.to_le_bytes());
-    let songs = ids
-        .iter()
-        .map(|id| FIRST_SONG + distinct.iter().position(|d| d == id).unwrap() as u16)
-        .collect();
-    Some(Music { blob: blob.bytes, songs, headers })
+    let song_of = |id: u16, from: usize| FIRST_SONG + (from + distinct[from..].iter().position(|&d| d == id).unwrap()) as u16;
+    let songs = ids.iter().map(|&id| song_of(id, 0)).collect();
+    let heal_se = se_ids.map(|id| song_of(id, themes));
+    Some(Music { blob: blob.bytes, songs, headers, heal_se })
 }
 
 static BUILT: OnceLock<Option<Music>> = OnceLock::new();
@@ -1258,6 +1338,12 @@ pub fn music() -> Option<&'static Music> {
 pub fn song(co: u8) -> Option<u16> {
     let i = crate::co_new::NEW.iter().position(|&(ds, _)| Some(ds) == crate::co_new::ds_id(co))?;
     music()?.songs.get(i).copied()
+}
+
+/// The song (a sound effect) Dual Strike plays with the Crystal's (`0`) or
+/// the Obelisk's (`1`) heal animation.
+pub fn heal_se(which: usize) -> Option<u16> {
+    music()?.heal_se.get(which).copied()
 }
 
 fn install(core: &mut Core) -> bool {
@@ -1404,6 +1490,34 @@ mod pack_tests {
             let plan = plan_tracks(&seq, until);
             eprintln!("seq {id}: {} tracks -> {:?}, loops {:?}", seq.tracks.len(), plan, loops);
             assert!(plan.len() <= MAX_TRACKS);
+        }
+    }
+
+    /// The heal sounds: Dual Strike's ids from its code, songs after the
+    /// themes on AW2's sound-effect player, one track playing the whole
+    /// sample (needs `TANGOAW2_DS_ROM`).
+    #[test]
+    #[ignore]
+    fn heal_sounds_convert() {
+        let pack = crate::ds_pack::pack().unwrap();
+        assert_eq!(heal_se_ids(&pack.arm9), Some([175, 176]));
+        let m = music().expect("music");
+        assert_eq!(m.heal_se, [FIRST_SONG + 9, FIRST_SONG + 10]);
+        eprintln!("heal sounds: music ends at {:#010x}", BASE + m.blob.len() as u32);
+        assert!(BASE + m.blob.len() as u32 <= 0x08D3_0000, "inside the music's ROM range (docs/AW2.md)");
+        for (i, song) in m.heal_se.iter().enumerate() {
+            let e = (TABLE - BASE) as usize + 8 * *song as usize;
+            let header = u32_at(&m.blob, e).unwrap();
+            assert_eq!(u16_at(&m.blob, e + 4), Some(SE_PLAYER));
+            let h = (header - BASE) as usize;
+            assert_eq!(&m.blob[h..h + 4], &[1, 0, SE_PRIORITY, 0]);
+            let track = (u32_at(&m.blob, h + 8).unwrap() - BASE) as usize;
+            let end = track + m.blob[track..].iter().position(|&b| b == FINE).unwrap() + 1;
+            let bytes = &m.blob[track..end];
+            eprintln!("heal sound {i}: song {song}, track {:02x?}", bytes);
+            // TEMPO, then the note tied and ended after the sample's length.
+            assert_eq!(bytes[0], TEMPO);
+            assert!(bytes.contains(&TIE) && bytes.contains(&EOT) && bytes.contains(&FINE));
         }
     }
 }

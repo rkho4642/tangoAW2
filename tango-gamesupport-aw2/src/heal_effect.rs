@@ -32,13 +32,23 @@
 //! [`crate::sandstorm`]). Their tiles go to OBJ tiles no map screen uses
 //! (0x1F9-0x209, 0x2D2-0x2DA, 0x2E4, 0x2EC, 0x2F4, 0x2FC, 0x309-0x311: 51
 //! tiles; the Obelisk's two busiest frames need 52 and leave out one 8x8
-//! sparkle), and the colours to OBJ palette 8, which no map sprite uses:
-//! it is saved at the start and put back at the end, and the tiles are
-//! cleared again. Dual Strike blends the effect half-transparent; here it
-//! is drawn opaque.
+//! sparkle), and the colours to OBJ palette 15, which no map sprite uses
+//! (the building sprites take 8 + owner, so 8 is the neutral and fogged
+//! buildings' palette: the effect's colours there turned those buildings
+//! dark while it played): it is saved at the start and put back at the
+//! end, and the tiles are cleared again. Dual Strike blends the effect
+//! half-transparent; here it is drawn opaque.
 //!
-//! What to draw is kept in RAM (when, which structure, where, the saved
-//! palette), so a rollback redraws the same frames.
+//! Sound: as the animation starts Dual Strike plays its sound effect
+//! (`SE_BLACKSTONE` for the Crystal, `SE_BLACKCRYSTAL` for the Obelisk),
+//! converted to AW2 songs by [`crate::ds_music`]. The first frame the
+//! animation draws marks the song pending; the turn's wait
+//! ([`playing_fn`], called by the game every frame while it waits) plays
+//! it through AW2's own sound-effect call (`sub_0803B4DC`, which keeps the
+//! game's sound setting), on the player AW2's cannon shots use.
+//!
+//! What to draw and play is kept in RAM (when, which structure, where, the
+//! saved palette, the sound), so a rollback redraws the same frames.
 
 use mgba::core::Core;
 use std::collections::HashMap;
@@ -47,7 +57,8 @@ use std::sync::OnceLock;
 const OBJ_VRAM: u32 = 0x0601_0000;
 /// Free OBJ tiles: (first, count).
 const TILE_RUNS: [(u16, u16); 7] = [(0x1F9, 17), (0x2D2, 9), (0x2E4, 4), (0x2EC, 4), (0x2F4, 4), (0x2FC, 4), (0x309, 9)];
-const PALETTE: u16 = 8;
+/// OBJ palette 15: unused on the map (8..13 are the buildings', 8 + owner).
+const PALETTE: u16 = 15;
 const PAL_BUFFER: u32 = 0x0300_20C0;
 const PAL_RAM: u32 = 0x0500_0000;
 
@@ -55,17 +66,20 @@ const CRYSTAL_ANIM: u32 = 0x0213_E078;
 const OBELISK_ANIM: u32 = 0x0213_E2A0;
 
 /// RAM tangoAW2 keeps: start clock (u32), structure (0 none, 1 Crystal,
-/// 2 Obelisk), its x, y, OBJ palette 8 as it was, and the map's scroll
-/// last frame (the animation starts once the camera has stopped).
+/// 2 Obelisk), its x, y, whether its sound has been asked for, OBJ palette
+/// 15 as it was, the map's scroll last frame (the animation starts once
+/// the camera has stopped), and the song to play (0 none).
 const STATE: u32 = 0x0203_FD80;
 const START: u32 = STATE;
 const KIND: u32 = STATE + 4;
 const POS_X: u32 = STATE + 5;
 const POS_Y: u32 = STATE + 6;
+const SOUNDED: u32 = STATE + 7;
 const SAVED_PALETTE: u32 = STATE + 8; // 32 bytes
 const LAST_SCROLL: u32 = STATE + 0x28; // x, y (u16)
+const SE_PENDING: u32 = STATE + 0x2C; // u16
 #[cfg(test)]
-const STATE_END: u32 = LAST_SCROLL + 4;
+const STATE_END: u32 = SE_PENDING + 2;
 const GAME_CLOCK: u32 = 0x0300_4008;
 const OAM_NEXT: u32 = 0x0300_141C;
 /// The frame's sprite list (`sub_0801BC08`: base at +0, flushed to OAM):
@@ -376,11 +390,17 @@ pub fn start(core: &mut Core, kind: Kind, x: u8, y: u8) {
     let map = core.raw_read_32(MAP_POINTER, -1);
     let scroll = core.raw_read_32(map + 4, -1);
     core.raw_write_32(LAST_SCROLL, -1, scroll);
+    // The camera sets off a frame after this (its scroll changes after the
+    // effects pass of the next frame): the animation, and its sound, wait
+    // two frames, so they start once the camera has stopped rather than
+    // for one frame before it moves.
     let clock = core.raw_read_32(GAME_CLOCK, -1);
-    core.raw_write_32(START, -1, clock);
+    core.raw_write_32(START, -1, clock.wrapping_add(2));
     core.raw_write_8(KIND, -1, kind as u8);
     core.raw_write_8(POS_X, -1, x);
     core.raw_write_8(POS_Y, -1, y);
+    core.raw_write_8(SOUNDED, -1, 0);
+    core.raw_write_16(SE_PENDING, -1, 0);
 }
 
 fn write_if_changed(core: &mut Core, at: u32, bytes: &[u8]) {
@@ -391,7 +411,7 @@ fn write_if_changed(core: &mut Core, at: u32, bytes: &[u8]) {
     }
 }
 
-/// The animation is over: palette 8 as it was, the tiles cleared, and
+/// The animation is over: palette 15 as it was, the tiles cleared, and
 /// the turn goes on ([`playing_fn`]).
 fn finish(core: &mut Core) {
     let mut p = [0u8; 32];
@@ -431,6 +451,13 @@ pub fn draw(core: &mut Core) {
         finish(core);
         return;
     };
+    // Its first frame: its sound, played by the turn's wait (`playing_fn`).
+    if core.raw_read_8(SOUNDED, -1) == 0 {
+        core.raw_write_8(SOUNDED, -1, 1);
+        if let Some(song) = crate::ds_music::heal_se(kind as usize - 1) {
+            core.raw_write_16(SE_PENDING, -1, song);
+        }
+    }
     let colours: Vec<u8> = anim.palette.iter().flat_map(|c| c.to_le_bytes()).collect();
     for base in [PAL_BUFFER, PAL_RAM] {
         write_if_changed(core, palette_at(base), &colours);
@@ -493,8 +520,11 @@ pub const SHOW_FN: u32 = ROM;
 pub const WAIT: u32 = ROM + 0x40;
 const PLAYING_FN: u32 = ROM + 0x60;
 const ROM_SENTINEL: u32 = ROM + 0x1FC;
-const ROM_MAGIC: u32 = 0x3948_5344; // "DSH9"
+const ROM_MAGIC: u32 = 0x4148_5344; // "DSHA" (bump when the code changes)
 const PROC_START_BLOCKING: u32 = 0x0801_C95D;
+/// AW2's sound-effect call (`sub_0803B4DC(song)`: plays it unless the
+/// game's sound setting is off).
+const PLAY_SE: u32 = 0x0803_B4DD;
 const CAMERA_TO: u32 = 0x0802_909D;
 const PROC_WHILE: u16 = 0x14;
 
@@ -536,18 +566,35 @@ fn wait_script() -> Vec<u8> {
     b
 }
 
-/// `playing()`: 1 while a heal animation plays (its structure in RAM),
-/// else 0.
+/// `playing()`: first the heal's sound if one is pending (cleared, then
+/// `sub_0803B4DC(song)`, AW2's sound-effect call); then 1 while a heal
+/// animation plays (its structure in RAM), else 0.
 fn playing_fn() -> Vec<u8> {
-    let h: [u16; 6] = [
-        0x4802, // ldr r0, =KIND
-        0x7800, // ldrb r0, [r0]
-        0x2800, // cmp r0, #0
-        0xD000, // beq (return 0)
-        0x2001, // movs r0, #1
-        0x4770, // bx lr
+    let h: [u16; 20] = [
+        0xB500, // 00 push {lr}
+        0x4B09, // 02 ldr r3, =SE_PENDING
+        0x8818, // 04 ldrh r0, [r3]
+        0x2800, // 06 cmp r0, #0
+        0xD006, // 08 beq 0x18
+        0x2100, // 0a movs r1, #0
+        0x8019, // 0c strh r1, [r3]
+        0x4B07, // 0e ldr r3, =sub_0803B4DC
+        0x467A, // 10 mov r2, pc
+        0x3205, // 12 adds r2, #5
+        0x4696, // 14 mov lr, r2
+        0x4718, // 16 bx r3
+        0x4805, // 18 ldr r0, =KIND
+        0x7800, // 1a ldrb r0, [r0]
+        0x2800, // 1c cmp r0, #0
+        0xD000, // 1e beq 0x22 (return 0)
+        0x2001, // 20 movs r0, #1
+        0xBC02, // 22 pop {r1}
+        0x4708, // 24 bx r1
+        0x0000, // 26
     ];
     let mut b: Vec<u8> = h.iter().flat_map(|v| v.to_le_bytes()).collect();
+    b.extend_from_slice(&SE_PENDING.to_le_bytes());
+    b.extend_from_slice(&PLAY_SE.to_le_bytes());
     b.extend_from_slice(&KIND.to_le_bytes());
     b
 }
@@ -580,6 +627,28 @@ mod tests {
         assert_eq!(wait_script().len(), 16);
         assert!(WAIT + 16 <= PLAYING_FN && PLAYING_FN % 4 == 0);
         assert!(PLAYING_FN + playing_fn().len() as u32 <= ROM_SENTINEL);
+    }
+
+    /// Every `ldr rN, [pc, #i]` of `playing()` loads the word it names, and
+    /// the far call returns to the instruction after its `bx`.
+    #[test]
+    fn playing_fn_literals() {
+        let b = playing_fn();
+        let hw = |o: usize| u16::from_le_bytes([b[o], b[o + 1]]);
+        let word = |o: usize| u32::from_le_bytes(b[o..o + 4].try_into().unwrap());
+        let load = |o: usize| {
+            let h = hw(o);
+            assert_eq!(h & 0xF800, 0x4800);
+            word(((o + 4) & !3) + 4 * (h & 0xFF) as usize)
+        };
+        assert_eq!(load(0x02), SE_PENDING);
+        assert_eq!(load(0x0E), PLAY_SE);
+        assert_eq!(load(0x18), KIND);
+        // mov r2, pc at 0x10 reads 0x14; +5 = 0x19: back at 0x18, Thumb.
+        assert_eq!(0x10 + 4 + 5, 0x18 | 1);
+        // beq at 0x08 goes to 0x18, beq at 0x1E to 0x22.
+        assert_eq!(0x08 + 4 + 2 * (hw(0x08) & 0xFF) as usize, 0x18);
+        assert_eq!(0x1E + 4 + 2 * (hw(0x1E) & 0xFF) as usize, 0x22);
     }
 
     /// The anim format, on a made-up anim: two cells and a sequence.

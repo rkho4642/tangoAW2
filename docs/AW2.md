@@ -405,6 +405,32 @@ so real minicannons and Black Cannons run the game's code unchanged.
   +20 (of 100) HP, as in Dual Strike, capped at 100, and full ammo and fuel from the
   unit table `0x085D5ABC` (+0x0B, +0x10). Only that army's own unit ids are
   walked, so enemies and allies are never healed.
+- **Heal animation and sound** (`heal_effect.rs`, with the pack). Dual
+  Strike's animation (arm9 `0x0213E078` / `0x0213E2A0`) is drawn as
+  sprites in tiles the map leaves free and in OBJ palette 15 (saved and put
+  back). Not palette 8: building sprites use OBJ palette 8 + owner, so 8 is
+  the neutral (and fogged) buildings' palette, and the effect's colours
+  there turned those buildings dark while it played. It starts two frames
+  after the turn-start loop reaches the structure, once the camera has
+  stopped (the camera sets off a frame later). With its first frame comes
+  Dual Strike's sound: its animation start (`0x020D84B8`) plays sequence
+  175 `SE_BLACKSTONE` (Crystal, `mov r0, #0xAF` at `0x020D85D8`) or 176
+  `SE_BLACKCRYSTAL` (Obelisk, `0x020D86E0`) through `0x0200B76C`, one note
+  that plays its whole sample (1.9 s, 3.1 s). `ds_music.rs` converts them
+  as songs 514 and 515 (after the themes) for player 2 (the player AW2's
+  turn-start cannon shot, song 457, uses), priority 10, no reverb; the
+  note without a length gets its sample's length (a `TIE`, then `EOT` and
+  `FINE` after it), and the sequence its default tempo (120). The draw
+  marks the song pending in RAM (`0x0203FDAC`); the turn's wait function
+  (called by the game each frame while it waits) plays it with AW2's own
+  sound-effect call `sub_0803B4DC`, so the game's sound flag
+  (`0x030005CC`) applies, and the music is untouched. A Crystal's sound
+  is cut short (by about 0.15 s) when the next structure's starts on the
+  same player. Tests: `tools/aw2test/tests/test_heal_sound.py` (2, 4 and 5
+  armies, human and CPU, fog on and off, normal and Wasteland looks: each
+  sound starts on the effect's first frame, the music plays on, and no
+  colour or sprite tile but the effect's changes while it plays, beyond
+  what the game animates itself).
 - **Panel.** The terrain panel (`sub_0802A8DC`, cell in r8/r5) gets the
   name picture at `0x0802A914` and the picture at `0x0802A982`.
 
@@ -429,7 +455,7 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 | CO screen | `co_grid.rs` | The unit grid (map menu > CO, its last page) gets a second page: ground units, then air and naval units, in the build menus' order, every unit with its icon in the viewed army's colours (the new units in the map sheet's slots for other countries' Infantry and Mech) and its firepower bar (Dual Strike's bonuses take the nearest of AW2's 13 bars) and move / range change |
 | CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike; a base builds Piperunners (for the CPU and in the build menu) only by a pipe or an intact seam |
 | Terrain | `com_tower.rs`, `wasteland.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), the Wasteland look, the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
-| Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation for each (arm9 0x0213E078 / 0x0213E2A0), the camera visiting each |
+| Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation and sound for each (arm9 0x0213E078 / 0x0213E2A0; SE 175 / 176), the camera visiting each |
 | Music | `ds_music.rs` | The nine new COs' own map themes, Dual Strike's, converted to AW2's sound engine (below) |
 | Maps | `five_map.rs`, `five/design_ds_maps.py` | Eight Versus maps (2P to 5P, a Wasteland set and a sea set) with Com Towers, Piperunner pipes and Black Hole's structures (above) |
 
@@ -459,9 +485,10 @@ Strike theme, converted at run time for AW2's sound engine (MP2K, "Sappy").
   Rachel `BGM_RACHEL1` 24; no two share one). The pack keeps those
   sequences (SSEQ), their banks (SBNK) and sample archives (SWAR) as
   `sound/seq/<id>`, `sound/bank/<id>`, `sound/wave/<id>` (about 4 MB;
-  nothing else of the 18 MB archive). The pack's version is 2: a saved
-  version-1 pack is rebuilt from the .nds on the next scan (or ignored
-  without it), so both netplay peers with the pack have the music. Power music stays AW2's
+  with the Crystal's and Obelisk's heal sounds, 175 and 176, nothing else
+  of the 18 MB archive). The pack's version is 3 (3: the heal sounds): a
+  saved older pack is rebuilt from the .nds on the next scan (or ignored
+  without it), so both netplay peers with the pack have the same sounds. Power music stays AW2's
   (Dual Strike's is shared too).
 - **Sequence.** Each SSEQ track is walked (calls inlined, loops and jumps
   followed; the jump back is the loop) into timed notes and controls, and
