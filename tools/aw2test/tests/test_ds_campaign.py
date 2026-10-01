@@ -314,21 +314,28 @@ def ds_campaign_win_and_continue(ctx):
 
 @test(modes=("ds",))
 def ds_campaign_cpu_plays(ctx):
-    """The computer plays DS Campaign maps: three days on three missions, the
+    """The computer plays DS Campaign maps: three days on four missions, the
     player's armies handed to the computer too (+0x1B: 1 human, 2 computer),
-    event dialogue answered as it comes."""
-    for step in (2, 9, 18):
+    event dialogue answered as it comes. No army drops out on its own (Crystal
+    Calamity's Black Hole once lost at the first action: its "Obelisk
+    destroyed" test looked at the wrong cell)."""
+    for step in (2, 9, 18, 21):
         e, g, d = boot(ctx)
         d.start(step=step)
         d.wait_map()
         index = dc.ORDER[step]
         players = e.u32(0x08499598)
-        armies = [a for a in range(1, 6) if e.u8(players + 0x3C * a + 0x1B) != 0]
+        armies = [a for a in range(1, 5) if e.u8(players + 0x3C * a + 0x1B) != 0]
         start_day = e.u16(dc.DAY)
         before = {u["id"]: (u["x"], u["y"]) for u in g.units()}
         for a in armies:
             e.w8(players + 0x3C * a + 0x1B, 2)
-        d.end_turn()
+        d.wait_control()
+        try:
+            d.end_turn()
+        except NavError:
+            e.shot(os.path.join(ctx.out, f'stuck_{index}'))
+            raise
         for _ in range(1500):
             if e.u16(dc.DAY) >= start_day + 3:
                 break
@@ -340,5 +347,42 @@ def ds_campaign_cpu_plays(ctx):
         ctx.check(e.u16(dc.DAY) >= start_day + 3, f"mission {index}: three days played (day {e.u16(dc.DAY)})")
         ctx.check(moved > 0, f"mission {index}: units moved ({moved}), {len(after)} units now")
         ctx.check(d.active() and d.mission() == index, f"mission {index}: still the DS session")
+        lost = [a for a in armies if e.u16(players + 0x3C * a + 0x14) != 0]
+        ctx.eq(lost, [], f"mission {index}: no army out")
         shot(ctx, e, f"cpu_{index}")
         e.close()
+
+
+@test(modes=("ds",))
+def ds_campaign_grand_bolt(ctx):
+    """Means to an End: the Grand Bolt (a picture of tiles AW2 has no art
+    for) is plains with a Black Obelisk on each of its three weak points;
+    on Black Hole's turn of every sixth day each weak point standing spawns
+    an Oozium below it; the mission goes on until they are destroyed."""
+    e, g, d = boot(ctx)
+    d.start(step=27)
+    d.wait_map()
+    ctx.eq(d.mission(), 24, "Means to an End")
+    inv = [(e.u8(0x02028360 + 8 * k), e.u8(0x02028361 + 8 * k), (e.u16(0x02028362 + 8 * k) >> 6) & 15)
+           for k in range(16)]
+    ctx.eq(sorted(i for i in inv if i[2]), [(2, 7, 3), (8, 9, 3), (14, 7, 3)], "three Obelisks on the weak points")
+    cells = [(3, 10), (9, 12), (15, 10)]
+    at = lambda: [next(((u["army"], u["type"]) for u in g.units() if (u["x"], u["y"]) == c), None) for c in cells]
+    ctx.eq(at(), [None, None, None], "nothing below the weak points")
+    e.w16(dc.DAY, 6)
+    d.end_turn()
+    spawned = False
+    for _ in range(600):
+        if d.scripts_running():
+            e.press("A", 4)
+        e.wait(20)
+        if at() == [(2, 27)] * 3:
+            spawned = True
+        if e.u8(0x030033EC) == 1 and spawned:
+            break
+    ctx.check(spawned, "day 6: an Oozium of Black Hole's below each weak point")
+    ctx.check(d.active() and d.mission() == 24 and d.in_battle(), "the mission goes on")
+    d.wait_control()
+    g.goto(9, 8)
+    e.wait(30)
+    shot(ctx, e, "grand_bolt")

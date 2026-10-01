@@ -14,7 +14,7 @@
 
 use mgba::core::Core;
 
-use crate::ds_campaign_data::Magic;
+use crate::ds_campaign_data::{Magic, GRAND_BOLT_WEAK_POINTS};
 
 /// AW2's player table pointer (tangoAW2 moves the table in five-army games).
 const PLAYERS_PTR: u32 = 0x0849_9598;
@@ -97,7 +97,9 @@ fn action_cell(core: &Core) -> (u32, u32) {
 
 /// Dual Strike's structure kinds as AW2's inventions: 4 minicannons, 9 the
 /// Black Crystals (tangoAW2's Crystal: a minicannon on tile 0x192), 0xA
-/// the mega missile silos (tangoAW2's Obelisk: a Black Cannon on 0x193).
+/// the Black Obelisks (tangoAW2's Obelisk: a Black Cannon with tile 0x193
+/// in its middle; also what the mega missile silos and the Grand Bolt's
+/// weak points become, crate::ds_campaign_data::convert_map).
 fn inventions(core: &Core, ds_kind: u8) -> Vec<(u8, u8)> {
     let mut out = Vec::new();
     for k in 0..16 {
@@ -111,7 +113,8 @@ fn inventions(core: &Core, ds_kind: u8) -> Vec<(u8, u8)> {
         let is = match ds_kind {
             4 => kind == 4 && tile != 0x192,
             9 => kind == 4 && tile == 0x192,
-            0xA => kind == 3 && tile == 0x193,
+            // (an Obelisk is 3x3: the list keeps its top-left cell)
+            0xA => kind == 3 && tile_at(core, x + 1, y + 1) == 0x193,
             _ => false,
         };
         if is {
@@ -139,6 +142,10 @@ fn max_fuel(core: &Core, t: u8) -> u8 {
     core.raw_read_8(crate::roster::table(core) + 0x5C * t as u32 + 0x10, -1)
 }
 
+/// [`run`]'s answer when a game function was tail-called (the landing
+/// must not return).
+pub const TAIL_CALLED: u32 = 0xFFFF_FFFF;
+
 /// Runs a magic function; returns r0.
 pub fn run(core: &mut Core, m: &Magic) -> u32 {
     match *m {
@@ -151,7 +158,9 @@ pub fn run(core: &mut Core, m: &Magic) -> u32 {
             (a == 0xFF || co == a) as u32
         }
         Magic::Call(f, arg) => {
-            call(core, f, arg);
+            if call(core, f, arg) {
+                return TAIL_CALLED;
+            }
             0
         }
         Magic::Countdown(_) | Magic::ArmyFlag { .. } | Magic::Unhandled(_) | Magic::Flow(_) => 0,
@@ -231,6 +240,14 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
                 })
             })
         }
+        // Means to an End: the Grand Bolt's three weak points all destroyed
+        // (Dual Strike's kinds 0xB..0xD; tangoAW2's Obelisks on them).
+        0x0235_0560 => alive_inventions(core, 0xA) == 0,
+        // A weak point still standing, and the cell below it (where it
+        // spawns an Oozium) not held by the moving army's own unit.
+        0x0235_21A4 => weak_point_spawns(core, 0, army),
+        0x0235_20F8 => weak_point_spawns(core, 1, army),
+        0x0235_204C => weak_point_spawns(core, 2, army),
         // Every 6th day (the Grand Bolt's charge).
         0x0235_1CC8 => {
             let d = core.raw_read_16(DAY, -1);
@@ -243,7 +260,54 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
 /// The predicates and calls [`predicate`] and [`call`] know (the rest are
 /// false / do nothing); a test lists the campaign's others.
 #[cfg(test)]
-pub const KNOWN: &[u32] = &[0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4];
+pub const KNOWN: &[u32] = &[0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_0560, 0x0235_21A4, 0x0235_20F8, 0x0235_204C, 0x0235_1F34, 0x0235_1EB8, 0x0235_1E3C, 0x0235_2018, 0x0235_1FE4, 0x0235_1FB0, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4];
+
+/// The Obelisk standing on weak point `k` ([`GRAND_BOLT_WEAK_POINTS`]: its
+/// bottom row's middle; the inventions list keeps its top-left cell).
+fn weak_point_alive(core: &Core, k: usize) -> bool {
+    let (x, y) = GRAND_BOLT_WEAK_POINTS[k];
+    (0..16).map(|i| INVENTIONS + 8 * i).take_while(|&a| (core.raw_read_16(a + 2, -1) >> 6) & 0xF != 0).any(|a| {
+        (core.raw_read_16(a + 2, -1) >> 6) & 0xF == 3
+            && core.raw_read_8(a, -1) as u32 + 1 == x
+            && core.raw_read_8(a + 1, -1) as u32 + 2 == y
+            && core.raw_read_8(a + 4, -1) > 0
+    })
+}
+
+/// The unit id on a cell (0: none).
+fn unit_id_at(core: &Core, x: u32, y: u32) -> u8 {
+    let row = core.raw_read_16(MAP + 0x417A + 2 * y, -1) as u32;
+    core.raw_read_8(MAP + 0x12 + row + x, -1)
+}
+
+fn weak_point_spawns(core: &Core, k: usize, army: u32) -> bool {
+    let (x, y) = GRAND_BOLT_WEAK_POINTS[k];
+    let id = unit_id_at(core, x, y + 1) as u32;
+    weak_point_alive(core, k) && (id == 0 || id / 64 + 1 != army) && units(core, army.clamp(1, 4)).len() < 50
+}
+
+/// Destroys the unit on a cell (and what it carries), as Dual Strike's
+/// `0x020EDB84` does before an Oozium spawns there.
+fn destroy_unit_at(core: &mut Core, x: u32, y: u32) {
+    let id = unit_id_at(core, x, y) as u32;
+    if id == 0 {
+        return;
+    }
+    let base = core.raw_read_32(UNITS_PTR, -1);
+    let a = base + UNIT * id;
+    for cargo in [core.raw_read_8(a + 7, -1), core.raw_read_8(a + 8, -1)] {
+        if cargo != 0 {
+            core.raw_write_8(base + UNIT * cargo as u32, -1, 0);
+        }
+    }
+    core.raw_write_8(a, -1, 0);
+    let row = core.raw_read_16(MAP + 0x417A + 2 * y, -1) as u32;
+    core.raw_write_8(MAP + 0x12 + row + x, -1, 0);
+}
+
+/// `CreateUnitAt(x, y, type)`: a unit of the army moving now, the map's
+/// unit layers rebuilt.
+const CREATE_UNIT_AT: u32 = 0x0802_5CC8;
 
 fn local_flag(core: &Core, id: u32) -> bool {
     id < 0x20 && core.raw_read_8(LOCAL_FLAGS + id / 8, -1) & (1 << (id % 8)) != 0
@@ -255,10 +319,20 @@ fn set_weather(core: &mut Core, w: u8) {
 }
 
 /// Dual Strike's script-called functions by address. Unknown ones do
-/// nothing.
-fn call(core: &mut Core, f: u32, arg: u32) {
+/// nothing. True when control has passed to a game function (which
+/// returns to the script engine itself).
+fn call(core: &mut Core, f: u32, arg: u32) -> bool {
     let _ = arg;
     match f {
+        // Means to an End: a weak point destroys the unit below it and
+        // spawns an Oozium there (Dual Strike's 0x020EDB84, then its
+        // 0x022AE4A8 animation and 0x020C7D30 unit).
+        0x0235_1F34 => destroy_below(core, 0),
+        0x0235_1EB8 => destroy_below(core, 1),
+        0x0235_1E3C => destroy_below(core, 2),
+        0x0235_2018 => return spawn_oozium(core, 0),
+        0x0235_1FE4 => return spawn_oozium(core, 1),
+        0x0235_1FB0 => return spawn_oozium(core, 2),
         // A research lab's map was found (the mission's flag): its side
         // mission opens (campaign flags 0x60..0x62).
         0x0235_0E34 if local_flag(core, 0) => crate::ds_campaign::set_campaign_flag(core, 0x60),
@@ -270,4 +344,23 @@ fn call(core: &mut Core, f: u32, arg: u32) {
         0x0235_17F4 => set_weather(core, 2),
         _ => {}
     }
+    false
+}
+
+fn destroy_below(core: &mut Core, k: usize) {
+    let (x, y) = GRAND_BOLT_WEAK_POINTS[k];
+    destroy_unit_at(core, x, y + 1);
+}
+
+fn spawn_oozium(core: &mut Core, k: usize) -> bool {
+    let (x, y) = GRAND_BOLT_WEAK_POINTS[k];
+    if unit_id_at(core, x, y + 1) != 0 {
+        return false;
+    }
+    let cpu = core.gba_mut().cpu_mut();
+    cpu.set_gpr(0, x as i32);
+    cpu.set_gpr(1, (y + 1) as i32);
+    cpu.set_gpr(2, crate::roster::OOZIUM as i32);
+    cpu.set_thumb_pc(CREATE_UNIT_AT);
+    true
 }

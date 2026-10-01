@@ -235,6 +235,7 @@ pub fn aw2_unit(t: u8) -> Option<u8> {
 
 // --- Maps ----------------------------------------------------------------------
 
+const PLAIN: u16 = 0x01;
 const MOUNTAIN: u16 = 0x22;
 const UNDERLAY: u16 = 0x1A4;
 const CRYSTAL: u16 = 0x192;
@@ -280,6 +281,8 @@ pub fn convert_map(ds: &Ds, at: u32) -> Option<(u8, u8, Vec<u16>)> {
             }
         }
     }
+    black_obelisks(&mut tiles, w as usize, h as usize);
+    grand_bolt(&mut tiles, w as usize, h as usize);
     for t in tiles.iter_mut() {
         *t = remap_tile(*t);
         if matches!(*t, 0x1A6 | 0x1A8 | 0x1A9) {
@@ -287,6 +290,71 @@ pub fn convert_map(ds: &Ds, at: u32) -> Option<(u8, u8, Vec<u16>)> {
         }
     }
     Some((w, h, tiles))
+}
+
+/// Dual Strike's Black Obelisk is drawn on AW2's Black Cannon tiles (a 3x3:
+/// 0x1A4 rows above and below a middle row 0x186..0x188, or 0x18C..0x18E
+/// facing up), where AW2 would put a firing Black Cannon: it becomes
+/// tangoAW2's Obelisk (crate::obelisk: heals, never fires), Dual Strike's
+/// structure kind 0xA.
+fn black_obelisks(tiles: &mut [u16], w: usize, h: usize) {
+    for cy in 1..h.saturating_sub(1) {
+        for cx in 1..w.saturating_sub(1) {
+            let mid = tiles[cy * w + cx];
+            if mid != 0x187 && mid != 0x18D {
+                continue;
+            }
+            let at = |dx: usize, dy: usize| tiles[(cy + dy - 1) * w + cx + dx - 1];
+            let frame = (0..3).all(|dx| at(dx, 0) == UNDERLAY && at(dx, 2) == UNDERLAY);
+            if !frame || at(0, 1) != mid - 1 || at(2, 1) != mid + 1 {
+                continue;
+            }
+            tiles[cy * w + cx - 1] = UNDERLAY;
+            tiles[cy * w + cx + 1] = UNDERLAY;
+            tiles[cy * w + cx] = OBELISK;
+        }
+    }
+}
+
+/// The Grand Bolt's weak points (Means to an End): the cells Dual Strike's
+/// code tests for its three parts (kinds 0xB, 0xC, 0xD at (3, 9), (9, 11),
+/// (15, 9)); each part spawns an Oozium on the cell below it every sixth
+/// day. tangoAW2 puts a Black Obelisk (3x3) over each, its bottom row on
+/// the weak point.
+pub const GRAND_BOLT_WEAK_POINTS: [(u32, u32); 3] = [(3, 9), (9, 11), (15, 9)];
+
+/// Dual Strike's Grand Bolt is a picture drawn with tiles laid out as a
+/// sheet (tile = base + 0x20 * y + x over its whole shape), which AW2 has
+/// no art for: such a picture (40 cells or more) becomes plains, with a
+/// Black Obelisk on each weak point inside it.
+fn grand_bolt(tiles: &mut [u16], w: usize, h: usize) {
+    let key = |tiles: &[u16], x: usize, y: usize| tiles[y * w + x] as i32 - (0x20 * y + x) as i32;
+    let mut counts: BTreeMap<i32, usize> = BTreeMap::new();
+    for y in 0..h {
+        for x in 0..w {
+            *counts.entry(key(tiles, x, y)).or_default() += 1;
+        }
+    }
+    let Some((&base, &n)) = counts.iter().max_by_key(|e| *e.1) else { return };
+    if n < 40 || base < 0 {
+        return;
+    }
+    let cells: Vec<(usize, usize)> = (0..h).flat_map(|y| (0..w).map(move |x| (x, y))).filter(|&(x, y)| key(tiles, x, y) == base).collect();
+    let centres: Vec<(usize, usize)> = GRAND_BOLT_WEAK_POINTS
+        .iter()
+        .map(|&(x, y)| (x as usize, y as usize - 1))
+        .filter(|&(x, y)| x >= 1 && x + 1 < w && y >= 1 && y + 1 < h && key(tiles, x, y) == base)
+        .collect();
+    for (x, y) in cells {
+        tiles[y * w + x] = PLAIN;
+    }
+    for (cx, cy) in centres {
+        for dy in 0..3 {
+            for dx in 0..3 {
+                tiles[(cy + dy - 1) * w + cx + dx - 1] = if dx == 1 && dy == 1 { OBELISK } else { UNDERLAY };
+            }
+        }
+    }
 }
 
 /// The map blob AW2 loads (LZ77 of width, height, tiles).

@@ -588,7 +588,10 @@ fn landing(core: &mut Core) {
         Some(data::Magic::Flow(FLOW_SAVE)) => return save(core),
         Some(data::Magic::Flow(FLOW_HIDE)) => 1,
         Some(data::Magic::Flow(FLOW_CLEAR)) => return clear_bg0(core),
-        Some(m) => crate::ds_campaign_rules::run(core, &m),
+        Some(m) => match crate::ds_campaign_rules::run(core, &m) {
+            crate::ds_campaign_rules::TAIL_CALLED => return,
+            r => r,
+        },
         None => 0,
     };
     return_to(core, r);

@@ -214,10 +214,13 @@ class DsCampaign:
                 e.hold(back, 6)
                 e.wait(10)
                 return
-            # A menu or CO screen the presses above opened: back out.
+            # A dialogue box left waiting (A), or a menu or CO screen the
+            # presses opened (B backs out).
+            e.press("A", 4)
+            e.wait(20)
             e.press("B", 4)
             e.wait(20)
-            n += 46
+            n += 70
         raise NavError(f"no control in {max_frames} frames")
 
     def end_turn(self):
