@@ -282,6 +282,79 @@ class DsCampaign:
     def on_co_select(self):
         return any(self.e.u32(p) == CO_SELECT for p in range(0x0200D610, 0x0200E418, 0x6C))
 
+    def co_cursor(self):
+        """On the CO screen: the CO under the cursor and the screen's
+        lists, or None. The screen's proc (script 0x08616638) keeps the
+        country tab at +0x58 and the place in it at +0x52; the lists are the
+        DS Campaign's (CO ids by country tab, each tab's count)."""
+        e = self.e
+        p = next((p for p in range(0x0200D610, 0x0200E418, 0x6C) if e.u32(p) == CO_SCREEN), None)
+        if p is None:
+            return None
+        groups = e.u32(CO_GROUPS)
+        if not 1 <= groups <= 5:
+            return None
+        counts = list(e.read(CO_GROUP_COUNTS, groups))
+        cos = list(e.read(CO_LIST, sum(counts)))
+        tab, at = e.u8(p + 0x58), e.u8(p + 0x52)
+        if tab >= groups or at >= counts[tab]:
+            return None
+        return {"co": cos[sum(counts[:tab]) + at], "tab": tab, "at": at, "counts": counts, "cos": cos}
+
+    def choose_co(self, prefs=None):
+        """On the CO screen: the first CO of `prefs` (tangoAW2 CO ids) the
+        screen offers, moved to with the pad (DOWN: the next country tab,
+        RIGHT: the next CO in it), then A. Returns the CO picked."""
+        e = self.e
+        prefs = CO_PREFS if prefs is None else prefs
+        c = None
+        for _ in range(60):
+            c = self.co_cursor()
+            if c:
+                break
+            e.wait(10)
+        if not c:
+            raise NavError("the CO screen's cursor not found")
+        want = next((co for co in prefs if co in c["cos"]), c["co"])
+        k = c["cos"].index(want)
+        tab = next(t for t in range(len(c["counts"])) if k < sum(c["counts"][:t + 1]))
+        at = k - sum(c["counts"][:tab])
+        for _ in range(12):
+            c = self.co_cursor()
+            if c["tab"] == tab:
+                break
+            e.press("DOWN", 6)
+            e.wait(30)
+        for _ in range(12):
+            c = self.co_cursor()
+            if c["at"] == at:
+                break
+            e.press("RIGHT", 6)
+            e.wait(30)
+        if self.co_cursor()["co"] != want:
+            raise NavError(f"CO {want} not reached ({self.co_cursor()})")
+        e.press("A", 6)
+        return want
+
+    def choose_cos(self, count, prefs=None, max_frames=6000):
+        """The CO screens until the battle loads: `count` picks (the armies
+        the player picks for), each the best of `prefs` not picked yet.
+        Returns the COs picked."""
+        e = self.e
+        prefs = CO_PREFS if prefs is None else prefs
+        picks = []
+        n = 0
+        while not self.in_battle() and n < max_frames:
+            if len(picks) < count and self.on_co_select() and self.co_cursor():
+                picks.append(self.choose_co([c for c in prefs if c not in picks]))
+                e.wait(60)
+                n += 60
+            elif self.on_co_select() or self.scripts_running():
+                e.press("A", 6)
+            e.wait(10)
+            n += 16
+        return picks
+
     def cursor(self):
         return (self.e.u16(0x030033E4), self.e.u16(0x030033E6))
 
@@ -536,10 +609,24 @@ DS_TEXT_GROUPS = DS_OV0 + 0x49690
 ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 26, 12, 13, 27, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 
 
+# The CO screen (crate::ds_campaign's lists) and the test player's choice
+# of CO, best first: Kanbei, Hawke, Max, Grimm, Jess, Andy, Jake, Rachel,
+# Sensei, Nell, Javier, Sami, Sasha, Koal, Kindle, Jugger (tangoAW2 ids).
+CO_SCREEN = 0x08616638
+CO_LIST = 0x030058E0
+CO_GROUPS = 0x03005944
+CO_GROUP_COUNTS = 0x03005948
+CO_PREFS = [6, 14, 2, 76, 17, 1, 79, 80, 18, 0, 77, 4, 78, 73, 74, 72]
+
+
 # How the test player plays a mission (aw2test.bot.Bot's options), by
 # mission index: units the mission is lost without (The New Black's
-# Infantry, Black Boats Ahoy!'s Lander), and the cells it is won on.
-PLANS = {1: {"protect": [1]}, 9: {"protect": [23]}}
+# Infantry, Black Boats Ahoy!'s Lander), missions won on their structures
+# (a Black Crystal, minicannons, Black Obelisks, the Grand Bolt's weak
+# points), and those against the clock (always on the attack).
+PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}}
+STRUCTURE_MISSIONS = {8, 13, 14, 17, 18, 23, 24}
+TIMED_MISSIONS = {12, 21, 22, 24}
 
 
 def plan(data, index):
@@ -554,7 +641,18 @@ def plan(data, index):
     out = dict(PLANS.get(index, {}))
     if cells:
         out["goals"] = cells
+    if index in STRUCTURE_MISSIONS:
+        out["structures"] = True
+    if index in TIMED_MISSIONS:
+        out["stance"] = "attack"
     return out
+
+
+def co_picks(data, index):
+    """How many armies of mission `index` the player picks a CO for (Dual
+    Strike's 0x1C)."""
+    m = data.mission(index)
+    return sum(1 for k in range(min(m["armies"], 4)) if m["cos"][k] == 0x1C)
 
 
 class DsData:
