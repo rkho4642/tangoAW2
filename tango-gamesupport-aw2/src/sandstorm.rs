@@ -146,6 +146,7 @@ fn map_start(core: &mut Core) {
         set_one_day(core, false);
     }
     crate::wasteland::map_start(core);
+    crate::survival::map_start(core);
 }
 
 // --- Rules screen --------------------------------------------------------

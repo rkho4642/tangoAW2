@@ -16,15 +16,15 @@ use crate::five_map_data::MAPS;
 /// The game's map table: 0xC0 entries of 0x5C bytes, one per map id.
 const GAME_MAP_TABLE: u32 = 0x085C_77A0;
 const GAME_MAP_IDS: u32 = 0xC0;
-const ENTRY: u32 = 0x5C;
+pub(crate) const ENTRY: u32 = 0x5C;
 /// tangoAW2 copies it to free space in the ROM image with room for more,
 /// and gives the game the copy: every literal-pool word pointing at the
 /// table (or at a field of its first entry: +0x3C, +0x40), and the two
 /// loops that walk it (`sub_080206B0`, find a map by its tiles, and the
 /// map list builder at `0x08037482`), which stop after id 0xBF.
-const MAP_TABLE: u32 = 0x0865_0000;
-const MAP_IDS: u32 = 0xC9;
-const TABLE_POINTERS: [(u32, u32); 37] = [
+pub(crate) const MAP_TABLE: u32 = 0x0865_0000;
+pub(crate) const MAP_IDS: u32 = 0xC9;
+pub(crate) const TABLE_POINTERS: [(u32, u32); 37] = [
     (0x0801_96EC, 0x00),
     (0x0802_06E0, 0x00),
     (0x0802_4814, 0x00),
@@ -271,27 +271,51 @@ pub fn install(core: &mut Core) {
 }
 
 /// A Versus tab no map list shows: where a map goes to be hidden.
-const HIDDEN_TAB: u16 = 0x7F;
+pub(crate) const HIDDEN_TAB: u16 = 0x7F;
+
+/// The map table the game reads now: [`MAP_TABLE`], or (with the Dual
+/// Strike pack) [`crate::survival`]'s larger copy.
+pub(crate) fn table(core: &Core) -> u32 {
+    let (at, field) = TABLE_POINTERS[0];
+    core.raw_read_32(at, -1).wrapping_sub(field)
+}
+
+/// Point the game at the map table at `base` (a copy of [`MAP_TABLE`]).
+pub(crate) fn use_table(core: &mut Core, base: u32) {
+    for (at, field) in TABLE_POINTERS {
+        let now = core.raw_read_32(at, -1);
+        if now != base + field {
+            core.raw_write_32(at, -1, base + field);
+        }
+    }
+}
 
 /// Every frame: list the maps with a Black Crystal or Black Obelisk on
 /// their tabs only when `art` ([`crate::ds_art::features`]), and the maps
 /// with Dual Strike content only when `pack` is on too
 /// ([`crate::ds_pack::features`]); otherwise they sit on a tab no list
 /// shows.
-pub fn show_maps(core: &mut Core, art: bool, pack: bool) {
+pub fn show_maps(core: &mut Core, art: bool, pack: bool, last_id: Option<u8>) {
     for (at, _, without, with) in TABLE_LOOPS {
         let now = core.raw_read_16(at, -1);
-        let want = if art && pack { with } else { without };
-        if (now == without || now == with) && now != want {
+        let want = match last_id {
+            // Dual Strike's Survival maps (crate::survival), past 0xC8.
+            Some(id) if art && pack => (with & 0xFF00) | id as u16,
+            _ if art && pack => with,
+            _ => without,
+        };
+        let ours = now == without || now == with || (now & 0xFF00 == with & 0xFF00 && now & 0xFF > with & 0xFF);
+        if ours && now != want {
             core.raw_write_16(at, -1, want);
         }
     }
+    let table = table(core);
     for (map, &id) in MAPS.iter().zip(IDS.iter()) {
         if !map.obelisk && !map.ds {
             continue;
         }
         let on = (!map.obelisk || art) && (!map.ds || (art && pack));
-        let at = MAP_TABLE + 0x5C * id as u32 + 0x1A;
+        let at = table + 0x5C * id as u32 + 0x1A;
         let tab = if on { map.tab } else { HIDDEN_TAB };
         if core.raw_read_16(at, -1) != tab {
             core.raw_write_16(at, -1, tab);

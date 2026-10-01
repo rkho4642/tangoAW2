@@ -462,6 +462,7 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 | Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation and sound for each (arm9 0x0213E078 / 0x0213E2A0; SE 175 / 176), the camera visiting each |
 | Music | `ds_music.rs` | The nine new COs' own map themes, Dual Strike's, converted to AW2's sound engine (below) |
 | Maps | `five_map.rs`, `five/design_ds_maps.py` | Eight Versus maps (2P to 5P, a Wasteland set and a sea set) with Com Towers, Piperunner pipes and Black Hole's structures (above) |
+| Survival | `survival.rs`, `survival_maps.rs`, `mode_menu.rs` | Dual Strike's Survival mode (Money, Turn, Time) on its own 33 maps, a seventh entry on Select Mode (below) |
 
 Free ROM used: 0x08620000.. (text slots), 0x0862C000.. (new CO text ids 0x6D72..),
 0x08640000..0x08672FFF (earlier features; the map table and the maps past the tenth at
@@ -470,8 +471,10 @@ Free ROM used: 0x08620000.. (text slots), 0x0862C000.. (new CO text ids 0x6D72..
 powers' code, heal wait), 0x087C0000..0x087C0FFF (power animations),
 0x087C1000..0x087C3FFF (map animations), 0x087D0000..0x087DFFFF (unit pictures),
 0x087F0000..0x087F4FFF (CO screen grid: the map sheet per country, the page lists),
-0x08800000..0x08D2FFFF (music, past the 8 MB cartridge: mGBA grows the image when it is written).
-Free RAM used: 0x0203F740..0x0203F79F
+0x08800000..0x08D2FFFF (music, past the 8 MB cartridge: mGBA grows the image when it is written),
+0x0862D000..0x0862D0FF (Survival's text ids 0x7172..), 0x08E00000..0x08E4FFFF (Survival: the map
+table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data).
+Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203FDC8..0x0203FDFB, stun, battle distance, Teams list),
@@ -594,6 +597,173 @@ spare it, and the CPU's silo and strike scoring leave it out.
 `tools/aw2test` plays real battles in both modes and checks them against its
 own damage calculator (Dual Strike's numbers read from the .nds in `ds` mode),
 fires every CO's COP and SCOP, and replays netplay runs on two rollback peers.
+
+## Survival (`survival.rs`, `survival_maps.rs`, `mode_menu.rs`)
+
+Dual Strike's Survival mode, with the Dual Strike pack, offline. Everything
+below about Dual Strike was read from its code and data (the USA ROM; overlay
+0 is loaded at `0x022AD560`, the survival state is `0x022A7B80`).
+
+**Dual Strike's Survival, as found.** Three kinds (the state's kind byte, +7):
+Time (0), Money (1), Turn (2); 3..5 are the Champion courses of the same three.
+Each basic run is eleven maps fought in a row against the computer, the same
+eleven every time, from a list per kind (u16 map ids, overlay 0 `0x022F64FC`
+Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
+
+| # | Money (500,000 G) | Turn (99 days) | Time (25 minutes) |
+|---|---|---|---|
+| 1 | Silo Sweep | Convoy Cape | Red Heart |
+| 2 | Bad Pangaea | Cannon Land | Frozen Pipes |
+| 3 | Chokepoint | Mr. Fix-It | Cape Splinter |
+| 4 | Cold Shoulder | Aircraft Hunt | Lake Fever |
+| 5 | Crowded Plain | Rain of Pain | Open Road |
+| 6 | Narrow Road | Lone Wolf | The Middleman |
+| 7 | Triple Threat | Fenced In | Stealth Fight |
+| 8 | The Gooping | River Raid | Tactical Decoy |
+| 9 | Single File Isle | Crystal Field | Last Stand |
+| 10 | The Swarm | Five Mile Isle | Pursuit Plains |
+| 11 | Grit's Gambit | Forest Frenzy | Fog Hunter |
+
+- **Budgets** (arm9 `0x02168D04`, a word per kind): 90000 frames, 500000 G,
+  99 days; Champion 108000, 600000, 120.
+- **Running out** (`sub_020EA944`, every frame of a battle): Money, the
+  player's funds reach 0; Turn, the day passes what is left; Time, the
+  player's own clock (it only runs on the player's turns) reaches what is
+  left. Then the run is over.
+- **What a cleared map costs** (`sub_020EA87C`): Money, the funds spent;
+  Turn, the day it was won on less one; Time, the player's time in whole
+  seconds. Money has no income at all: properties, joined units' extra HP,
+  Colin's and Sasha's powers earn nothing.
+- **Points**: each map's battle score added up (at most 9999); a cleared run
+  adds a bonus for what is left (`sub_020EB024`): a point per 2 seconds, 10
+  per day, 1 per 200 G. **Rank** (`sub_020EAD98`) by what is left: S from 9
+  minutes / 50,000 G / 25 days, A from 6 / 25,000 / 15, B from 3 / 10,000 / 5,
+  else C. **Records** (`sub_020EAE84`): per kind, the best leftover with the
+  run's two COs.
+- **COs**: picked once for the run (a tag pair in Dual Strike: the survival
+  state's +0/+1, copied into the player at every map start, `sub_020EACC4`).
+- **Maps**: Dual Strike's own Survival maps, in AW2's map format (Dual Strike
+  grew AW2's map header to 0xA0 bytes, overlay 0 `0x022DBDB0`, id n at n - 1;
+  tiles are AW2's LZ77 blob of AW2 tile ids; units 13-byte records). Each
+  brings its fog (+0x34), weather (+0x33: clear, snow, rain, sandstorm), look
+  (+0x32: normal, snow, desert, wasteland), the computer's COs (+0x70 army 2,
+  +0x72 army 3) and its pre-deployed units.
+
+**In tangoAW2.**
+
+- **Select Mode** (`mode_menu.rs`): a seventh entry on the wheel, SURVIVAL,
+  between War Room and Battle Maps, with labels built at run time from the
+  game's own label art (the letters of DESIGN ROOM, VERSUS, BATTLEMAPS,
+  CAMPAIGN and LINK, in a teal of Campaign's and Link's colours) and a help
+  line. Hook points (for merging other Select Mode work): every `DivRem(x, 6)`
+  of the wheel's code (`movs r1, #6` before `bl 0x0808AAB0` in
+  `0x08080F00..0x08084C00`, found by scanning) becomes 7; the position wraps
+  `0x08081DF0`, `0x08081E2C`, `0x0808280C`, `0x08082830`;
+  `SetMainMenuCarouselPosition` `0x08080F68` ((i + 5) % 7) and `0x08080F7E`;
+  the 34 words pointing at the item table `0x0861696C` point at a 7-entry copy
+  `[5, 8, 2, 4, 3, 1, 0]` (item 8 is Survival); help lines: the table
+  `0x08616FA4` (pool `0x08084680`) and the choices' table `0x08616FB4` (pool
+  `0x080846C0`) are copied with Survival at line index 6 (Sound Room 7, Hard
+  Campaign 8: `0x08084630`, `0x0808464E`; Campaign's index `0x0808464A`).
+  Traps: `0x080845A8` (centre label), `0x08084858`, `0x08084864`,
+  `0x0808488C` (tile complete, palettes), `0x08081498` and `0x08081E94`
+  (item 8 goes like Link: A starts it), `0x08081EEE` (picked) and `0x08081EF6`
+  (the mode store: War Room New, 5). The small label sits in OBJ tiles
+  0x320.. with OBJ palette 13; `remap` (at the sprite flush) points the game's
+  item-8 sprites (tile `0x1D8 + 32 * 8`, palette 10) at them. The wheel is the
+  game's own with the pack off (every patch put back, nothing traps). One more
+  entry would need its own OBJ palette and tiles and the table, wraps and
+  `DivRem` sites for eight.
+- **Screens.** Picking it opens the War Room's own screens on Survival's maps:
+  SELECT MAP lists Money, Turn and Time Survival (the highlighted kind's
+  budget and record in a panel under the preview), the War Room's CO screen,
+  LET'S GO, the battle, the War Room's results and its save prompt; back on
+  SELECT MAP only the run's next map is listed (with what is left and the
+  points), until the run is cleared or lost: then the results (kind, CLEAR! or
+  GAME OVER, maps cleared, what is left, bonus, points, rank) cover the
+  preview until A or B. From the second map on, the CO screen offers only the
+  run's CO (one group with that CO, as the campaign's restricted CO screens
+  build theirs: trap `0x0807C588`). B on SELECT MAP leaves Survival (a run in
+  progress is given up).
+- **Maps** (`survival_maps.rs`): the 33 maps are read from the pack and
+  converted at the first frame with the pack: ids 0xC9..0xCB are the three
+  runs' entries (each the run's first map, named after its kind), 0xCC..0xEC
+  the maps in Dual Strike's id order. Tiles are AW2's own ids except Dual
+  Strike's Black Crystal (0x1A1 -> tangoAW2's 0x192), Com Towers (0x1B9..0x1BD
+  -> the Labs 0x1D9..0x1DD) and a tall wood of its own (0x146 -> AW2's wood
+  0x086; AW2 has no such tile). Their 4x4 structures (Convoy Cape, Lone Wolf,
+  Silo Sweep) are AW2's own tiles, as on AW2's T Minus 15 and Sea Fortress.
+  Units: Carrier and Oozium become tangoAW2's 26 and 27; every unit gets the
+  AI byte tangoAW2's Versus maps use (4). Headers: AW2's 0x5C bytes, with the
+  map's fog, armies, colours, computer COs (Dual Strike's ids to tangoAW2's),
+  speed rank day limit, on a tab of their own (0x0A).
+- **Map table.** With the pack the game reads tangoAW2's copy of the map table
+  with room for 0x100 ids (`0x08E00000`; the 37 words of
+  `five_map.rs` switch to it, and five_map
+  writes its tabs into whichever table is in use); the map list's loops walk
+  to 0xEC while Survival is on. The War Room lists tab 0x0A instead of 7 while
+  Survival is on (`BuildMapListForMode`'s table, `0x08090EF2`), and its map list
+  draws only the rows the list has (`DrawMapList` trap `0x08086A58`; the War
+  Room never had fewer than seven maps).
+- **Rules per map** (at every map start, `sandstorm.rs`'s trap `0x08035490`):
+  the weather as fixed weather (sandstorm as tangoAW2's fixed sandstorm), the
+  Wasteland look for Dual Strike's wasteland maps (its snow and desert looks
+  are drawn as the normal look), the run's CO, and for Money the funds (the
+  pool) with no income (`propertyFunds` 0, and any funds gained are taken
+  back every frame). Fog is the header's.
+- **The budget in battle**: the map number and what is left (funds, days left
+  today included, or the time as m:ss) at the top of the battle map, in AW2's
+  own glyph font (OBJ tiles 0x3C0.., palette 0, as `PutAsciiGlyphSprite` draws).
+  Out of budget, the player's army yields (`unk31`, as the map menu's Yield
+  does) and loses at the game's next rules check.
+- **End of a map** (`EndOfGame_Finish`, trap `0x0803832C`): won, the map's
+  cost is taken off, its score added, the next map listed; the last map
+  cleared works out the bonus, rank and record. Lost, the run is over.
+  The War Room keeps its records by `id - 0x6C`: while Survival is on its
+  record readers and writer (pools `0x0808759C`, `0x08087664`, `0x08087B18`,
+  `0x08087C6C`, `0x080177E4`) read a zeroed block of ours; `SetMapPlayed`
+  (`0x0803CA28`) skips Survival's ids (its bits stop at 0xBF). The map menu
+  hides Save on a Survival map (`0x0802C646`): a suspended map would come back
+  without its run.
+- **Records** in the profile the game saves (so the save's own checksum covers
+  them): `0x0200C435..0x0200C43E`, ten of the eleven bytes between
+  `0x0200C420`'s +0x14 and +0x20 that no code of the game reads or writes
+  (`PackProfileRecord` saves 0xE0 bytes from `0x0200C420`; a test checked the
+  bytes stay untouched through boot and battles): a mark (0xD5), then three
+  bytes per kind (Time, Money, Turn): rank (3 bits), CO (7), what was left (14:
+  seconds, hundreds of G, days). Kept when a run is cleared with more left than
+  the record.
+- **RAM**: `0x0203FA00..0x0203FA3F` (the run: on, kind, maps cleared, phase,
+  left, budget, points, the map's time, the funds cap, CO, the menu's pick,
+  bonus, rank), `0x0203FA40..0x0203FD0F` (the War Room record rows Survival
+  reads). **ROM**: `0x08E00000..0x08E05BFF` (map table), `0x08E08000..`
+  (map data, 0x800 per map), `0x08E30000..` (strings), `0x08E40000..0x08E40FFF`
+  (the wheel's data and labels); text ids 0x7172.. (pointers at `0x0862D000`).
+
+**Compromises.**
+
+- AW2 has no tag battles: the run keeps one CO (the one picked for the first
+  map) where Dual Strike keeps a pair; the record keeps that CO.
+- The Champion courses (endless, unlocked by clearing the basic ones) are not
+  included.
+- Dual Strike's snow and desert looks are drawn as AW2's normal look (the
+  maps' weather is theirs).
+- A run cannot be suspended mid-map, and turning the console off loses a run
+  in progress (Dual Strike saves its survival state); records are saved.
+- The War Room's CO screen colours the player's army by its CO's country and
+  moves a computer army off that colour, as it does for its own maps.
+- Points are AW2's War Room scores (its Speed, Power and Technique), not Dual
+  Strike's.
+- The results and records are a panel of AW2's glyph font over SELECT MAP, not
+  a screen of their own.
+
+Tests: `tools/aw2test/tests/test_survival.py` (Select Mode with and without
+the pack, each kind's first map checked tile by tile, unit by unit and for
+fog, weather, look and colours against the .nds directly
+(`aw2test/survival.py`), the budget carried to map 2 and the CO kept, losing
+each kind by running out, a cleared run's rank, bonus and record, saved and
+read back after a reboot, every army a CPU for days on six maps, nothing of it
+without the pack).
 
 ## Known limits
 

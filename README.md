@@ -92,6 +92,10 @@ Both press Ready; the game starts from power-on for both. Go to
   too, eight new Versus maps (2P to 5P) to use them on, and the computer
   uses all of it. Without the ROM nothing changes; online, both players
   need it.
+- **Survival** (with the Dual Strike ROM): Dual Strike's Survival mode on
+  Select Mode. Money, Turn or Time Survival: its eleven maps in a row against
+  the computer on one budget (500,000 G, 99 days or 25 minutes), with a rank
+  and a record for each.
 
 <table>
 <tr>

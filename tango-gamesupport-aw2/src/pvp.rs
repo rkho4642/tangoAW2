@@ -472,7 +472,9 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         crate::branding::tick(core);
         // Dual Strike's unit stats and damage chart, with the pack on.
         let ds = crate::ds_pack::features(mode);
-        crate::five_map::show_maps(core, ds_features, ds);
+        crate::survival::tick_tables(core, ds && ds_features);
+        crate::five_map::show_maps(core, ds_features, ds, crate::survival::last_listed_id(core));
+        crate::mode_menu::tick(core, ds && ds_features && mode.is_none(), crate::survival::TEXT_BASE + crate::survival::T_HELP);
         crate::design_bar::patch_rom(core, ds_features, ds);
         crate::design5::patch_rom(core);
         crate::roster::tick(core, ds);
@@ -502,6 +504,8 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         if in_battle(core) {
             core.raw_write_8(DESIGN_PRESET_DONE, -1, 0);
         }
+        // Dual Strike's Survival (offline: its War Room is single-player).
+        keys = crate::survival::tick(core, ds && mode.is_none(), keys, prev);
 
         // Army colours are picked on Versus' own Teams screen: SELECT/R and
         // L cycle the highlighted army through the five armies, Black Hole
