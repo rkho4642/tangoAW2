@@ -796,7 +796,9 @@ overlay 1, the campaign's code, at `0x02350560`).
   fronts. A record: +0x00 the event header (six trigger lists), +0x04 the
   objective script, +0x10 the second front's id, +0x14 the name (text bank
   0xC0), +0x20 the CO pool the player picks from (an ARM9 list), +0x24 the
-  armies, +0x2C/+0x30 rank days and day limits (normal, hard), +0x41 the
+  armies, +0x0C the 4x4 structure's picture (a `bmap` name: "0a5" missile
+  pad, "0a6" fortress), +0x1A/+0x1B/+0x1C look, weather, fog,
+  +0x2C/+0x30 rank days and day limits (normal, hard), +0x41 the
   mission's number, +0x44/+0x48 the map (normal, hard: AW2's LZ77 blob of
   AW2 tile ids), +0x4C/+0x50 the units (13-byte records, FE army, FF end),
   +0x56 (CO, tag CO) per army (0x1C: the player picks), +0x88 colours, +0x8D
@@ -860,6 +862,11 @@ overlay 1, the campaign's code, at `0x02350560`).
   tiles), Black Crystals (0x192), its Black Obelisks (drawn on AW2's Black
   Cannon tiles, which would fire: tangoAW2's Obelisk), mega missile silos
   (an Obelisk), and the Grand Bolt (below).
+- **Rules per mission**: the header names AW2's picture of a 4x4
+  structure (+0x10, the same bytes as Dual Strike's) and the fog; at each
+  mission start (`crate::sandstorm`'s map-start trap `0x08035490`) the fog,
+  the weather as fixed weather (sandstorm as tangoAW2's) and the Wasteland
+  look are set (Dual Strike's snow and desert looks are drawn as normal).
 - **Means to an End**: the Grand Bolt is a picture of tiles (laid out as a
   sheet) AW2 has no art for; it becomes plains with a Black Obelisk on each
   of its three weak points ((3, 9), (9, 11), (15, 9), where Dual Strike's
@@ -918,7 +925,8 @@ Tests: `tools/aw2test/tests/test_ds_campaign.py` (the sub-menu with and
 without the pack, AW2's campaign unchanged to its first mission card,
 Survival and the DS Campaign in one boot, Jake's Trial against the .nds
 (card laid out as AW2's, dialogue all Dual Strike's own words, map,
-deployment, name), five later missions, a forced win saved to Flash and
+deployment, name), every mission in battle (tiles, terrain, deployment,
+fog, weather, look, structure picture), five later missions, a forced win saved to Flash and
 continued after a reboot, the Grand Bolt's spawns, the computer playing
 three days on four missions with no army dropping out);
 `aw2test/dscampaign.py` drives it and reads Dual Strike's missions directly.
