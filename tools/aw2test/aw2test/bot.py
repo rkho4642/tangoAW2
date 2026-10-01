@@ -39,8 +39,12 @@ CAPTURERS = {1, 2}            # Infantry, Mech
 AIR = {12, 13, 16, 17, 19, 20}
 NAVAL = {18, 21, 22, 23, 24, 25, 26}
 ANTI_AIR = {14, 15, 16}
-# Transports that carry infantry and mech (APC, T Copter, Lander).
+# Transports that carry infantry and mech (APC, T Copter, Lander), and
+# those that take units over water (a Lander any ground unit, a T Copter
+# infantry and mech); a Lander loads and unloads on a beach or in a port.
 FOOT_TRANSPORTS = {7, 20, 23}
+FERRIES = {20, 23}
+SHOAL = 0x0D
 # Where a worn unit is repaired.
 REPAIRS = {"ground": {HQ, CITY, BASE}, "air": {AIRPORT}, "naval": {PORT}}
 # What a factory builds, best first (tangoAW2 / Dual Strike ids).
@@ -58,13 +62,14 @@ def domain(t):
 
 
 class Bot:
-    def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto"):
+    def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
         `structures`: the mission is won on its structures (they come first
         among targets); `stance`: "attack", "defend" or "auto" (attack when
-        the stronger)."""
+        the stronger); `rush`: the units that capture go for the enemy HQ
+        only (a mission against the clock)."""
         self.d, self.g, self.e = d, d.g, d.e
         self.log = log or (lambda s: None)
         self.protect = set(protect)
@@ -72,6 +77,7 @@ class Bot:
         self.goals = list(goals)
         self.structures_goal = structures
         self.stance = stance
+        self.rush = rush
         from .rom import DualStrike, Image
         self.chart = DualStrike()
         self.image = Image.load()
@@ -128,7 +134,10 @@ class Bot:
             if kind == 0:
                 break
             if b[4] > 0:
-                out.append({"x": b[0], "y": b[1], "hp": b[4], "kind": kind})
+                # A 3x3 structure (an Obelisk, a Black Cannon) is listed by
+                # its top-left cell and fired on at its bottom middle.
+                x, y = (b[0], b[1]) if kind == 4 else (b[0] + 1, b[1] + 2)
+                out.append({"x": x, "y": y, "hp": b[4], "kind": kind})
         return out
 
     def range_cells(self):
@@ -155,9 +164,12 @@ class Bot:
         return out
 
     def targets_for_capture(self, army, props=None):
-        """Properties not ours (the enemy HQ first)."""
+        """Properties not ours (the enemy HQ first; with `rush`, the enemy
+        HQ alone)."""
         t = self.team(army)
         out = [(p, k) for p, k, o in (props or self.properties()) if o == 0 or self.team(o) != t]
+        if self.rush:
+            out = [(p, k) for p, k in out if k == HQ]
         out.sort(key=lambda p: p[1] != HQ)
         return out
 
@@ -275,13 +287,14 @@ class Bot:
         """Move points from each cell to the nearest goal for `u`'s kind of
         movement (units ignored); cells with no way there are left out."""
         import heapq
-        key = (u["army"], self.move_type(u["type"]), tuple(sorted(goals)))
+        start = dict(goals) if isinstance(goals, dict) else {g: 0 for g in goals}
+        key = (u["army"], self.move_type(u["type"]), tuple(sorted(start.items())))
         if key in self.gdist:
             return self.gdist[key]
         w, h = self.size()
         chart, mt = self.move_chart(u["army"]), self.move_type(u["type"])
-        best = {g: 0 for g in goals}
-        q = [(0, g) for g in goals]
+        best = dict(start)
+        q = [(c, g) for g, c in start.items()]
         heapq.heapify(q)
         while q:
             c, (x, y) = heapq.heappop(q)
@@ -423,6 +436,16 @@ class Bot:
         indirect = info["min"] > 1
         if u["type"] in self.hold:
             return ("stay", here, None)
+        # Ferrying: a transport takes units the enemy cannot be reached
+        # from over the water; they board it where it waits.
+        if u["type"] in FERRIES or u["type"] == 7:
+            p = self.ferry_plan(u, army, cells, free, armed_foes)
+            if p:
+                return p
+        elif domain(u["type"]) == "ground":
+            p = self.board_plan(u, army, cells, free)
+            if p:
+                return p
         if u["type"] in self.protect and u["type"] in CAPTURERS and not any(self.threat(u, c, armed_foes) == 0 for c in free):
             # No cell out of the enemy's reach: aboard an empty transport.
             boats = [(m["x"], m["y"]) for m in self.friends(army)
@@ -498,6 +521,168 @@ class Bot:
         best = min(free, key=key)
         return ("wait", best, None)
 
+    # -- ferrying ----------------------------------------------------------------
+    def nbrs(self, c):
+        w, h = self.size()
+        return [n for n in ((c[0] + 1, c[1]), (c[0] - 1, c[1]), (c[0], c[1] + 1), (c[0], c[1] - 1)) if 0 <= n[0] < w and 0 <= n[1] < h]
+
+    def goals_for(self, u, army):
+        """The cells `u` makes for: what it captures, else the structures
+        the mission is won on, else the enemy's units, else what is left to
+        capture."""
+        props = self.properties()
+        capt = self.goals + [p for p, _ in self.targets_for_capture(army, props)][:4]
+        if u["type"] in CAPTURERS:
+            return capt
+        structs = [(s["x"], s["y"]) for s in self.structures()] if self.structures_goal else []
+        land = [(f["x"], f["y"]) for f in self.enemies(army) if domain(f["type"]) == "ground"]
+        return structs or self.goals or land or capt
+
+    def stranded(self, u, army):
+        """No way over land from `u` to any of its goals."""
+        goals = self.goals_for(u, army)
+        return bool(goals) and (u["x"], u["y"]) not in self.goal_distance(u, goals)
+
+    def fits(self, t, u):
+        if t["type"] == 23:
+            return domain(u["type"]) == "ground"
+        return u["type"] in CAPTURERS
+
+    def room(self, t):
+        cargo = [i for i in t["cargo"] if i]
+        return len(cargo) < (2 if t["type"] == 23 else 1)
+
+    def can_unload_at(self, t, c):
+        if t["type"] == 23:
+            return self.cls_at(c) & 0x1F in (SHOAL, PORT)
+        return True
+
+    def turns(self, u, gd, cell):
+        """Turns `u` needs from `cell` to its goal (gd: move points)."""
+        v = gd.get(cell)
+        return None if v is None else v / max(self.unit_info(u["type"])["move"], 1)
+
+    def wants_ride(self, u, army):
+        """`u` cannot get to its goal over land, or (a unit that captures)
+        needs three turns or more to walk there."""
+        goals = self.goals_for(u, army)
+        if not goals:
+            return False
+        gd = self.goal_distance(u, goals)
+        t = self.turns(u, gd, (u["x"], u["y"]))
+        return t is None or (u["type"] in CAPTURERS and t >= 3)
+
+    def board_plan(self, u, army, cells, free):
+        ferries = [m for m in self.friends(army) if m["type"] in FERRIES | {7} and self.fits(m, u) and self.room(m)
+                   and (m["type"] != 7 or u["type"] in CAPTURERS)]
+        if not ferries or not self.wants_ride(u, army):
+            return None
+        on = [(m["x"], m["y"]) for m in ferries if (m["x"], m["y"]) in cells]
+        if on:
+            return ("load", on[0], None)
+        if not self.stranded(u, army):
+            return None
+        gd = self.goal_distance(u, [(m["x"], m["y"]) for m in ferries])
+        best = min(free, key=lambda c: (gd.get(c, 999), cells[c]))
+        return ("wait", best, None)
+
+    def ferry_plan(self, t, army, cells, free, foes):
+        """A transport's turn: loaded, it carries its cargo to where the
+        cargo gets to its goal soonest (its own way there, then the cargo's
+        walk) and drops it when that is as soon as it gets; empty, it goes
+        to wait where a unit that wants a ride can board it."""
+        w, h = self.size()
+        occ = self.occ_now or self.occupied()
+        hp = max(t["hp"], 10)
+        careful = 20 if t["type"] in self.protect else 4
+        tmove = max(self.unit_info(t["type"])["move"], 1)
+        here = (t["x"], t["y"])
+        cargo = [self.g.unit(i) for i in t["cargo"] if i]
+        if cargo:
+            cu = dict(cargo[0], army=army)
+            cmove = max(self.unit_info(cu["type"])["move"], 1)
+            gd = self.goal_distance(cu, self.goals_for(cu, army))
+            chart, mt = self.move_chart(army), self.move_type(cu["type"])
+            # Turns to the goal when dropped next to cell c (best neighbour).
+            def after_drop(c, free_only):
+                best = None
+                for n in self.nbrs(c):
+                    if n in gd and self.step_cost(chart, mt, n) and (not free_only or n not in occ):
+                        v = gd[n] / cmove + 1
+                        if best is None or v < best[0]:
+                            best = (v, n)
+                return best
+            sources = {}
+            for y in range(h):
+                for x in range(w):
+                    if self.can_unload_at(t, (x, y)):
+                        a = after_drop((x, y), False)
+                        if a:
+                            sources[(x, y)] = int(a[0] * tmove)
+            if not sources:
+                return None
+            gdt = self.goal_distance(t, sources)
+            drops = []
+            for c in free:
+                if self.can_unload_at(t, c):
+                    a = after_drop(c, True)
+                    if a:
+                        drops.append((a[0] + careful * self.threat(t, c, foes) / hp / tmove, c, a[1]))
+            moving = min(free, key=lambda c: (gdt.get(c, 1 << 20) / tmove + careful * self.threat(t, c, foes) / hp / tmove, cells[c]))
+            move_turns = gdt.get(moving, 1 << 20) / tmove + 1
+            if drops:
+                v, c, n = min(drops)
+                if v <= move_turns:
+                    return ("drop", c, n)
+            return ("wait", moving, None)
+        riders = [m for m in self.friends(army) if m["id"] != t["id"] and self.fits(t, m) and self.wants_ride(m, army)
+                  and (t["type"] != 7 or m["type"] in CAPTURERS)]
+        if not riders:
+            return None
+        spots = set()
+        for m in riders:
+            mc = (m["x"], m["y"])
+            land = self.moves(dict(m, army=army))
+            spots |= {c for c in land if c != mc and c not in occ and self.can_unload_at(t, c)}
+            spots |= {n for c in land for n in self.nbrs(c) if n not in occ and self.can_unload_at(t, n)}
+        if here in spots:
+            return ("wait", here, None)
+        if not spots:
+            return None
+        gd = self.goal_distance(t, list(spots))
+        best = min(free, key=lambda c: (gd.get(c, 999) + careful * self.threat(t, c, foes) / hp, cells[c]))
+        return ("wait", best, None)
+
+    def drop(self, target):
+        """In the Drop: the first cargo, the cursor to `target` (else the
+        cell the game offers), A; a second cargo goes too."""
+        g, e = self.g, self.e
+        for k in range(2):
+            e.wait(20)
+            if g.menu():
+                e.press("A", 4)
+                e.wait(20)
+            for _ in range(8):
+                c = g.cursor()
+                if target is None or c == target:
+                    break
+                key = "RIGHT" if c[0] < target[0] else "LEFT" if c[0] > target[0] else "DOWN" if c[1] < target[1] else "UP"
+                e.press(key, 4)
+                e.wait(10)
+            e.press("A", 4)
+            e.wait(40)
+            m = g.menu()
+            if not m:
+                return
+            names = [n.lower() for n in m["names"]]
+            if any(n.startswith("drop") for n in names):
+                g.choose("Drop", g.ACTION_MENU)
+                target = None
+                continue
+            if any(n.startswith("wait") for n in names):
+                g.choose("Wait", g.ACTION_MENU)
+            return
+
     def act(self, u, army):
         """Pick up `u`, choose where to go and what to do there."""
         g, e = self.g, self.e
@@ -527,6 +712,9 @@ class Bot:
             g.choose("Capt", g.ACTION_MENU)
         elif kind == "load" and any(n.startswith("load") for n in names):
             g.choose("Load", g.ACTION_MENU)
+        elif kind == "drop" and any(n.startswith("drop") for n in names):
+            g.choose("Drop", g.ACTION_MENU)
+            self.drop(target)
         elif any(n.startswith("wait") for n in names):
             g.choose("Wait", g.ACTION_MENU)
         else:
@@ -550,21 +738,33 @@ class Bot:
     def build(self, army):
         """Every free factory of ours builds the best unit the funds allow
         (an Anti-Air first while the enemy has more aircraft than we have
-        anti-air units)."""
+        anti-air units; an Infantry while we have fewer than two units that
+        capture and there is something to capture). No more than 20 units:
+        more only block each other."""
         w, h = self.size()
         occ = self.occupied()
         foes = self.enemies(army)
-        mine = self.friends(army)
+        mine = [m for m in self.g.units(army=army)]
         air = sum(1 for f in foes if f["type"] in AIR)
         aa = sum(1 for m in mine if m["type"] in ANTI_AIR)
-        for (x, y), kind, owner in self.properties():
+        props = self.properties()
+        capt = sum(1 for m in mine if m["type"] in CAPTURERS)
+        need_capt = bool(self.goals or self.targets_for_capture(army, props))
+        count = len(mine)
+        for (x, y), kind, owner in props:
             if owner != army or kind not in BUILD or (x, y) in occ:
                 continue
             funds = self.funds(army)
             order = list(BUILD[kind])
-            if kind == BASE and air > aa:
+            if kind == BASE and need_capt and capt < 2:
+                order = [2, 1]
+                capt += 1
+            elif count >= 20:
+                continue
+            elif kind == BASE and air > aa:
                 order = [14] + order
                 aa += 1
+            count += 1
             for t in order:
                 if self.unit_info(t)["cost"] <= funds:
                     try:

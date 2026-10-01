@@ -641,3 +641,37 @@ def ds_campaign_map_exit(ctx):
     ctx.eq(e.read(dc.WM_STATE + 0x12, 0x2A), aw2_flags, "AW2's own missions on the map")
     ctx.eq(e.u32(0x080769B4), 0x081CC5F0, "AW2's map art")
     shot(ctx, e, "aw2_map")
+
+
+
+# Every mission won as a player wins it: picked on the world map, COs picked
+# on the CO screen, the battle played through the pad only (aw2test.bot with
+# the mission's plan in dscampaign.PLANS; no unit, funds or flag is written),
+# won by Dual Strike's own condition, then the results and the world map:
+# the mission cleared and kept in the record, the campaign moved on.
+WIN_DAYS = 40
+
+
+def _win(step):
+    def fn(ctx):
+        e, g, d = boot(ctx)
+        index = dc.ORDER[step]
+        name = dc.DsData().mission(index)["name"]
+        r = d.win_mission(step, WIN_DAYS, log=ctx.log)
+        ctx.log(f"{name}: COs {r['cos']}, {r['days']} days, won by {r['reason']}")
+        ctx.eq((r["result"], r["mission"]), (1, index), f"{name} won through the pad in {r['days']} days")
+        ctx.require(r["map"], "back on the world map after the results")
+        p = r["progress"]
+        ctx.check(p["won"] >> index & 1, "the win is in the record")
+        ctx.eq(r["flags"][index] & 2, 2, "the mission is cleared on the map")
+        if step + 1 < len(dc.ORDER):
+            shown = [m for m in range(28) if r["flags"][m] & 1 and not p["won"] >> m & 1]
+            ctx.check(bool(shown), f"a next mission is open on the map ({shown})")
+            ctx.check(p["next"] > step, f"the record moves on (next step {p['next']})")
+        shot(ctx, e, "world_map")
+    fn.__name__ = f"ds_campaign_win_{step:02d}"
+    test(modes=("ds",))(fn)
+
+
+for _s in range(len(dc.ORDER)):
+    _win(_s)

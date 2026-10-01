@@ -68,6 +68,13 @@ const MISSION_SET: u32 = 0x0203_FD15;
 pub const LAST_RESULT: u32 = 0x0203_FD1C;
 /// The last Dual Strike condition that held (its address) and the day.
 pub const LAST_CONDITION: u32 = 0x0203_FD50;
+/// What ended the last mission through its events: the condition that
+/// held when an event script declared the winner (AW2's op 0x40), and the
+/// day (u16). Zero when the battle ended by AW2's own rules (no units left,
+/// an HQ taken). For the tests and logs.
+pub const WIN_CAUSE: u32 = 0x0203_FD58;
+/// `EventOp_DefeatOtherTeamsAndEndMatch` (AW2's script op 0x40).
+const SCRIPT_END_MATCH: u32 = 0x0801_8FB4;
 /// The campaign's flags 0x20..0x9F (16 bytes).
 const FLAGS: u32 = 0x0203_FD20;
 /// The progress record saved to Flash ([`SAVE_SIZE`] bytes).
@@ -458,7 +465,17 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (MISSION_NUMBER, Box::new(mission_number)),
         (crate::ds_worldmap::SAVE_PROMPT, Box::new(save_prompt)),
         (BEST_SCORE, Box::new(best_score)),
+        (SCRIPT_END_MATCH, Box::new(script_end_match)),
     ]
+}
+
+fn script_end_match(core: &mut Core) {
+    if active(core) {
+        let c = core.raw_read_32(LAST_CONDITION, -1);
+        let day = core.raw_read_16(0x0300_4080, -1);
+        core.raw_write_32(WIN_CAUSE, -1, c);
+        core.raw_write_16(WIN_CAUSE + 4, -1, day);
+    }
 }
 
 fn return_to(core: &mut Core, r0: u32) {
@@ -640,6 +657,8 @@ pub fn map_start(core: &mut Core) {
         3 => (3, 0),
         _ => (0, 0),
     };
+    core.raw_write_32(WIN_CAUSE, -1, 0);
+    core.raw_write_16(WIN_CAUSE + 4, -1, 0);
     core.raw_write_8(WEATHER_MODE, -1, mode);
     core.raw_write_8(DEFAULT_WEATHER, -1, w);
     core.raw_write_8(WEATHER, -1, w);

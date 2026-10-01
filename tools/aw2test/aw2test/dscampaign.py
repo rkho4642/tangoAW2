@@ -23,6 +23,23 @@ DS_MAP_ID = 0xF0  # every DS mission is played on this map id
 # The menu's state (crate::campaign_menu).
 LAST_RESULT = 0x0203FD1C      # 1 won / 2 lost, mission, day (u16)
 LAST_CONDITION = 0x0203FD50   # the last Dual Strike condition that held, day
+WIN_CAUSE = 0x0203FD58        # the condition an event script ended the battle on, day
+# Dual Strike's mission conditions (ds_campaign_rules::predicate), for reports.
+CONDITIONS = {
+    0x0235066C: "every unit has moved", 0x02350824: "every unit has moved", 0x02350940: "every unit has moved",
+    0x02350A1C: "every unit has moved", 0x02350B28: "every unit has moved",
+    0x023507A8: "army 1 has no Infantry left", 0x02350708: "every unit out of fuel", 0x02350638: "a unit right of column 7",
+    0x02350BE4: "army 2 has no Piperunner left", 0x02350D60: "army 1 has no Lander left", 0x02350FF0: "army 3 has no Megatank left",
+    0x02350C60: "an airport taken", 0x02350F28: "a Com Tower taken",
+    0x02350DDC: "the city at (9, 1) taken", 0x02350E6C: "the city at (7, 6) taken", 0x02350EC4: "the lab at (17, 1) taken",
+    0x0235106C: "the lab at (23, 14) taken", 0x02351640: "the lab at (14, 1) taken",
+    0x02351744: "the cities at (8, 2) and (8, 15) taken", 0x02351804: "the four Com Towers taken",
+    0x02351B88: "no missile silo base left to Black Hole",
+    0x02350CD4: "a minicannon destroyed", 0x023510FC: "a minicannon damaged", 0x02351C58: "a Black Crystal destroyed",
+    0x023505C0: "the Black Obelisk destroyed", 0x02351708: "the Black Obelisk destroyed", 0x023505E8: "every Black Crystal destroyed",
+    0x02350610: "every minicannon destroyed", 0x02350560: "the Grand Bolt's three weak points destroyed",
+    0x02351CC8: "the Grand Bolt's charge (every sixth day)",
+}
 MENU_LEVEL = 0x0203FD13
 MENU_CHOICE = 0x0203FD14
 
@@ -323,13 +340,21 @@ class DsCampaign:
             c = self.co_cursor()
             if c["tab"] == tab:
                 break
-            e.press("DOWN", 6)
+            e.press("DOWN" if c["tab"] < tab else "UP", 6)
             e.wait(30)
+        c = self.co_cursor()
+        if c["tab"] != tab:
+            # (a tab the screen keeps shut, e.g. the first pick's country
+            # for the second army): the best CO of the tab it is on
+            first = sum(c["counts"][:c["tab"]])
+            here = c["cos"][first:first + c["counts"][c["tab"]]]
+            want = next((co for co in prefs if co in here), c["co"])
+            tab, at = c["tab"], here.index(want)
         for _ in range(12):
             c = self.co_cursor()
             if c["at"] == at:
                 break
-            e.press("RIGHT", 6)
+            e.press("RIGHT" if c["at"] < at else "LEFT", 6)
             e.wait(30)
         if self.co_cursor()["co"] != want:
             raise NavError(f"CO {want} not reached ({self.co_cursor()})")
@@ -503,7 +528,21 @@ class DsCampaign:
     def last_result(self):
         e = self.e
         return {"result": e.u8(LAST_RESULT), "mission": e.u8(LAST_RESULT + 1), "day": e.u16(LAST_RESULT + 2),
-                "condition": e.u32(LAST_CONDITION), "condition_day": e.u16(LAST_CONDITION + 4)}
+                "condition": e.u32(LAST_CONDITION), "condition_day": e.u16(LAST_CONDITION + 4),
+                "cause": e.u32(WIN_CAUSE), "cause_day": e.u16(WIN_CAUSE + 4)}
+
+    def end_reason(self):
+        """Why the battle just ended: the Dual Strike condition an event
+        script ended it on, else AW2's own rules (the other team has no
+        units left, or its HQ was taken)."""
+        e = self.e
+        cause = e.u32(WIN_CAUSE)
+        if cause:
+            return f"Dual Strike's condition {cause:#x}: {CONDITIONS.get(cause, '?')} (day {e.u16(WIN_CAUSE + 4)})"
+        p = self.players()
+        team = e.u8(p + 0x3C + 0x2A)
+        foes = [u for u in self.g.units() if e.u8(p + 0x3C * u["army"] + 0x2A) != team]
+        return "every enemy unit destroyed" if not foes else f"the enemy HQ taken ({len(foes)} enemy units left)"
 
     def state(self):
         """Units per army and the day (for logs)."""
@@ -546,6 +585,7 @@ class DsCampaign:
                 if d >= start + max_days:
                     break
         out = self.last_result()
+        out["reason"] = self.end_reason() if out["result"] else None
         out["days"] = last_day - start + 1
         out["frames"] = frames
         out["was_mission"] = mission
@@ -592,12 +632,39 @@ class DsCampaign:
                 if d >= start + max_days:
                     break
         out = self.last_result()
+        out["reason"] = self.end_reason() if out["result"] else None
         out["days"] = last_day - start + 1
         out["was_mission"] = mission
         return out
 
     def size(self):
         return self.e.u16(MAP), self.e.u16(MAP + 2)
+
+    def win_mission(self, step, max_days=40, log=None):
+        """A player's mission: from the title, DS CAMPAIGN with the record at
+        `step` (every mission before it won), the mission picked on the world
+        map, the test player's COs, the battle played through the pad
+        (aw2test.bot, PLANS) for up to `max_days`, then the results and back
+        to the world map. Returns play()'s outcome with the COs picked, the
+        world map's flags and the record's progress afterwards."""
+        e = self.e
+        data = DsData()
+        index = ORDER[step]
+        self.start(step=step)
+        picks = self.choose_cos(co_picks(data, index))
+        r = self.play(max_days, log=log, **plan(data, index))
+        r["cos"] = picks
+        for _ in range(900):
+            if self.world_map_up() and e.u8(WM_STATE + 0x10):
+                break
+            if self.scripts_running() or not self.in_battle():
+                e.press("A", 4)
+            e.wait(20)
+        e.wait(30)
+        r["map"] = self.world_map_up()
+        r["flags"] = self.map_flags()
+        r["progress"] = self.progress()
+        return r
 
 
 # -- Dual Strike's campaign, read from the .nds (independent of the Rust) -------
@@ -624,7 +691,7 @@ CO_PREFS = [6, 14, 2, 76, 17, 1, 79, 80, 18, 0, 77, 4, 78, 73, 74, 72]
 # Infantry, Black Boats Ahoy!'s Lander), missions won on their structures
 # (a Black Crystal, minicannons, Black Obelisks, the Grand Bolt's weak
 # points), and those against the clock (always on the attack).
-PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}}
+PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"rush": True}}
 STRUCTURE_MISSIONS = {8, 13, 14, 17, 18, 23, 24}
 TIMED_MISSIONS = {12, 21, 22, 24}
 
