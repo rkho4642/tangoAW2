@@ -290,7 +290,12 @@ pub fn five_army_tiles(core: &Core) -> Option<u32> {
 }
 
 /// After the building sheet (and tangoAW2's structures' tiles) load, and
-/// every frame: in a five-army game, the tower's picture in its tiles.
+/// every frame: in a five-army game, the tower's picture in its tiles. On
+/// the battle map only: a five-army game is on from the moment its map is
+/// picked, and the screens before the battle use those tiles for their own
+/// pictures (0.3.0 to 0.4.0 drew the tower over the Teams screen's first
+/// face), so outside the editor the tiles are taken only while they hold
+/// the structure's picture the sheet's load put there.
 pub fn after_sheet(core: &mut Core) {
     let (Some(t), Some(p)) = (five_army_tiles(core), picture()) else {
         return;
@@ -298,7 +303,10 @@ pub fn after_sheet(core: &mut Core) {
     let at = OBJ_VRAM + 32 * t;
     let mut now = [0u8; 256];
     core.raw_read_range(at, -1, &mut now);
-    if now[..] != p[..] {
+    if now[..] == p[..] {
+        return;
+    }
+    if t == EDITOR_TILE || crate::obelisk::holds_ours(t, &now) {
         core.raw_write_range(at, -1, p);
     }
 }

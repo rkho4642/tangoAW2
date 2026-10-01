@@ -692,6 +692,20 @@ its own army for the tower entry, which the shown entry, the picked tool and
 the placed tile did not follow: the bar showed and placed the army it was
 opened with.
 
+In a five-army battle the Lab's tiles hold Black Hole's HQ, so the tower is
+drawn from the Crystal's battle tiles (OBJ 0x19A..0x1A1; the Obelisk's
+0x176.. with a Crystal on the map; `com_tower::after_sheet`, after the sheet
+loads and every frame). A five-army game is on from the moment its map is
+picked, and on the Teams screen tiles 400..435 are the first column's face:
+0.3.0 to 0.4.0 wrote the tower over 410..417 there (a band across the face's
+eyes, with the pack, on 5P maps and five-army design maps). The tiles are now
+taken only while they hold what `obelisk::load_tiles` put there (the
+editor's 524.. as before). Tests: `tools/aw2test/tests/test_teams_faces.py`
+(each column's face tiles against its CO's face in the ROM image, every CO
+of the list in the first and fifth columns, 2 and 5 armies, straight from
+the title and after Survival and the Campaign box; and the five-army
+battle's tower picture).
+
 The Oozium (`oozium.rs`, the Dual Strike rule): it has no weapon (no Fire, no
 counter-attack). Its move takes in the squares next to it holding a unit of
 another team, any unit (air units and ships in port too) on a square it can

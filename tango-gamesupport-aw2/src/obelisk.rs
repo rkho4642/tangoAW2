@@ -191,6 +191,22 @@ fn load_tiles(core: &mut Core) {
     crate::com_tower::after_sheet(core);
 }
 
+/// Whether the 8 OBJ tiles at `t` hold what [`load_tiles`] put there: the
+/// Crystal's at [`CRYSTAL_OBJ_TILE`], the Obelisk's first 8 at
+/// [`OBELISK_OBJ_TILE`]. Only the battle map loads them; other screens keep
+/// their own pictures in those tiles (the Teams screen: the first column's
+/// face).
+pub fn holds_ours(t: u32, now: &[u8]) -> bool {
+    let blank = [0u8; 256];
+    let art = crate::ds_art::art();
+    let ours: &[u8] = match t {
+        CRYSTAL_OBJ_TILE => art.map_or(&blank[..], |a| &a.crystal[..]),
+        OBELISK_OBJ_TILE => art.map_or(&blank[..], |a| &a.obelisk[..256]),
+        _ => return false,
+    };
+    now == ours
+}
+
 /// sub_0803F908(x, y, def, army, fog) puts a building's or invention's
 /// sprite: ours get their own definitions (a destroyed Obelisk keeps the
 /// Black Cannon's rubble). The Design Room also comes through here when it
