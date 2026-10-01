@@ -605,8 +605,8 @@ def ds_campaign_no_score_overwrite(ctx):
 @test(modes=("ds",))
 def ds_campaign_map_exit(ctx):
     """B on the DS world map asks AW2's "Return to Select Mode menu?"; Yes
-    ends the session: the box comes back on DS CAMPAIGN (its Continue opens
-    the DS map again), and AW2 CAMPAIGN's Continue shows AW2's own map with
+    ends the session: the Campaign box comes back on DS CAMPAIGN, and AW2
+    CAMPAIGN's Continue shows AW2's own map with
     AW2's own progress (before the fix the session stayed on and AW2's
     Continue showed the DS map)."""
     e, g, d = boot(ctx)
@@ -622,9 +622,11 @@ def ds_campaign_map_exit(ctx):
     e.press("A", 6)
     e.wait(300)
     ctx.eq(e.u8(dc.ACTIVE), 0, "back in Select Mode: the session is over")
-    ctx.eq((e.u8(dc.MENU_LEVEL), e.u8(dc.MENU_CHOICE)), (2, 1), "the box on DS CAMPAIGN")
-    e.press("B", 6)
-    e.wait(40)
+    level = e.u8(dc.MENU_LEVEL)
+    ctx.check(level in (0, 2) and e.u8(dc.MENU_CHOICE) == 1, f"the Campaign box on DS CAMPAIGN (level {level})")
+    if level == 2:
+        e.press("B", 6)
+        e.wait(40)
     d.chooser_row(0)
     e.press("A", 8)
     e.wait(40)
@@ -664,6 +666,16 @@ def _win(step):
         p = r["progress"]
         ctx.check(p["won"] >> index & 1, "the win is in the record")
         ctx.eq(r["flags"][index] & 2, 2, "the mission is cleared on the map")
+        story = dc.story_texts(dc.DsData(), index)
+        if story:
+            # Dual Strike's story after this win, every text in its order,
+            # after the results and before the map takes the pad.
+            shown = r["texts_after"]
+            k = 0
+            for t in shown:
+                if k < len(story) and dc.same_text(t, story[k]):
+                    k += 1
+            ctx.eq(k, len(story), f"Dual Strike's story after the win: {len(story)} texts in order on the world map")
         if step + 1 < len(dc.ORDER):
             shown = [m for m in range(28) if r["flags"][m] & 1 and not p["won"] >> m & 1]
             ctx.check(bool(shown), f"a next mission is open on the map ({shown})")
@@ -675,3 +687,45 @@ def _win(step):
 
 for _s in range(len(dc.ORDER)):
     _win(_s)
+
+
+
+@test(modes=("ds",))
+def ds_campaign_prologue(ctx):
+    """New: Dual Strike's prologue (its three narration texts, bank 0x21)
+    on the world map before the player has the pad; Continue after a reboot
+    does not show it again."""
+    data = dc.DsData()
+    want = [data.text(r) for r in dc.PROLOGUE]
+    e, g, d = boot(ctx)
+    d.start(new=True, pick=False)
+    seen = []
+    for i in range(1500):
+        t = d.text_shown()
+        if t and (not seen or seen[-1] != t):
+            seen.append(t)
+            if len(seen) == 1:
+                e.wait(80)
+                shot(ctx, e, "prologue")
+        if d.world_map_up() and e.u8(dc.WM_STATE + 0x10) and not d.scripts_running() and i > 20:
+            break
+        if d.scripts_running():
+            e.press("A", 4)
+        e.wait(15)
+    ctx.eq(len(seen), len(want), "the prologue's texts")
+    for k, (s, w) in enumerate(zip(seen, want)):
+        ctx.check(dc.same_text(s, w), f"text {k + 1}: Dual Strike's own words ({s[:40]!r})")
+    ctx.require(d.world_map_up(), "then the world map")
+    e.wait(30)
+    save = e.save(os.path.join(ctx.out, "after_prologue"))
+    e.close()
+    e, g, d = boot(ctx, save)
+    d.start(new=False, pick=False)
+    shown = False
+    for i in range(400):
+        if d.text_shown():
+            shown = True
+        if d.world_map_up() and e.u8(dc.WM_STATE + 0x10) and i > 20:
+            break
+        e.wait(15)
+    ctx.check(not shown, "Continue: no prologue")

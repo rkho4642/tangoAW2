@@ -83,7 +83,8 @@ class DsCampaign:
 
     def text_shown(self):
         """The text of the dialogue box an event script shows now (op 0x19,
-        AW2's ShowText), or None."""
+        AW2's ShowText, or 0x1A, a narration box without a speaker), or
+        None."""
         e = self.e
         for i in range(10):
             cur = e.u32(EVENT_SLOTS + 0x18 * i + 4)
@@ -91,7 +92,7 @@ class DsCampaign:
                 continue
             # the box being shown (its command done) or about to be
             for c in (cur - 16, cur):
-                if e.u32(c) == 0x19:
+                if e.u32(c) in (0x19, 0x1A):
                     break
             else:
                 continue
@@ -640,7 +641,7 @@ class DsCampaign:
     def size(self):
         return self.e.u16(MAP), self.e.u16(MAP + 2)
 
-    def win_mission(self, step, max_days=40, log=None):
+    def win_mission(self, step, max_days=40, log=None, seed=None, cos=None):
         """A player's mission: from the title, DS CAMPAIGN with the record at
         `step` (every mission before it won), the mission picked on the world
         map, the test player's COs, the battle played through the pad
@@ -650,16 +651,28 @@ class DsCampaign:
         e = self.e
         data = DsData()
         index = ORDER[step]
+        opts = plan(data, index)
+        if seed is not None:
+            opts["seed"] = seed
+        prefs = cos if cos is not None else opts.pop("cos", None)
+        opts.pop("cos", None)
         self.start(step=step)
-        picks = self.choose_cos(co_picks(data, index))
-        r = self.play(max_days, log=log, **plan(data, index))
+        picks = self.choose_cos(co_picks(data, index), prefs)
+        r = self.play(max_days, log=log, **opts)
         r["cos"] = picks
-        for _ in range(900):
+        # The results, then the world map (and the story Dual Strike plays
+        # there after this mission): every text shown on the way.
+        texts = []
+        for _ in range(3000):
+            t = self.text_shown()
+            if t and (not texts or texts[-1] != t):
+                texts.append(t)
             if self.world_map_up() and e.u8(WM_STATE + 0x10):
                 break
             if self.scripts_running() or not self.in_battle():
                 e.press("A", 4)
-            e.wait(20)
+            e.wait(10)
+        r["texts_after"] = texts
         e.wait(30)
         r["map"] = self.world_map_up()
         r["flags"] = self.map_flags()
@@ -691,7 +704,7 @@ CO_PREFS = [6, 14, 2, 76, 17, 1, 79, 80, 18, 0, 77, 4, 78, 73, 74, 72]
 # Infantry, Black Boats Ahoy!'s Lander), missions won on their structures
 # (a Black Crystal, minicannons, Black Obelisks, the Grand Bolt's weak
 # points), and those against the clock (always on the attack).
-PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"rush": True}}
+PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"rush": True}, 16: {"rush": True}}
 STRUCTURE_MISSIONS = {8, 13, 14, 17, 18, 23, 24}
 TIMED_MISSIONS = {12, 21, 22, 24}
 
@@ -715,6 +728,38 @@ def plan(data, index):
     return out
 
 
+# Dual Strike's story outside the battles (overlay 5; crate::ds_campaign_data
+# Story): the scripts of the party after Crystal Calamity and of the ending
+# after Means to an End, and the narration texts (bank 0x21).
+STORY_SCRIPTS = {18: [0x023683C8, 0x023686E8, 0x023684E8],
+                 24: [0x02369180, 0x02368CA0, 0x02368E40, 0x02368FE0, 0x02368B60]}
+STORY_NARRATION = {8: [0x21000003]}
+PROLOGUE = [0x21000000, 0x21000001, 0x21000002]
+
+
+def story_texts(data, index):
+    """The texts Dual Strike shows after mission `index`'s win, in order
+    (none for most missions)."""
+    if index in STORY_NARRATION:
+        return [data.text(r) for r in STORY_NARRATION[index]]
+    out = []
+    for s in STORY_SCRIPTS.get(index, []):
+        for k in range(400):
+            c = data.ov5_bytes(s + 16 * k, 16)
+            op, ref = c[0], struct.unpack_from("<I", c, 12)[0]
+            if op in (0x19, 0x1A):
+                out.append(data.text(ref))
+            if op in (2, 3, 4):
+                break
+    return out
+
+
+def same_text(shown, ds_text):
+    """A shown (re-wrapped) text is Dual Strike's: the same words."""
+    norm = lambda t: "".join(ch for ch in t if ch.isalnum())
+    return norm(shown) == norm(ds_text.decode("latin-1") if isinstance(ds_text, bytes) else ds_text)
+
+
 def co_picks(data, index):
     """How many armies of mission `index` the player picks a CO for (Dual
     Strike's 0x1C)."""
@@ -733,6 +778,19 @@ class DsData:
     def bytes(self, a, n):
         o = a - DS_OV0
         return self.ds.ov0[o:o + n]
+
+    def ov5_bytes(self, a, n):
+        """Overlay 5 (the story), loaded at overlay 1's address."""
+        if not hasattr(self, "_ov5"):
+            from . import paths
+            rom = open(paths.ds_rom(), "rb").read()
+            fat = struct.unpack_from("<I", rom, 0x48)[0]
+            ovt = struct.unpack_from("<I", rom, 0x50)[0]
+            fid = struct.unpack_from("<I", rom, ovt + 32 * 5 + 0x18)[0]
+            lo, hi = struct.unpack_from("<II", rom, fat + 8 * fid)
+            self._ov5 = rom[lo:hi]
+        o = a - 0x02350560
+        return self._ov5[o:o + n]
 
     def u32(self, a):
         return struct.unpack("<I", self.bytes(a, 4))[0]

@@ -1031,6 +1031,34 @@ overlay 1, the campaign's code, at `0x02350560`).
   skipped in a session, AW2's sea-and-grid layer (BG1) is held off on the
   DS map, and AW2's map state (`0x0202FDFC`, 0xFC bytes, part of its
   campaign save) is put aside and restored when the session ends.
+- **The story outside the battles** (`ds_campaign_data::Story`): Dual
+  Strike plays its story inside the missions (the turn-start lists' scenes,
+  the match-end lists' victory and defeat scenes: converted with the rest)
+  and, from overlay 5, the scenes its game flow starts after certain wins
+  (ARM9 `0x020D63B0`, by map record id): the narration after Victory or
+  Death! (0xE8: bank 0x21 text 3, over pictures), the victory party after
+  Crystal Calamity (0xF2: overlay 5's proc script `0x023682E0`, scripts
+  `0x023683C8`, `0x023686E8`, `0x023684E8`) and the ending after Means to an
+  End (0xF8: proc script `0x02368AF8`, scripts `0x02369180`, `0x02368CA0`,
+  `0x02368E40`, `0x02368FE0`, `0x02368B60`), and the prologue before the
+  first map (bank 0x21 texts 0..2). Overlay 5's scripts are Dual Strike's
+  event format and are converted as the battles' are (their calls are its
+  picture screen's, left out), each one's end a jump to the next; the
+  narration is AW2's speaker-less text (`ShowTextOnBg0`, op 0x1A). AW2
+  plays a mission record's +0x18 on its map after the mission is won
+  (`StartWorldMapAfterMissionScript`): the DS records of those three
+  missions hold the scenes. The prologue: the session's copy of AW2's world
+  map script from the menu (`0x0861485C`; the words pointing at it,
+  `0x0807814C`, `0x0807817C`, `0x080781E4`, `0x0849EB90`, `0x08614750`,
+  point at the copy during a session) calls a magic stub before the map
+  takes the pad, which starts the prologue (`StartBlockingEventScript`) on
+  a new campaign once (flag 0x9E of the record, saved right after).
+- **Means to an End's choice**: its victory scene asks the player (a text
+  ending in Dual Strike's choice code 0x16, then a jump on its answer,
+  `0x020199A4`): the text ends in AW2's choice code (0x0E 0x17, as AW2's
+  "Do you really yield?") and the jump asks AW2's answer
+  (`IsTwoOptionChoiceFirst`, `0x080457BD`): Yes, Jake destroys the chair;
+  No, Hawke does.
 - **End of a mission** (`EndOfGame_FinishCampaignMap`, trapped past its
   prologue at `0x08038488`): the outcome is recorded (a loss leaves the
   flags as they were), the missions the win opens are written for the

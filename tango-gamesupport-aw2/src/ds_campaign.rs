@@ -136,6 +136,54 @@ pub const FLOW_CO_SETUP: u8 = 1;
 pub const FLOW_SAVE: u8 = 2;
 pub const FLOW_HIDE: u8 = 3;
 pub const FLOW_CLEAR: u8 = 4;
+pub const FLOW_PROLOGUE: u8 = 5;
+
+/// AW2's world map entered from the menu (`gUnknown_0861485C`: fade,
+/// music, `SetupWorldMapForResume`, fade in, the cursor's procs, then the
+/// main loop): the DS session's copy calls the prologue's magic stub before
+/// the main loop. The words that point at AW2's script point at the copy
+/// during a session ([`crate::ds_worldmap::tick`]).
+const AW2_MAP_SCRIPT: u32 = 0x0861_485C;
+fn map_script(prologue: u32, save: u32) -> Vec<u8> {
+    [
+        proc_cmd(0x1D, 0x1E, 0),
+        proc_cmd(0x1B, 0x1A8, 0),
+        proc_cmd(0x02, 0, 0x0807_6ADD),
+        proc_cmd(0x1E, 0x1E, 0),
+        proc_cmd(0x02, 0, 0x0807_67C1),
+        proc_cmd(0x02, 0, prologue),
+        // (the record keeps the prologue's flag)
+        proc_cmd(0x02, 0, save | 1),
+        proc_cmd(0x0D, 0, 0x0861_4614),
+        proc_cmd(0x00, 0, 0),
+    ]
+    .concat()
+}
+/// `StartBlockingEventScript(script, proc)`.
+const START_BLOCKING_SCRIPT: u32 = 0x0807_8540;
+/// The prologue has been shown (a flag of the record, past Dual Strike's).
+const PROLOGUE_FLAG: u32 = 0x9E;
+
+/// On the world map from the menu, before the player has a turn: a new
+/// campaign (nothing won) that has not seen it gets Dual Strike's prologue
+/// (tail-calls `StartBlockingEventScript`, which returns to the proc).
+fn prologue(core: &mut Core) {
+    let Some(c) = campaign(core) else { return return_to(core, 0) };
+    let (at, bit) = ((PROLOGUE_FLAG - 0x20) / 8, 1u8 << ((PROLOGUE_FLAG - 0x20) % 8));
+    let seen = core.raw_read_8(P_FLAGS + at, -1) & bit != 0;
+    if !active(core) || core.raw_read_32(P_WON, -1) != 0 || seen || c.built.story.prologue == 0 {
+        return return_to(core, 0);
+    }
+    for base in [P_FLAGS, FLAGS] {
+        let v = core.raw_read_8(base + at, -1);
+        core.raw_write_8(base + at, -1, v | bit);
+    }
+    let proc = core.gba().cpu().gpr(0);
+    let cpu = core.gba_mut().cpu_mut();
+    cpu.set_gpr(0, c.built.story.prologue as i32);
+    cpu.set_gpr(1, proc);
+    cpu.set_thumb_pc(START_BLOCKING_SCRIPT);
+}
 
 /// The BG0 tilemap buffer's pointer word (`gBG0TilemapBuffer`) and
 /// `BG_EnableSyncBG0` (copies it to VRAM at the next VBlank).
@@ -198,6 +246,8 @@ fn start_proc_script(save: u32) -> Vec<u8> {
 pub struct Campaign {
     pub built: data::Built,
     pub start_proc: u32,
+    /// The DS session's copy of AW2's world map script ([`map_script`]).
+    pub map_script: u32,
     pub hide_stub: u32,
     /// The CO screen's setup (a mission's `coSelect` on the world map).
     pub co_setup: u32,
@@ -219,9 +269,11 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let hide_stub = built.add_magic(data::Magic::Flow(FLOW_HIDE));
             let clear = built.add_magic(data::Magic::Flow(FLOW_CLEAR));
             let _ = clear;
+            let prologue = built.add_magic(data::Magic::Flow(FLOW_PROLOGUE));
             let start_proc = built.add(&start_proc_script(save));
+            let map_script = built.add(&map_script(prologue, save));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
-            Some(Campaign { built, start_proc, hide_stub, co_setup })
+            Some(Campaign { built, start_proc, map_script, hide_stub, co_setup })
         })
         .as_ref()
 }
@@ -251,7 +303,7 @@ fn install_world_map(core: &mut Core) -> bool {
     let picks: Vec<bool> =
         c.built.missions.iter().take(data::MISSIONS).map(|m| m.cos.iter().take(m.armies as usize).any(|&(co, _)| co == 0x1C)).collect();
     let texts: Vec<u16> = c.built.missions.iter().take(data::MISSIONS).map(|m| m.info_text).collect();
-    crate::ds_worldmap::install(core, &picks, c.co_setup, &texts)
+    crate::ds_worldmap::install(core, &picks, c.co_setup, &texts, &c.built.story.after_win)
 }
 
 /// On the world map, the mission under the cursor is the one played: its
@@ -340,7 +392,8 @@ pub fn tick(core: &mut Core, ds: bool) {
             sync_mission(core);
         }
     }
-    crate::ds_worldmap::tick(core, on && active(core));
+    let map_script = campaign(core).map_or(AW2_MAP_SCRIPT, |c| c.map_script);
+    crate::ds_worldmap::tick(core, on && active(core), AW2_MAP_SCRIPT, map_script);
 }
 
 fn in_battle(core: &Core) -> bool {
@@ -772,6 +825,7 @@ fn landing(core: &mut Core) {
         Some(data::Magic::Flow(FLOW_SAVE)) => return save(core),
         Some(data::Magic::Flow(FLOW_HIDE)) => 1,
         Some(data::Magic::Flow(FLOW_CLEAR)) => return clear_bg0(core),
+        Some(data::Magic::Flow(FLOW_PROLOGUE)) => return prologue(core),
         Some(m) => match crate::ds_campaign_rules::run(core, &m) {
             crate::ds_campaign_rules::TAIL_CALLED => return,
             r => r,

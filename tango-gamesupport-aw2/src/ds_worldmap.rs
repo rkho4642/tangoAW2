@@ -89,6 +89,10 @@ const MISSION_POOLS: [u32; 18] = [
 const AW2_MISSION_TABLE: u32 = 0x0861_5194;
 const REVEAL_POOLS: [u32; 2] = [0x0807_6C14, 0x0807_8350];
 const AW2_REVEAL_TABLE: u32 = 0x0861_500C;
+/// Words that point at AW2's world map script from the menu
+/// (`gUnknown_0861485C`): `StartWorldMapForResume`'s pools, the Continue
+/// proc's wait for it, the main loop's way back to it.
+const MAP_SCRIPT_POOLS: [u32; 5] = [0x0807_814C, 0x0807_817C, 0x0807_81E4, 0x0849_EB90, 0x0861_4750];
 /// The mission panel's rank (AW2's results by mission, `gUnknown_0200C2D0`).
 const RANK_POOLS: [u32; 1] = [0x0807_758C];
 const AW2_RANKS: u32 = 0x0200_C2D0;
@@ -348,7 +352,7 @@ fn installed(core: &Core) -> bool {
 }
 
 /// Writes the world map's art and tables into the ROM image (once).
-pub fn install(core: &mut Core, cos_pick: &[bool], co_setup: u32, info_texts: &[u16]) -> bool {
+pub fn install(core: &mut Core, cos_pick: &[bool], co_setup: u32, info_texts: &[u16], after_win: &[(usize, u32)]) -> bool {
     if installed(core) {
         return true;
     }
@@ -375,6 +379,11 @@ pub fn install(core: &mut Core, cos_pick: &[bool], co_setup: u32, info_texts: &[
         if cos_pick.get(i).copied().unwrap_or(false) {
             r[0x20..0x24].copy_from_slice(&co_setup.to_le_bytes());
         }
+        // The story Dual Strike plays after this mission's win (AW2 plays
+        // +0x18 on the map after a won mission, `StartWorldMapAfterMissionScript`).
+        if let Some(&(_, s)) = after_win.iter().find(|&&(m, _)| m == i) {
+            r[0x18..0x1C].copy_from_slice(&s.to_le_bytes());
+        }
     }
     core.raw_write_range(MISSION_TABLE, -1, &table);
     // Reveals: every record (mission + 0..3) points at the one list and
@@ -400,7 +409,7 @@ fn set32(core: &mut Core, at: u32, v: u32) {
 
 /// Every frame: the pool words point at the DS copies during a session,
 /// at AW2's otherwise (and AW2's map state comes back after a session).
-pub fn tick(core: &mut Core, session: bool) {
+pub fn tick(core: &mut Core, session: bool, aw2_map_script: u32, ds_map_script: u32) {
     if !installed(core) {
         return;
     }
@@ -422,6 +431,11 @@ pub fn tick(core: &mut Core, session: bool) {
     }
     for at in RANK_POOLS {
         set32(core, at, pick(ZEROS, AW2_RANKS));
+    }
+    // The world map from the menu: the session's copy of its script
+    // (crate::ds_campaign: the prologue before the first mission).
+    for at in MAP_SCRIPT_POOLS {
+        set32(core, at, pick(ds_map_script, aw2_map_script));
     }
     if !session && core.raw_read_8(BACKUP_MARK, -1) == 1 {
         restore_aw2_state(core);

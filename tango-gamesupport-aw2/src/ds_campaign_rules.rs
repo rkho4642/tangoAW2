@@ -192,8 +192,8 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
         // Army 1 has no Infantry left (The New Black: the player loses with
         // the last one; Dual Strike reads army 1's unit range, whoever moves).
         0x0235_07A8 => !units(core, 1).iter().any(|u| u.1 == 1),
-        // Means to an End's ending asks the player (Dual Strike's choice at
-        // 0x02297784): AW2 has no choice box, the first answer is taken.
+        // Means to an End's choice: converted to AW2's own two-option answer
+        // (ds_campaign_data, `IsTwoOptionChoiceFirst`); never reached here.
         0x0201_99A4 => true,
         // Every unit of the army out of fuel.
         0x0235_0708 => units(core, army.clamp(1, 4)).iter().all(|u| u.5 == 0),

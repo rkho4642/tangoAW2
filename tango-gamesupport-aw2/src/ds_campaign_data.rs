@@ -54,15 +54,26 @@ const MAP_NAMES_BASE: u32 = 0x022F_6BF8; // the 0xC0 bank (general texts)
 pub const MAP_ID: u8 = 0xF0;
 
 /// A view of Dual Strike's memory from the pack.
+#[derive(Clone, Copy)]
 pub struct Ds<'a> {
     pub arm9: &'a [u8],
     pub ov0: &'a [u8],
+    /// Overlay 1 (the battle's events) at [`OV1`].
     pub ov1: &'a [u8],
+    /// Overlay 5 (the story: prologue, interludes, ending, and the shop),
+    /// loaded at the same address as overlay 1 when it runs.
+    pub ov5: &'a [u8],
 }
 
 impl<'a> Ds<'a> {
     pub fn from_pack(p: &'a crate::ds_pack::Pack) -> Option<Self> {
-        Some(Ds { arm9: &p.arm9, ov0: p.overlays.first()?, ov1: p.overlays.get(1)? })
+        let ov5 = p.overlays.get(5).map(|v| &v[..]).unwrap_or(&[]);
+        Some(Ds { arm9: &p.arm9, ov0: p.overlays.first()?, ov1: p.overlays.get(1)?, ov5 })
+    }
+
+    /// The same, with overlay 5 where overlay 1 was (its scripts' view).
+    pub fn story(&self) -> Ds<'a> {
+        Ds { ov1: self.ov5, ..*self }
     }
 
     pub fn bytes(&self, a: u32, n: usize) -> Option<&'a [u8]> {
@@ -428,6 +439,19 @@ fn width(widths: &[u8], s: &[u8]) -> u32 {
 /// (0x0F) re-wrapped to AW2's line width, two lines a box, pauses (0x0E)
 /// kept.
 pub fn wrap_dialogue(t: &[u8], widths: &[u8]) -> Vec<u8> {
+    let mut out = wrap_boxes(t, widths);
+    // Dual Strike's two-option choice (0x16 in the text) is AW2's 0x17,
+    // after a pause, in place of the last box's end.
+    if t.contains(&0x16) {
+        if out.last() == Some(&0x0F) {
+            out.pop();
+        }
+        out.extend_from_slice(&[0x0E, 0x17]);
+    }
+    out
+}
+
+fn wrap_boxes(t: &[u8], widths: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     let boxes: Vec<&[u8]> = t.split(|&c| c == 0x0F).collect();
     let n = boxes.len();
@@ -489,6 +513,11 @@ pub fn wrap_dialogue(t: &[u8], widths: &[u8]) -> Vec<u8> {
     }
     out
 }
+
+/// Dual Strike's answer to a two-option choice (true: the first option).
+const CHOICE: u32 = 0x0201_99A4;
+/// AW2's `IsTwoOptionChoiceFirst` (the answer to a text's 0x17 choice).
+const AW2_CHOICE_FIRST: u32 = 0x0804_57BD;
 
 /// The first text an objective script shows (op 0x19/0x1A's reference).
 fn objective_text(ds: &Ds, script: u32) -> Option<Vec<u8>> {
@@ -582,7 +611,90 @@ pub enum Magic {
     Flow(u8),
 }
 
+/// Dual Strike's story outside the battles (overlay 5, started by the
+/// game's flow after a won battle: ARM9 0x020D63B0 by map record id), as
+/// AW2 event scripts: the prologue (narration, bank 0x21 texts 0..2), the
+/// narration after Victory or Death! (record 0xE8: text 3), the victory
+/// party after Crystal Calamity (0xF2: its three scenes) and the ending
+/// after Means to an End (0xF8: five scenes). Addresses of AW2 scripts.
+#[derive(Clone, Debug, Default)]
+pub struct Story {
+    pub prologue: u32,
+    /// (mission index, script) to play on the world map after its win.
+    pub after_win: Vec<(usize, u32)>,
+}
+
+/// The story's scenes as overlay 5 runs them: its proc scripts' steps
+/// (0x023682E0 the party, 0x02368AF8 the ending) in order, each one
+/// script.
+const PARTY_SCRIPTS: [u32; 3] = [0x0236_83C8, 0x0236_86E8, 0x0236_84E8];
+const ENDING_SCRIPTS: [u32; 5] = [0x0236_9180, 0x0236_8CA0, 0x0236_8E40, 0x0236_8FE0, 0x0236_8B60];
+const PROLOGUE_TEXTS: [u32; 3] = [0x2100_0000, 0x2100_0001, 0x2100_0002];
+const INTERLUDE_TEXTS: [u32; 1] = [0x2100_0003];
+/// Missions those come after (indexes: Victory or Death!, Crystal
+/// Calamity, Means to an End).
+const AFTER_VICTORY_OR_DEATH: usize = 8;
+const AFTER_CRYSTAL_CALAMITY: usize = 18;
+const AFTER_MEANS_TO_AN_END: usize = 24;
+
+/// Narration: each text in a box of its own, no speaker (AW2's
+/// `ShowTextOnBg0`, op 0x1A), then the script's end.
+fn narration(cx: &mut Ctx, texts: &[u32]) -> u32 {
+    let mut s = Vec::new();
+    for &r in texts {
+        let id = cx.dialogue(r);
+        s.extend_from_slice(&cmd(0x1A, 0, id, 0, 0));
+    }
+    s.extend_from_slice(&cmd(0x04, 0, 0, 0, 0));
+    cx.blob.push(&s)
+}
+
+/// Overlay 5's scripts in a row: converted as the battles' are, each one's
+/// end made a jump to the next. The first one's AW2 address.
+fn story_scripts<'a>(cx: &mut Ctx<'a>, story: Ds<'a>, scripts: &[u32]) -> u32 {
+    if story.ov1.is_empty() {
+        return 0;
+    }
+    let (saved_ds, saved_map) = (cx.ds, std::mem::take(&mut cx.cmd_map));
+    cx.ds = story;
+    cx.story = true;
+    convert_scripts(cx, scripts);
+    let starts: Vec<u32> = scripts.iter().map(|s| cx.cmd_map.get(s).copied().unwrap_or(0)).collect();
+    for (k, &s) in scripts.iter().enumerate().take(scripts.len().saturating_sub(1)) {
+        let mut a = s;
+        for _ in 0..400 {
+            if is_end(cx.ds.u32(a).unwrap_or(4) & 0xFF) {
+                break;
+            }
+            a += 16;
+        }
+        if let (Some(&at), next) = (cx.cmd_map.get(&a), starts[k + 1]) {
+            let o = (at - cx.blob.base) as usize;
+            cx.blob.bytes[o..o + 16].copy_from_slice(&cmd(0x1D, next, 0, 0, 0));
+        }
+    }
+    cx.ds = saved_ds;
+    cx.cmd_map = saved_map;
+    cx.story = false;
+    starts.first().copied().unwrap_or(0)
+}
+
+fn convert_story_scenes<'a>(cx: &mut Ctx<'a>, ds: &Ds<'a>) -> Story {
+    let story = ds.story();
+    let prologue = narration(cx, &PROLOGUE_TEXTS);
+    let interlude = narration(cx, &INTERLUDE_TEXTS);
+    let party = story_scripts(cx, story, &PARTY_SCRIPTS);
+    let ending = story_scripts(cx, story, &ENDING_SCRIPTS);
+    let after_win = [(AFTER_VICTORY_OR_DEATH, interlude), (AFTER_CRYSTAL_CALAMITY, party), (AFTER_MEANS_TO_AN_END, ending)]
+        .into_iter()
+        .filter(|&(_, s)| s != 0)
+        .collect();
+    Story { prologue, after_win }
+}
+
+#[derive(Clone, Debug)]
 pub struct Built {
+    pub story: Story,
     /// The ROM blob, to be written at [`Built::base`].
     pub blob: Vec<u8>,
     pub base: u32,
@@ -719,7 +831,10 @@ pub const TEXT_LAST: u16 = 0x7FFF;
 pub const TEXT_TABLE: u32 = 0x0861_0A38;
 
 struct Ctx<'a> {
-    ds: &'a Ds<'a>,
+    ds: Ds<'a>,
+    /// Converting the story's scripts (overlay 5): its function calls are
+    /// its own screen's (pictures, fades), not the battle's.
+    story: bool,
     widths: &'a [u8],
     blob: Blob,
     texts: Vec<(u16, u32)>,
@@ -841,6 +956,7 @@ fn convert_command(cx: &mut Ctx, at: u32, c: &[u8]) -> ([u8; 16], Option<(usize,
         // Call a function: Dual Strike's script-lock counter (0x020B9C9C /
         // 0x020B9C68) and the tutorial's flag reset (0x02019B94) mean
         // nothing in AW2.
+        0x00 | 0x52 | 0x55 | 0x57 if cx.story => nop,
         0x00 | 0x52 | 0x55 | 0x57 => match w1 {
             0x020B_9C9C | 0x020B_9C68 | 0x0201_9B94 => nop,
             f => {
@@ -862,6 +978,13 @@ fn convert_command(cx: &mut Ctx, at: u32, c: &[u8]) -> ([u8; 16], Option<(usize,
         0x1D => {
             fix = Some((4, w1));
             cmd(0x1D, 0, 0, 0, 0)
+        }
+        // Means to an End's choice (Dual Strike's answer, 0x020199A4, true
+        // for the first option): AW2's own two-option answer, asked by the
+        // text before it (its 0x16, AW2's 0x17: [`wrap_dialogue`]).
+        0x1E if wc == CHOICE => {
+            fix = Some((4, w1));
+            cmd(0x1E, 0, 0, 0, AW2_CHOICE_FIRST)
         }
         0x1E => {
             fix = Some((4, w1));
@@ -949,7 +1072,7 @@ fn convert_command(cx: &mut Ctx, at: u32, c: &[u8]) -> ([u8; 16], Option<(usize,
 /// Converts every reachable command, in runs of consecutive DS commands,
 /// filling the command map, then fixes jump targets.
 fn convert_scripts(cx: &mut Ctx, entries: &[u32]) {
-    let all = reachable(cx.ds, entries);
+    let all = reachable(&cx.ds, entries);
     let all: Vec<u32> = all.into_iter().filter(|a| !cx.cmd_map.contains_key(a)).collect();
     // Runs of consecutive commands.
     let mut runs: Vec<Vec<u32>> = Vec::new();
@@ -1080,7 +1203,8 @@ fn trigger_scripts(ds: &Ds, at: u32) -> Vec<u32> {
 /// width table (0x084C36E4, 256 bytes).
 pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
     let mut cx = Ctx {
-        ds,
+        ds: *ds,
+        story: false,
         widths,
         blob: Blob { base, bytes: Vec::new() },
         texts: Vec::new(),
@@ -1210,16 +1334,9 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
             labs: lab_cells(ds, rec.maps.0),
         });
     }
-    // The prologue (bank 0x21) as texts the flow can show.
-    for i in 0..8 {
-        if let Some(t) = ds.text(0x2100_0000 | i) {
-            let w = wrap_dialogue(&t, widths);
-            cx.text_id(w);
-        } else {
-            break;
-        }
-    }
+    let story = convert_story_scenes(&mut cx, ds);
     Some(Built {
+        story,
         blob: cx.blob.bytes,
         base,
         texts: cx.texts,

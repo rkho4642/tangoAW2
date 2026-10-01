@@ -35,12 +35,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=("aw2", "ds", "both"), default="both")
     ap.add_argument("-k", default="", help="only tests whose name contains this")
+    ap.add_argument("-x", default="", help="leave out tests whose name contains this (ds_campaign_win_: the long pad-won missions)")
     ap.add_argument("-j", type=int, default=max(1, (os.cpu_count() or 2) // 2))
     ap.add_argument("--list", action="store_true")
     ap.add_argument("-v", action="store_true", help="print each test's log")
     a = ap.parse_args()
 
-    tests = [t for t in load_tests() if a.k in t["name"]]
+    tests = [t for t in load_tests() if a.k in t["name"] and not (a.x and a.x in t["name"])]
     modes = ("aw2", "ds") if a.mode == "both" else (a.mode,)
     if "ds" in modes and not os.path.exists(paths.ds_rom()):
         print(f"no Dual Strike ROM at {paths.ds_rom()} (set TANGOAW2_DS_ROM); running AW2 only")
