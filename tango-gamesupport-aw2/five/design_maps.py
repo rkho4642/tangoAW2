@@ -58,8 +58,8 @@ TOP = [
     "~~~~~B...2.^..B~~~~~",
     "~~~~~C..f..^..A~~~~~",
     "~~~~~~C....C.~~~~~~~",
-    "~~a.c~~~~r~~~~~c.a~~",
-    "~~c.p~~~~~~~~~~p.c~~",
+    "~~a.c~~~~~~~~~~c.a~~",
+    "~~c.p~~~~r~~~~~p.c~~",
     "~~~~~~~~~~~~~~~~~~~~",
 ]
 MIDDLE = [
@@ -143,6 +143,10 @@ put(g, 12, 11, [
 ])
 for x, y, c in [(14, 16, '5'), (12, 16, 'B'), (17, 16, 'C'), (11, 14, 'C'), (18, 14, 'A'), (14, 19, 'P')]:
     g[y][x] = c
+# mountains round the Volcano's top and sides, as the game's own Volcano
+# stands (its rim is drawn to meet mountains, not grass)
+for x, y in [(12, 10), (13, 10), (14, 10), (15, 10), (11, 11), (11, 12), (11, 13), (16, 11), (16, 12), (16, 13)]:
+    g[y][x] = '^'
 emit('Magma Crown', {a: [1, 2, 5, 10, 23, 22] for a in range(1, 6)}, g)
 
 # ---- 4. Skyreach: plateaus walled by mountains; the sky decides ----
@@ -171,35 +175,47 @@ put(g, 14, 22, ["###", "#v#", "###"])
 emit('Skyreach', {a: [16, 17, 19, 19, 14, 15, 1] for a in range(1, 6)}, g)
 
 # ---- 5. The Citadel: four armies storm Black Hole's fortress ----
+# Mirrored left to right about column 14 (Black Hole's own pieces aside: the
+# Black Factory with its pipe on the left, the Deathray on the right, the
+# Laser out on the left of the field). Armies 1 and 2 mirror 4 and 3.
 C = [
-    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
-    "~~^^^^...###.....###^^^^^~~~",
-    "~~^^.C...###..5..#D#...C^^~~",
-    "~~^..B...#F#.....###...B.^~~",
-    "~~^.C....###..C.....C....^~~",
-    "~~^..W..L.......A.....E..^~~",
-    "~~^^..S..S..S..S..S..S..^^~~",
-    "~~~^^.................^^^~~~",
-    "~~~~^^^^ff.......ff^^^^~~~~~",
-    "~~~~~~^^.............^^~~~~~",
-    "~~c~~~~~.....f.f.....~~~~c~~",
-    "~~..~~~~.............~~~~..~",
-    "~~.a~~~~~~....r....~~~~~a.~~",
-    "~~~~~~~~~~~.......~~~~~~~~~~",
-    "~~~~~~^^^..........^^^~~~~~~",
-    "~~~~^^^.....c...c.....^^~~~~",
-    "~~~f.......f.......f.....~~~",
-    "~~......b..........b.....~~~",
-    "~~..^^......^^.......^^..~~~",
-    "~~~.^^.f....^^....f..^^.~~~~",
-    "~~~.......c......c.......~~~",
-    "~~~ff.....................~~",
-    "~~~" + "..C.C." * 4 + "~",
-    "~~~" + "..B..." * 4 + "~",
-    "~~~" + "...1.." + "...2.." + "...3.." + "...4.." + "~",
-    "~~~" + ".A...." * 4 + "~",
-    "~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
-]
+    "~~~~IIIIIII^^^^^^^^^^^^^^~~~~",   # the Black Factory's pipe, under the coast
+    "~~~^^....###.....###....^^~~~",
+    "~~~^.C...###..5..#D#...C.^~~~",
+    "~~~^..B..#F#.....###..B..^~~~",
+    "~~~^.....###.C.C.........^~~~",
+    "~~~^.W........A........E.^~~~",
+    "~~~^.S..S..S..R..S..S..S.^~~~",
+    "~~~^^.........R.........^^~~~",
+    "~~~~^^^^ff....R....ff^^^^~~~~",
+    "~~~~~~^^......R......^^~~~~~~",
+    "~~c~~~~~.....f.f.....~~~~~c~~",
+    "~~..====.............====..~~",   # bridges out to the two islands
+    "~~.a~~~~~...........~~~~~a.~~",
+    "~~~~~~~~~~~.......~~~~~~~~~~~",
+    "~~~~~~^^^...........^^^~~~~~~",
+    "~~~~^^^....c.....c....^^^~~~~",
+    "~~~f......f.......f......f~~~",
+    "~~....b...............b....~~",
+    "~~..^^......^...^......^^..~~",
+    "~~~.^^.f....^...^....f.^^.~~~",
+    "~~~......c.........c......~~~",
+    "~~~.c.........c.........c.~~~",
+    "~~~ff...................ff~~~",
+    "~~~.....f...........f.....~~~",
+    "~~~...........f...........~~~",
+] + [list("~~~" + "." * 23 + "~~~") for _ in range(7)] + ["~" * 29]
+C = [list(r) for r in C]
+# The four armies (HQ row 29, columns 5 11 17 23): a short road north from
+# the HQ, a base and a city on the outer side, a city and an airport on the
+# inner side, and a neutral city ahead; armies 3 and 4 mirror 2 and 1.
+for hx, outer in [(5, -1), (11, -1), (17, 1), (23, 1)]:
+    inner = -outer
+    for x, y, c in [(hx, 29, '1234'[[5, 11, 17, 23].index(hx)]), (hx, 28, 'R'), (hx, 27, 'R'), (hx, 26, 'R'),
+                    (hx + outer, 29, 'B'), (hx + outer, 27, 'C'), (hx + inner, 28, 'C'), (hx + 2 * inner, 30, 'A'),
+                    (hx + inner, 25, 'c')]:
+        C[y][x] = c
+C[16][8] = 'L'   # the Laser: middle left, between armies 1 and 2's columns
 emit('The Citadel', {1: [1, 2, 5, 10, 6], 2: [1, 2, 5, 10, 6], 3: [1, 2, 5, 10, 6], 4: [1, 2, 5, 10, 6], 5: [1, 1, 3, 14]}, C)
 
 # ---- Black Crystal and Black Obelisk maps (obelisk.rs) ----
@@ -338,6 +354,8 @@ for x, y in [(0, 2), (1, 2), (24, 2), (23, 2), (0, 8), (24, 8)]:
 # Black Hole's fortress (rows 0..9)
 put(g, 11, 1, ["###", "#D#", "###"])                   # Deathray, top centre
 put(g, 2, 4, ["###", "###", "#F#", "###"])             # Black Factory (3x4, anchor third row)
+for y in range(4):
+    at(3, y, "I")                                      # its pipe, up to the map's edge
 put(g, 20, 5, ["###", "#v#", "###"])                   # Black Cannon facing down
 at(12, 6, '5')                                         # HQ
 for x, y in [(9, 5), (15, 5)]:

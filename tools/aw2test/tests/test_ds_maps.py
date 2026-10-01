@@ -7,7 +7,12 @@ the tab); the list's preview and the battle map are checked tile by tile, and
 every property's owner and every unit against five/map.py's build of
 five/maps.txt; the whole map is photographed (screenshots stitched as the
 cursor sweeps it) with the list entry; then every army is handed to the CPU
-for several days. Without the pack the maps are not listed at all."""
+for several days. Without the pack the maps are not listed at all.
+
+tangoAW2's other maps (five/design_maps.py: the 5P maps, the Obelisk maps)
+are opened, checked and photographed the same way (five_map_*), with the
+pack on so that every one of them is listed. AW2TEST_MAP_IMAGES=<dir> keeps
+the pictures."""
 
 import importlib.util
 import os
@@ -32,6 +37,16 @@ MAPS = {
     "Rust Basin": (0xC1, 3), "Dune Fork": (0xC2, 5), "Cinder Flats": (0xC3, 6), "Black Wastes": (0xC4, 9),
     "Coral Strait": (0xC5, 3), "Trident Isles": (0xC6, 5), "Harbor Cross": (0xC7, 6), "Coral Crown": (0xC8, 9),
 }
+# tangoAW2's own maps (crate::five_map::IDS, in five/maps.txt's order).
+OWN = {
+    "Five Seas": (0x00, 9), "Iron Crossing": (0xBC, 9), "Magma Crown": (0xBD, 9), "Skyreach": (0xBE, 9),
+    "The Citadel": (0xBF, 9), "Obelisk Duel": (0xB8, 3), "Crystal Isles": (0xB9, 5), "Obelisk Plains": (0xBA, 6),
+    "Black Monolith": (0xBB, 9), "Black Rampart": (0xC0, 9),
+}
+ALL = {**MAPS, **OWN}
+# Maps meant to be crossed by air or sea alone in places (Skyreach's walled
+# plateaus, Crystal Isles' islands without beaches).
+AIRBORNE = ("Skyreach", "Crystal Isles")
 WASTELAND = ("Rust Basin", "Dune Fork", "Cinder Flats", "Black Wastes")
 
 # The Select Map screen: the highlighted map's tiles, decompressed for the
@@ -79,7 +94,7 @@ def built(name):
 def select_map(ctx, name, save=None):
     """Boot, open Versus > New > the map's tab, walk down to it, check the
     preview, and press A: the Teams screen. Returns the Game."""
-    mid, tab = MAPS[name]
+    mid, tab = ALL[name]
     _, w, h, tiles, _ = built(name)
     if save is None:
         save = os.path.join(ctx.out, "map.sav")
@@ -139,7 +154,7 @@ def check_map(ctx, g, name):
     m, w, h, tiles, units = built(name)
     e = g.e
     ctx.eq((e.u16(GMAP), e.u16(GMAP + 2)), (w, h), f"{name}: map size")
-    ctx.eq(e.u8(ram.VS_MAP), MAPS[name][0], f"{name}: map id")
+    ctx.eq(e.u8(ram.VS_MAP), ALL[name][0], f"{name}: map id")
     classes = e.read(ram.MAP_TERRAIN, 0x4000)
     live = e.read(romlib.TILE_CLASS, 0x400)
     rows = [e.u16(ram.MAP_ROW_OFFSETS + 2 * y) for y in range(h)]
@@ -164,8 +179,11 @@ def check_map(ctx, g, name):
     chart = [list(e.read(chart_at + 32 * r, 32)) for r in range(8)]
     grid = traverse.Grid(w, h, [classes[rows[y] + x] for y in range(h) for x in range(w)])
     bad = traverse.check(grid, chart, range(1, m["armies"] + 1),
-                         [(a, x, y) for a, x, y, t in units if t == PIPERUNNER])
-    ctx.check(not bad, f"{name}: every army can get everywhere, in play ({len(bad)} failures: {bad[:6]})")
+                         [(a, x, y) for a, x, y, t in units if t == PIPERUNNER], need_piperunners=name in MAPS)
+    if name in AIRBORNE:
+        ctx.log(f"{name}: by design not every army gets everywhere on the ground ({len(bad)}: {bad[:6]})")
+    else:
+        ctx.check(not bad, f"{name}: every army can get everywhere, in play ({len(bad)} failures: {bad[:6]})")
     beach_check(ctx, name, grid, m["armies"])
     return m, w, h
 
@@ -196,7 +214,7 @@ def open_and_check(ctx, name):
         raise Skip("the pack's maps")
     g, found = select_map(ctx, name)
     fn = name.lower().replace(" ", "_")
-    ctx.require(found, f"{name} is on its tab ({MAPS[name][1]}) with its preview")
+    ctx.require(found, f"{name} is on its tab ({ALL[name][1]}) with its preview")
     export(ctx, ctx.shot(g, "list"), f"{fn}_list")
     to_teams(g)
     export(ctx, ctx.shot(g, "teams"), f"{fn}_teams")
@@ -245,10 +263,10 @@ def cpu_days(ctx, name, days=6, netplay=False):
     return g
 
 
-def _open(name):
+def _open(name, prefix="ds_map_"):
     def fn(ctx):
         open_and_check(ctx, name)
-    fn.__name__ = "ds_map_" + name.lower().replace(" ", "_")
+    fn.__name__ = prefix + name.lower().replace(" ", "_")
     return test(modes=("ds",))(fn)
 
 
@@ -262,6 +280,8 @@ def _cpu(name, netplay=False):
 for _name in MAPS:
     _open(_name)
     _cpu(_name)
+for _name in OWN:
+    _open(_name, "five_map_")
 _cpu("Dune Fork", netplay=True)
 _cpu("Coral Crown", netplay=True)
 
@@ -285,10 +305,36 @@ def ds_maps_traversal_static(ctx):
     rom = open(paths.aw2_rom(), "rb").read()
     chart = traverse.aw2_chart(rom)
     army5 = {0x1B4: 0xA8, 0x1B5: 0xAE, 0x1B6: 0xA6, 0x1B7: 0xAA, 0x1B8: 0xAB, 0x1B9: 0xB4}  # five_map::ARMY5_TILES
-    for name in MAPS:
+    for name in ALL:
+        if name in AIRBORNE:
+            continue
         m, w, h, tiles, units = built(name)
         grid = traverse.Grid(w, h, [army5.get(t, rom[romlib.TILE_CLASS - romlib.ROM_BASE + t]) for t in tiles])
         bad = traverse.check(grid, chart, range(1, m["armies"] + 1),
-                             [(a, x, y) for a, x, y, t in units if t == PIPERUNNER])
+                             [(a, x, y) for a, x, y, t in units if t == PIPERUNNER], need_piperunners=name in MAPS)
         ctx.check(not bad, f"{name}: every army can get everywhere ({len(bad)} failures: {bad[:6]})")
         beach_check(ctx, name, grid, m["armies"])
+
+
+_spec = importlib.util.spec_from_file_location("five_tilecheck_py", os.path.join(FIVE, "tilecheck.py"))
+tilecheck = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(tilecheck)
+
+
+@test(modes=("aw2",))
+def five_map_tiles_as_aw2_draws_them(ctx):
+    """Every tangoAW2 map, as five/map.py builds it, drawn the way the game's
+    own maps are (five/tilecheck.py, learned from every built-in map): each
+    pair of neighbouring tiles is one the game places (or meets as grass
+    does, or joins as a pipe, spring or base does), every mountain is the
+    game's tile for what stands above and below it, and every plain above a
+    mountain shows its peak."""
+    rom = open(paths.aw2_rom(), "rb").read()
+    for name, bad in tilecheck.check_all(rom, os.path.join(FIVE, "maps.txt")).items():
+        ctx.check(not bad, f"{name}: every tile as the game draws it ({len(bad)} not: "
+                           f"{[tilecheck.describe(v) for v in bad[:6]]})")
+    # The check catches v0.4.0's broken mountains (every one 0x22): a 2x2
+    # block under and over plains.
+    rows = [[0x001, 0x001], [0x022, 0x022], [0x022, 0x022], [0x001, 0x001]]
+    bad = tilecheck.mountain_violations(rows, tilecheck.mountain_rules(rom))
+    ctx.check(len(bad) == 4, f"a 2x2 block of 0x22 mountains is caught: the lower two, the plains above ({len(bad)} tiles)")

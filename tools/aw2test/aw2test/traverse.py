@@ -99,9 +99,10 @@ def ground_reach(g, chart, mtype, starts):
         reach = flood(g, row, reach | new)
 
 
-def check(g, chart, armies, piperunners=()):
-    """`armies`: the army numbers; `piperunners`: (army, x, y) pre-deployed.
-    Returns a list of failures."""
+def check(g, chart, armies, piperunners=(), need_piperunners=True):
+    """`armies`: the army numbers; `piperunners`: (army, x, y) pre-deployed;
+    `need_piperunners`: every army must have a Piperunner base (the Dual
+    Strike maps). Returns a list of failures."""
     bad = []
     cells = list(g.cells())
 
@@ -141,7 +142,7 @@ def check(g, chart, armies, piperunners=()):
                 bad.append(f"army {a}: base {b} touches a pipe not through a seam")
         starts = [b for b in of(BASE, a) if any(g.kind(*n) in (PIPE_T, SEAM) for n in g.near(*b))]
         starts += [(x, y) for (pa, x, y) in piperunners if pa == a]
-        if not starts:
+        if not starts and need_piperunners:
             bad.append(f"army {a}: no Piperunner base")
         # Something to shell (a property, tower or HQ not its own) or its
         # own HQ's doorstep to guard.

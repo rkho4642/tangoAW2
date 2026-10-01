@@ -2,7 +2,8 @@
 """Build tangoAW2's 5-army Versus maps (five/maps.txt) into
 src/five_map_data.rs.
 
-Usage: map.py <rom.gba>   (the ROM is read for the game's sea-edge table only)
+Usage: map.py <rom.gba>   (the ROM is read for the game's sea-edge table, and
+its own maps, which every tile is then checked against: five/tilecheck.py)
 
 Each map in maps.txt is a `map NAME` line, an `armies N TAB COLOURS...` line
 (N armies, the Versus tab 3 Vs. / 5 3P / 6 4P / 9 5P, and each army's
@@ -50,7 +51,20 @@ PROPS = {
     'P': [0x1C4, 0x1C9, 0x1CE, 0x1D3, 0x1D8, 0x1B8],
     'T': [0x1D9, 0x1DA, 0x1DB, 0x1DC, 0x1DD, 0x1B9],
 }
-PLAIN, PLAIN_SHADE, WOOD, MOUNTAIN, SEA, REEF = 0x001, 0x021, 0x086, 0x022, 0x02A, 0x168
+PLAIN, PLAIN_SHADE, SEA, REEF = 0x001, 0x021, 0x02A, 0x168
+# Woods: the game draws a wood with something tall to its left (0x86)
+# differently from one beside open ground (0x87).
+WOOD_SHADE, WOOD = 0x086, 0x087
+# Mountains, as the game's own maps draw them (learned from every built-in
+# map, see five/tilecheck.py): a mountain is drawn taller than its cell,
+# its peak in the cell above, when that cell is a plain (the plain then shows
+# the peak: 0x43, or 0x03 when shaded) or another mountain; under anything
+# else (a road, a wood, a building, the sea, the map's top edge) it is drawn
+# whole in its own cell. Each comes in two: with a mountain below it (its
+# foot runs into that one's peak) or not.
+#                  peak above, mountain below
+MOUNTAIN = {(True, True): 0x022, (True, False): 0x023, (False, True): 0x002, (False, False): 0x020}
+PEAK, PEAK_SHADE = 0x043, 0x003
 # Tiles by which neighbours (N, E, S, W; bit 3 is N) connect, as the game's
 # own maps use them. Roads: straights, bends, T-junctions, crossroads, and a
 # shaded straight/bend when something tall stands to the left (as plain).
@@ -103,9 +117,23 @@ INVENTIONS = {
     'X': ([[0x192]], 0, 0),
     'O': ([[UNDERLAY] * 3, [UNDERLAY, 0x193, UNDERLAY], [UNDERLAY] * 3], 1, 1),
 }
-WATER = set('~r')
+# What the sea's edge tiles count as water (the game's maps: sea, reefs,
+# shoals, bridges, and a river's mouth out in the sea).
+WATER = set('~r,=')
+RIVER_MOUTHS = {'rsss', 'ssrs', 'sssr', 'srss'}
+# Where a river runs into the sea, the sea's beach line opens for it: the
+# game's own maps use these instead of the edge tile, by the side the river
+# comes from.
+RIVER_INTO_SEA = {
+    'N': {0x4A: 0x88, 0x49: 0xC9, 0x4B: 0xC8},
+    'S': {0x0A: 0x69, 0x29: 0xA9, 0x2B: 0xA8},
+    'E': {0x28: 0x8A, 0x29: 0x108},
+    'W': {0x2C: 0x6B, 0x4B: 0xE9, 0x2B: 0x109},
+}
 # What casts a shadow on the plain (or road) to its right.
-TALL = 'f^HBCAPbcaptT12345#SNWELvnFVDXOIZ'
+TALL = 'f^HBCAPbcaptT12345SNWELXO'
+# ... and on a wood to its right, also pipes and the inventions' ground.
+TALL_FOR_WOOD = TALL + 'IZ#vnFVD'
 SHIPS = {21, 22, 23, 24}
 PIPERUNNER = 9
 AIR = {16, 17, 19, 20}
@@ -149,7 +177,9 @@ def water_tile(c, around):
     return SHOAL[key]
 
 
-def build(m, edge):
+def grid(m):
+    """The map's rows, size, a cell reader (off the map: sea), its HQs and
+    who owns a cell (the army whose HQ is nearest)."""
     rows = m['rows']
     W, H = len(rows[0]), len(rows)
     assert all(len(r) == W for r in rows), (m['name'], [(i, len(r)) for i, r in enumerate(rows) if len(r) != W])
@@ -157,18 +187,30 @@ def build(m, edge):
     # (sub_080581A4); no shipped map is taller than 39 rows.
     assert W * H <= 1288 and H <= 40 and W <= 64, (m['name'], W, H)
     ch = lambda x, y: rows[y][x] if 0 <= x < W and 0 <= y < H else '~'
-    land = lambda x, y: ch(x, y) not in WATER
     hqs = {int(c): (x, y) for y in range(H) for x in range(W) for c in [ch(x, y)] if c in '12345'}
     n = m['armies']
     assert sorted(hqs) == list(range(1, n + 1)) and len(m['colours']) == n, (m['name'], hqs)
+
+    def owner(x, y):
+        return min(hqs, key=lambda a: (abs(hqs[a][0] - x) + abs(hqs[a][1] - y), a))
+
+    return W, H, ch, hqs, owner
+
+
+def lay(m, edge):
+    """The map's tiles (rows of tile ids) and properties per owner."""
+    W, H, ch, hqs, owner = grid(m)
 
     def look(x, y):
         """The four neighbours (N, E, S, W); off the map, the cell itself."""
         return [ch(X, Y) if 0 <= X < W and 0 <= Y < H else ch(x, y)
                 for X, Y in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y))]
 
-    def owner(x, y):
-        return min(hqs, key=lambda a: (abs(hqs[a][0] - x) + abs(hqs[a][1] - y), a))
+    def river_key(x, y):
+        return ''.join('r' if n in '-=' else 's' if n in '~r,' else 'l' for n in look(x, y))
+
+    mouths = {(x, y) for y in range(H) for x in range(W) if ch(x, y) == '-' and river_key(x, y) in RIVER_MOUTHS}
+    land = lambda x, y: ch(x, y) not in WATER and (x, y) not in mouths
 
     tiles = [[0] * W for _ in range(H)]
     counts = {a: 0 for a in range(6)}
@@ -181,13 +223,18 @@ def build(m, edge):
                     if land(x + dx, y + dy):
                         mask |= 0x100 >> i
                 t = edge(mask)
-                tiles[y][x] = t if t > 0 else SEA
+                t = t if t > 0 else SEA
+                for side, (dx, dy) in zip('NESW', ((0, -1), (1, 0), (0, 1), (-1, 0))):
+                    if ch(x + dx, y + dy) == '-' and (x + dx, y + dy) not in mouths:
+                        t = RIVER_INTO_SEA[side].get(t, t)
+                tiles[y][x] = t
             elif c == 'r':
                 tiles[y][x] = REEF
             elif c == 'f':
-                tiles[y][x] = WOOD
+                tiles[y][x] = WOOD_SHADE if ch(x - 1, y) in TALL_FOR_WOOD else WOOD
             elif c == '^':
-                tiles[y][x] = MOUNTAIN
+                peak_above = y > 0 and ch(x, y - 1) in '^.'
+                tiles[y][x] = MOUNTAIN[peak_above, y + 1 < H and ch(x, y + 1) == '^']
             elif c == 'R':
                 road = lambda X, Y: ch(X, Y) in 'R='
                 link = road(x, y - 1) << 3 | road(x + 1, y) << 2 | road(x, y + 1) << 1 | road(x - 1, y)
@@ -196,8 +243,16 @@ def build(m, edge):
                     t = ROAD_SHADED.get(t, t)
                 tiles[y][x] = t
             elif c in 'IZ':
-                pipe = lambda X, Y: ch(X, Y) in 'IZ'
+                # The Black Factory's pipe (the middle of its top row) joins
+                # the pipes too.
+                pipe = lambda X, Y: ch(X, Y) in 'IZ' or (ch(X, Y) == '#' and ch(X, Y + 2) == 'F')
                 link = pipe(x, y - 1) << 3 | pipe(x + 1, y) << 2 | pipe(x, y + 1) << 1 | pipe(x - 1, y)
+                # A pipe ending at the map's edge runs on off the map, as
+                # the game's own maps draw it (no end cap there).
+                for bit, out, back in ((0b1000, y == 0, 0b0010), (0b0100, x == W - 1, 0b0001),
+                                       (0b0010, y == H - 1, 0b1000), (0b0001, x == 0, 0b0100)):
+                    if out and link == back:
+                        link |= bit
                 if c == 'Z':
                     # A seam sits in a straight run; a base may end the run
                     # (the seam is then all that joins the base to the pipe).
@@ -227,7 +282,10 @@ def build(m, edge):
             else:
                 assert c == '.', (m['name'], c, x, y)
                 shaded = ch(x - 1, y) in TALL
-                tiles[y][x] = PLAIN_SHADE if shaded else PLAIN
+                if y + 1 < H and ch(x, y + 1) == '^':
+                    tiles[y][x] = PEAK_SHADE if shaded else PEAK
+                else:
+                    tiles[y][x] = PLAIN_SHADE if shaded else PLAIN
     for y in range(H):
         for x in range(W):
             c = ch(x, y)
@@ -239,6 +297,18 @@ def build(m, edge):
                         assert ch(X, Y) in '#' + c, (m['name'], c, x, y, X, Y, ch(X, Y))
                         tiles[Y][X] = t
 
+    return tiles, counts
+
+
+def tiles(m, edge):
+    """The map's tiles, rows of tile ids."""
+    return lay(m, edge)[0]
+
+
+def build(m, edge):
+    W, H, ch, hqs, owner = grid(m)
+    n = m['armies']
+    tiles, counts = lay(m, edge)
     taken = set()
     units = []
     for army in range(1, n + 1):
@@ -311,6 +381,13 @@ def main():
             o.write('        ],\n    },\n')
             print(f'{m["name"]}: {W}x{H}, {len(lz)} bytes, {(len(units) // 12) - 6} units, properties {counts}')
         o.write('];\n')
+    # Every tile as the game's own maps draw it (five/tilecheck.py).
+    import tilecheck
+    bad = {name: vs for name, vs in tilecheck.check_all(rom).items() if vs}
+    for name, vs in bad.items():
+        print(f'{name}: {len(vs)} tiles not as the game draws them:', ', '.join(tilecheck.describe(v) for v in vs))
+    if bad:
+        sys.exit(1)
 
 
 if __name__ == '__main__':

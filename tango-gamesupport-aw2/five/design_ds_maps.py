@@ -130,7 +130,7 @@ def draw(emit):
         "~.f..^.c..~~~~~",
         "~.C.f....P~~r~~",
         "~f...B....~~~~~",
-        "~...1RRR..,,,,-",
+        "~...1RRR..,,,~-",
         "~.f....R.C...f-",
         "~..^...R.....^-",
         "~..A...RRRRRRR=",
@@ -139,7 +139,7 @@ def draw(emit):
         "~~~~,C.R.IIZII-",
         "~~~~,..R.f....X",
         "~~~r,..R.c^.t..",
-        "~~~~,f.R.....##",
+        "~~~~~f.R.....##",
         "~~~~---=---X.#O",
     ])
     emit('Cinder Flats', {a: ARMY for a in range(1, 5)}, g, armies=4, tab=6, colours=(1, 2, 3, 4), look='wasteland')
@@ -222,7 +222,7 @@ def draw(emit):
         "~~~~~~~~~~.f..",
         "~~~~~~~~~~~...",
         "~~~~~~~~~~~~,,",
-        "~~~~~~~~~~~~r~",
+        "~~~~~~~~~~r~~~",
     ], "~~~~t.^.cIIIZBR3BAP~")
     # Landings: each home island faces the middle isle, Green Earth's the
     # two others; every army has 12 beaches and the nearest enemy beach 13
