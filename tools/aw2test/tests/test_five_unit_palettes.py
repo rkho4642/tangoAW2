@@ -15,6 +15,10 @@ rest CPU) and a two-army game with Black Hole as army 1. Each army's unit
 palette row, and the moved-unit row whenever moved units are on screen, are
 recorded (and checked against the ROM's palette table).
 
+The turn banner (BG palette 9, colours from the four-entry table at
+0x080A1238) is checked on every army's turn: armies 1..4 get the game's,
+Black Hole a purple one in the same layout.
+
 The five-army runs sample every frame from the first turn through End turn
 and the CPU turns back to the human's turn: every BG palette the unit layer
 uses must hold its army's reference colours (12..15 armies 1..4, 11 Black
@@ -225,7 +229,6 @@ class Checker:
         self.bad = {}
         self.seen = set()
         self.powered = set()
-        self.power9 = 0
         self.pulse = set(struct.unpack("<16H", g.e.read(OUTLINE_PULSE, 32)))
         ctx.eq([self.colours[a] for a in range(1, 6)], [1, 2, 3, 4, 5], "five armies: colours")
 
@@ -269,12 +272,6 @@ class Checker:
                 ok = r[p] == want
             if not ok and p == 9 and self.clock.since < SETTLE and self.clock.prev:
                 ok = r[p] == self.refs["moved"].get(self.colours[self.clock.prev])
-            if not ok and p == 9 and label == "power":
-                # The CO power portrait's colours go in BG 9 from just before
-                # it covers the map until the game puts the grey back after
-                # it (sub_0801A57C): moved units show them under the wipe.
-                self.power9 += 1
-                continue
             if not ok:
                 key = (p, kind, c)
                 if key not in self.bad:
@@ -391,6 +388,58 @@ def five_unit_palettes_powers(ctx):
     ctx.check(until_back(g, 1, watch), "the turn comes back to army 1")
     ctx.check(bool(bh_power), f"Black Hole (CPU) fired its power: {bh_power}")
     chk.report("five armies with powers")
-    ctx.log(f"the moved units' grey gave way to the power portrait's colours on {chk.power9} frames")
-    ctx.check(chk.power9 < 300, f"only while the power portrait runs: {chk.power9} frames")
     ctx.check({1, 5} <= chk.powered, f"powered armies' outlines checked: {sorted(chk.powered)}")
+
+
+BANNER_PALETTES = 0x080A1238
+
+
+def banner_rows(g):
+    """BG palette 9 while BG0 shows the turn banner (palette 9 entries)."""
+    io = g.e.read(DISPCNT, 0x0A)
+    if g.e.u32(MAIN_CALLBACK) != BATTLE_MAIN or not struct.unpack_from("<H", io, 0)[0] & 0x100:
+        return None
+    cnt = struct.unpack_from("<H", io, 8)[0]
+    ents = struct.unpack("<1024H", g.e.read(0x06000000 + ((cnt >> 8) & 0x1F) * 0x800, 0x800))
+    if sum(1 for e in ents if e & 0x3FF and e >> 12 == 9) < 100:
+        return None
+    return g.e.read(PAL_RAM + 9 * 32, 32)
+
+
+def rgb(c):
+    return c & 31, (c >> 5) & 31, c >> 10
+
+
+@test(modes=("aw2", "ds"))
+def five_turn_banners(ctx):
+    """Every army's turn-start banner in a five-army game: armies 1..4 the
+    game's colours, Black Hole a purple stripe (AW2 has none: colour 5 read
+    past the table, a near-black stripe)."""
+    g = ctx.start(five_map(ctx), None, humans=(1,))
+    seen = {}
+
+    def watch():
+        a = g.current_army()
+        if a in seen:
+            return
+        row = banner_rows(g)
+        if row is not None:
+            for k in range(4):
+                g.e.wait(12)
+                ctx.shot(g, f"banner_{a}_{k}")
+            seen[a] = row
+    end_turn(g)
+    ctx.check(until_back(g, 1, watch), "the turn comes back to army 1")
+    ctx.eq(sorted(seen), [1, 2, 3, 4, 5], "a banner on every army's turn")
+    table = [g.e.read(BANNER_PALETTES + 32 * k, 32) for k in range(4)]
+    for a in range(1, 5):
+        if a in seen:
+            ctx.eq(seen[a].hex(), table[a - 1].hex(), f"army {a}'s banner: the game's colours")
+    bh = seen.get(5)
+    if bh:
+        cols = struct.unpack("<16H", bh)
+        ctx.eq(cols[6:], struct.unpack("<16H", table[1])[6:], "Black Hole's banner: the shared numeral colours")
+        stripe = [rgb(c) for c in cols[1:6]]
+        ctx.check(all(b > r > gg for r, gg, b in stripe), f"Black Hole's stripe is purple (blue > red > green): {stripe}")
+        ctx.check(all(sum(stripe[i]) > sum(stripe[i + 1]) for i in range(4)), f"bright to dark like the others: {stripe}")
+        ctx.check(max(max(c) for c in stripe) >= 16, f"as bright as the others' (not near black): {stripe}")

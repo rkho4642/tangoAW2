@@ -344,6 +344,13 @@ pre 0801A5A2 unit_palette | pop {r0}
 # a moved unit is about to be drawn: BG 9 must hold the current army's grey
 # (the turn banner loads its colours there after the turn start's grey)
 pre 080224BC moved_palette | movs r0, #0x80
+# the CO power dialog and portrait (proc 0x0848A3EC) load the CO's face
+# colours into BG 9 and the map comes back without a redraw: the grey goes
+# back as the proc ends
+pre 080184D8 moved_palette | movs r1, #0
+# the turn banner's colours by army colour (0x080A1238, four of them):
+# Black Hole's are tangoAW2's (five.rs BANNER5)
+pre 080280AC banner_palette | movs r1, #0x90
 # every frame sub_08024720 sets colour 15 of each army's unit palette (row
 # 11 + army): black, or a pulse while the army's CO power is on. Armies
 # 1..4; army 5 too, on row 11

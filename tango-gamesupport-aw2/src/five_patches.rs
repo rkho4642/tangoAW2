@@ -500,6 +500,8 @@ pub const HOOKS: &[(u32, u16, Hook)] = &[
     (0x08035042, 0xBC10, Hook::Before(Routine::UnitPalette)),
     (0x0801A5A2, 0xBC01, Hook::Before(Routine::UnitPalette)),
     (0x080224BC, 0x2080, Hook::Before(Routine::MovedPalette)),
+    (0x080184D8, 0x2100, Hook::Before(Routine::MovedPalette)),
+    (0x080280AC, 0x2190, Hook::Before(Routine::BannerPalette)),
     (0x08024760, 0x311E, Hook::Before(Routine::OutlineRow)),
     (0x08024782, 0x311E, Hook::Before(Routine::OutlineRow)),
     (0x0802147C, 0x2000, Hook::Before(Routine::VisionArmy5)),

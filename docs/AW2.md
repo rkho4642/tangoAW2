@@ -244,9 +244,13 @@ original instruction against the ROM and writes `src/five_patches.rs`.
   Earth's tint on Green Earth's turn, red-brown at Orange Star's, and moved
   units took Black Hole's colours. Colour 15 (the outline, pulsing while a
   CO power is on) is set every frame by `sub_08024720` for armies 1..4;
-  army 5 is added (row 11). Left: a moved unit of the army firing a power
-  shows the portrait's colours for the second the wipe passes over the map
-  (`tests/test_five_unit_palettes.py`).
+  army 5 is added (row 11). The CO power dialog and portrait load the CO's
+  face colours into BG 9 and bring the map back without redrawing it, so
+  the grey goes back when their proc (`0x0848A3EC`) ends. The turn banner's
+  colours (`0x080A1238`) exist for four colours only (colour 5 read past
+  the table: a near-black stripe); Black Hole's turn gets a purple one in
+  the same layout (`five.rs` `BANNER5`). Tests:
+  `tests/test_five_unit_palettes.py`.
 - **Screens.** The Teams screen (five 48-px columns, `5P`, `E Team`), CO
   screen, Intel, results, capture-limit panel. The map menu hides Save (the
   suspend block holds four armies).

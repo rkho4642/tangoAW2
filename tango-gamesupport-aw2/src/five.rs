@@ -46,6 +46,11 @@ const RES_WSTEP: u32 = ROM_DATA + 0xA0;
 const RES_LBASE: u32 = ROM_DATA + 0xA8;
 const RES_LSTEP: u32 = ROM_DATA + 0xB8;
 const DATA_SENTINEL: u32 = ROM_DATA + 0xFC;
+/// Black Hole's turn-banner colours (BG palette 9), next to the game's four
+/// (`0x080A1238`, by colour; AW2 has none for Black Hole, and colour 5 read
+/// past the table: a near-black stripe).
+const BANNER5: u32 = ROM_DATA + 0x100;
+const BANNER_PALETTES: u32 = 0x080A_1238;
 const DATA_MAGIC: u32 = 0x3541_5754; // "TWA5"
 
 /// The breakpoint the trapper writes over a trapped instruction.
@@ -138,6 +143,7 @@ pub enum Routine {
     UnitPalette,
     MovedPalette,
     OutlineRow,
+    BannerPalette,
     SetupArmy5,
     TeamsInit,
     TeamsEmblem,
@@ -369,6 +375,16 @@ fn install_data(core: &mut Core) {
         let v = core.raw_read_16(0x0809_097C + 2 * i, -1);
         core.raw_write_16(ICON_PALETTES + 2 * i, -1, v);
     }
+    // Black Hole's banner: the other armies' layout (colours 1..5 the
+    // stripe, bright to dark; 6..10 the numerals, shared) in Black Hole's
+    // purple (its units' hue), on Blue Moon's brightness steps.
+    let mut banner = [0u8; 0x20];
+    core.raw_read_range(BANNER_PALETTES + 0x20, -1, &mut banner);
+    for (i, (r, g, b)) in [(13u16, 6u16, 22u16), (11, 5, 18), (8, 4, 14), (5, 2, 9), (3, 1, 5)].iter().enumerate() {
+        let c = r | g << 5 | b << 10;
+        banner[2 + 2 * i..4 + 2 * i].copy_from_slice(&c.to_le_bytes());
+    }
+    core.raw_write_range(BANNER5, -1, &banner);
     // Entry 0 is the moved units'.
     let v = core.raw_read_16(ICON_PALETTES, -1);
     core.raw_write_16(ICON_PALETTES, -1, (MOVED_BANK << 12) | (v & 0xFFF));
@@ -556,6 +572,14 @@ fn routine(core: &mut Core, r: Routine) -> Option<u32> {
         }
         Routine::MovedPalette => {
             moved_palette(core);
+            None
+        }
+        Routine::BannerPalette => {
+            // r0 = the colour's banner palette, about to be loaded into BG 9.
+            let cpu = core.gba_mut().cpu_mut();
+            if cpu.gpr(0) as u32 == BANNER_PALETTES + (BLACK_HOLE as u32 - 1) * 0x20 {
+                cpu.set_gpr(0, BANNER5 as i32);
+            }
             None
         }
         Routine::OutlineRow => {
