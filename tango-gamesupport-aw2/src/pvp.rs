@@ -487,6 +487,7 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         crate::unit_actions::tick(core, ds);
         crate::cpu_tactics::tick(core, ds);
         crate::ds_weather::tick(core, ds);
+        crate::ds_campaign::tick(core, ds);
         crate::design5::sync(core);
 
         let prev = core.raw_read_16(PREV_KEYS, -1) as u32;
