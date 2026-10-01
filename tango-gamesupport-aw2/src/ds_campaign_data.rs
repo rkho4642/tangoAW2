@@ -1093,6 +1093,17 @@ mod tests {
         let widths = [6u8; 256];
         let b = build(&ds, 0x08E0_0000, &widths).unwrap();
         eprintln!("blob {} KB, {} texts, {} magic, unhandled {:?}", b.blob.len() / 1024, b.texts.len(), b.magic.len(), b.unhandled);
+        let mut unknown: Vec<String> = b
+            .magic
+            .iter()
+            .filter_map(|m| match *m {
+                Magic::Predicate(f) | Magic::Call(f, _) if !crate::ds_campaign_rules::KNOWN.contains(&f) => Some(format!("{m:x?}")),
+                _ => None,
+            })
+            .collect();
+        unknown.sort();
+        unknown.dedup();
+        eprintln!("not implemented: {unknown:?}");
         for m in &b.missions {
             eprintln!("{:2} {:20} map {:02x} {}x{} cos {:?} pool {:?}", m.index, m.name, m.map_id, m.width, m.height, m.cos, m.pool);
         }

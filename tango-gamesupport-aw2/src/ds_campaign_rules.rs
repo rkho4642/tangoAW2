@@ -240,6 +240,11 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
     }
 }
 
+/// The predicates and calls [`predicate`] and [`call`] know (the rest are
+/// false / do nothing); a test lists the campaign's others.
+#[cfg(test)]
+pub const KNOWN: &[u32] = &[0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4];
+
 fn local_flag(core: &Core, id: u32) -> bool {
     id < 0x20 && core.raw_read_8(LOCAL_FLAGS + id / 8, -1) & (1 << (id % 8)) != 0
 }
