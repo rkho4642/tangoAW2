@@ -463,6 +463,7 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 | Music | `ds_music.rs` | The nine new COs' own map themes, Dual Strike's, converted to AW2's sound engine (below) |
 | Maps | `five_map.rs`, `five/design_ds_maps.py` | Eight Versus maps (2P to 5P, a Wasteland set and a sea set) with Com Towers, Piperunner pipes and Black Hole's structures (above) |
 | Survival | `survival.rs`, `survival_maps.rs`, `mode_menu.rs` | Dual Strike's Survival mode (Money, Turn, Time) on its own 33 maps, a seventh entry on Select Mode (below) |
+| DS Campaign | `ds_campaign.rs`, `ds_campaign_data.rs`, `ds_campaign_rules.rs`, `campaign_menu.rs` | Dual Strike's story campaign in AW2's campaign engine, behind a Campaign sub-menu (below) |
 
 Free ROM used: 0x08620000.. (text slots), 0x0862C000.. (new CO text ids 0x6D72..),
 0x08640000..0x08672FFF (earlier features; the map table and the maps past the tenth at
@@ -473,8 +474,10 @@ powers' code, heal wait), 0x087C0000..0x087C0FFF (power animations),
 0x087F0000..0x087F4FFF (CO screen grid: the map sheet per country, the page lists),
 0x08800000..0x08D2FFFF (music, past the 8 MB cartridge: mGBA grows the image when it is written),
 0x0862D000..0x0862D0FF (Survival's text ids 0x7172..), 0x08E00000..0x08E4FFFF (Survival: the map
-table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data).
-Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203F740..0x0203F79F
+table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
+0x0862DA38..0x08630A37 (the DS Campaign's text ids 0x7400..0x7FFF),
+0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used).
+Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203FDC8..0x0203FDFB, stun, battle distance, Teams list),
@@ -775,6 +778,150 @@ structure's picture named in its header and loaded into OBJ VRAM, the budget car
 each kind by running out, a cleared run's rank, bonus and record, saved and
 read back after a reboot, every army a CPU for days on six maps, nothing of it
 without the pack).
+
+## DS Campaign (`ds_campaign.rs`, `ds_campaign_data.rs`, `ds_campaign_rules.rs`, `campaign_menu.rs`)
+
+Dual Strike's story campaign, played in AW2's own campaign engine, with the
+Dual Strike pack, offline. Everything of Dual Strike's is read from the
+player's .nds and converted at run time; none of it is in the repository.
+Names of AW2's functions and data below are the aw2bhr decompilation's
+(`github.com/Mad-Man-Dan/aw2bhr`; it has no licence, so it was read as a
+reference only: no code, tables or text of it are copied).
+
+**Dual Strike's campaign, as found** (USA ROM; overlay 0 at `0x022AD560`,
+overlay 1, the campaign's code, at `0x02350560`).
+
+- **Missions.** Map records of 0xA0 bytes at `0x022DBD28 + 0xA0 * id`; the
+  campaign is ids 0xE0..0xFB, 28 missions, then 0xFC..0x100, five second
+  fronts. A record: +0x00 the event header (six trigger lists), +0x04 the
+  objective script, +0x10 the second front's id, +0x14 the name (text bank
+  0xC0), +0x20 the CO pool the player picks from (an ARM9 list), +0x24 the
+  armies, +0x2C/+0x30 rank days and day limits (normal, hard), +0x41 the
+  mission's number, +0x44/+0x48 the map (normal, hard: AW2's LZ77 blob of
+  AW2 tile ids), +0x4C/+0x50 the units (13-byte records, FE army, FF end),
+  +0x56 (CO, tag CO) per army (0x1C: the player picks), +0x88 colours, +0x8D
+  teams.
+- **The 25 story missions**: Jake's Trial, The New Black, Max Attacks,
+  Reclaim the Skies, Neverending War, The Ocean Blue, Fog Rolls In, Tag
+  Battle, Victory or Death!, Black Boats Ahoy!, Lightning Strikes, Frozen
+  Fortress, Verdant Hills, Snow Hunters, Omens and Signs, Into the Woods,
+  Muck Amok!, Healing Touch, Crystal Calamity, Dark Ambition, Pincer Strike,
+  Ring of Fire, Surrounded!, For the Future!, Means to an End; and three
+  research-lab missions, The Long March, Lash's Test, Spiral Garden, each
+  opened by capturing the city that hides its lab's map in the mission
+  before (Black Boats Ahoy!, Frozen Fortress, Snow Hunters: their scripts set
+  campaign flags 0x60..0x62). Second fronts: Victory or Death!, Lightning
+  Strikes, Omens and Signs, Ring of Fire, Means to an End.
+- **Events** are AW2's, grown. Trigger records are 8 bytes, op = 3 * AW2's
+  op + the front (0 main, 1 second, 2 either), 0x15/0x16 open a block for
+  normal/hard only, 0x1A ends a list. Scripts are AW2's 16-byte commands
+  with ops renumbered (Dual Strike's handler table at ARM9 `0x021585C0`,
+  0x5D ops); conditions and actions are calls into overlay 1 (about 40
+  conditions: units moved, out of fuel, a type gone, a property owned, a
+  structure destroyed, a day; actions: weather, unlocks, spawns). Dialogue
+  is text by reference (bank << 24 | index; the banks table at
+  `0x022F6BF0`, mission banks 0x21..0x40), ASCII with `\r`, `\x0e` (pause),
+  `\x0f` (end of box); faces are `co | expression << 8`.
+
+**In tangoAW2.**
+
+- **Select Mode** (`campaign_menu.rs`): Campaign opens a small sub-menu in
+  the box Campaign's Continue / New use, AW2 CAMPAIGN and DS CAMPAIGN (80x16
+  labels in the game's style, OBJ tiles 832..903, palettes 8 and 10, put in
+  place of the box's own label sprites at the sprite flush). AW2 CAMPAIGN
+  then shows AW2's own Continue / New, unchanged; DS CAMPAIGN shows them for
+  the DS Campaign (Continue when a DS Campaign is saved); B goes back. It
+  works on both wheel procs (`0x08616A08` on entering Select Mode,
+  `0x08616A40` when coming back from a mode) and on Survival's seven-entry
+  wheel (`mode_menu::item` reads the item at a position). Without the pack
+  the box is AW2's own.
+- **Start**: the DS box sets a request (`0x0203FD11`); the game's own
+  Campaign New / Continue (`sub_0803BA4C` / `sub_0803BA88`, trapped) then
+  starts the DS session instead: campaign mode, map id 0xF0 (the mission's
+  header written into that entry of Survival's 0x100-id map table), and a
+  proc of ours: save the progress, AW2's CO select (`0x086165C0`) with Dual
+  Strike's pool grouped by country when the mission has a player-picked CO,
+  BG0 emptied (AW2's own campaign reaches its mission card through screens
+  that clear it), `ResetRulesAfterCampaignMap`, then AW2's mission proc
+  (`0x0849EBFC`: mission card, battle).
+- **Conversion** (`ds_campaign_data.rs`, at the first frame with the pack,
+  into ROM `0x08F00000..`, about 360 KB): every mission's map, deployment
+  (AI behaviours 0, 1 and 5 kept, others hold), header, trigger lists and
+  every script reachable from them, and 1,700 texts (text ids 0x7400..,
+  pointers in the text table's free tail), Dual Strike's lines re-wrapped
+  for AW2's two-line boxes (a box that needs more is spread evenly). Script
+  ops: text, faces (Dual Strike's ids to AW2's and tangoAW2's new COs;
+  soldiers to AW2's troopers), window frames, cursor, camera, waits, jumps,
+  "unless CO", flags, wins and losses become AW2's; conditions and actions
+  become magic stubs (Thumb: `ldr r3, =id; ldr r2, =0x0803CC5E; bx r2`, the
+  landing trapped) run in Rust (`ds_campaign_rules.rs`, one entry per Dual
+  Strike function, read from its code).
+- **Maps**: Dual Strike's tiles are AW2's but for Com Towers (the Lab
+  tiles), Black Crystals (0x192), its Black Obelisks (drawn on AW2's Black
+  Cannon tiles, which would fire: tangoAW2's Obelisk), mega missile silos
+  (an Obelisk), and the Grand Bolt (below).
+- **Means to an End**: the Grand Bolt is a picture of tiles (laid out as a
+  sheet) AW2 has no art for; it becomes plains with a Black Obelisk on each
+  of its three weak points ((3, 9), (9, 11), (15, 9), where Dual Strike's
+  code tests its structure kinds 0xB..0xD). On Black Hole's turn of every
+  sixth day each standing weak point destroys the unit below it and spawns
+  an Oozium there (AW2's `CreateUnitAt`); destroying all three wins.
+- **Flags**: AW2 keeps its campaign progress in campaign flags 0x20..;
+  during a session the game's flag get/set (`0x0803CBD8` / `0x0803CBA0`,
+  trapped) use the DS Campaign's own (`0x0203FD20`, 16 bytes).
+- **End of a mission** (`sub_08038484`, trapped): a win records the mission
+  and starts the next in order (a lab mission only when its flag is set);
+  a loss plays the mission again; after Means to an End, back to Select
+  Mode. The mission card's number (`GetCampaignResultCountPlusOne`
+  `0x0803840C`, trapped) counts DS missions won.
+- **Music**: the maps play their COs' themes as AW2 does (the new COs'
+  Dual Strike themes, `ds_music.rs`); Dual Strike's event songs play AW2's
+  like ones (allies' scenes and crises 413, Black Hole's scenes 411, Von
+  Bolt's 220) and fade out as AW2's do.
+- **Save**: the progress (`0x0203FD30`, 0x20 bytes: "AWDC", next step,
+  campaign over, missions won (bits), flags 0x20..0x9F) is written at each
+  mission start through AW2's own save writer (`sub_0801A7D8`) into Flash
+  slot 15 (AW2: 0 profile, 2..4 suspends, 5..7 design maps), so AW2's
+  profile and its checksum are untouched; read back from the newest slot-15
+  sector. The map menu's Save item is hidden in a DS mission (its test word
+  `0x0849AB64` points at a stub): a suspended mission would come back as an
+  AW2 one.
+- **Hook points** (for merging other work): traps `0x0803BA4C`,
+  `0x0803BA88`, `0x08038484`, `0x0803CBA0`, `0x0803CBD8`, `0x0803BC7C`
+  (`GetCampaignSaveFlag`: the DS box's Continue), `0x0803840C`, `0x0803CC5E`
+  (the stubs' landing); `SetMapPlayed` (`0x0803CA28`, Survival's trap) also
+  skips map id 0xF0 in a session. RAM `0x0203FD10..0x0203FD5F`; ROM
+  `0x08F00000..0x08FFFFFF`; text ids 0x7400..0x7FFF; map id 0xF0.
+
+**Compromises.**
+
+- Second fronts are not played: the five two-front missions are their main
+  front, Dual Strike's second-front triggers dropped. In Means to an End the
+  Grand Bolt's weak points can be attacked from the start (Dual Strike opens
+  one for each Black Crystal destroyed on the second front).
+- AW2 armies have one CO: a tag pair is its first CO, the "CO pair" tests
+  check that CO only, and there are no tag or Dual Strike powers. CO skills
+  are not converted.
+- Normal campaign only (Dual Strike's hard maps and deployments are not
+  used); no world map: missions play in order.
+- The player's CO is picked on AW2's CO screen from Dual Strike's pool for
+  the mission.
+- Results are AW2's results screen; ranks are not kept.
+- Dual Strike's sound effects, screen effects and top-screen displays in
+  scripts (ops 0x20, 0x21, 0x2D, 0x2E, 0x46, 0x4B, 0x59) are left out, as
+  are a few of its functions: camera visits to a stealth or an Oozium,
+  sound calls, second-front ones, Crystal Calamity's real-time count (op
+  0x5A). `the_campaign_converts` (an ignored test) lists them.
+- Mega missile silos are Obelisks: destructible, healing, never fired.
+
+Tests: `tools/aw2test/tests/test_ds_campaign.py` (the sub-menu with and
+without the pack, AW2's campaign unchanged to its first mission card,
+Survival and the DS Campaign in one boot, Jake's Trial against the .nds
+(card laid out as AW2's, dialogue all Dual Strike's own words, map,
+deployment, name), five later missions, a forced win saved to Flash and
+continued after a reboot, the Grand Bolt's spawns, the computer playing
+three days on four missions with no army dropping out);
+`aw2test/dscampaign.py` drives it and reads Dual Strike's missions directly.
 
 ## Known limits
 

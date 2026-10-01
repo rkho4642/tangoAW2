@@ -96,6 +96,10 @@ Both press Ready; the game starts from power-on for both. Go to
   Select Mode. Money, Turn or Time Survival: its eleven maps in a row against
   the computer on one budget (500,000 G, 99 days or 25 minutes), with a rank
   and a record for each.
+- **DS Campaign** (with the Dual Strike ROM): Campaign on Select Mode asks
+  AW2 CAMPAIGN or DS CAMPAIGN. The DS one is Dual Strike's story campaign,
+  its 25 missions and 3 lab missions with their maps, dialogue and portraits,
+  played in AW2's campaign; its progress is saved apart from AW2's.
 
 <table>
 <tr>
