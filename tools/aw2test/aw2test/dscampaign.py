@@ -16,6 +16,8 @@ P_WON = PROGRESS + 8
 PROGRESS_MAGIC = 0x43445741
 DS_MAP_ID = 0xF0  # every DS mission is played on this map id
 # The menu's state (crate::campaign_menu).
+LAST_RESULT = 0x0203FD1C      # 1 won / 2 lost, mission, day (u16)
+LAST_CONDITION = 0x0203FD50   # the last Dual Strike condition that held, day
 MENU_LEVEL = 0x0203FD13
 MENU_CHOICE = 0x0203FD14
 
@@ -121,8 +123,13 @@ class DsCampaign:
             new = False
         self.box_row(1 if new else 0)
         e.press("A", 8)
-        if not e.wait_until(self.active, 900, step=10):
-            raise NavError("the DS Campaign did not start")
+        # New over a saved DS Campaign: the game's own notice ("If you save
+        # a new game, your previous data will be overwritten.") first.
+        for _ in range(40):
+            if e.wait_until(self.active, 30, step=5):
+                return
+            e.press("A", 8)
+        raise NavError("the DS Campaign did not start")
 
     def chooser_row(self, row):
         e = self.e
@@ -324,6 +331,109 @@ class DsCampaign:
         g.pick_target(*target)
         e.wait(60)
         self.dialogue()
+
+    # -- playing a mission out ---------------------------------------------------
+    def players(self):
+        return self.e.u32(0x08499598)
+
+    def controllers(self):
+        """Player +0x1B per army 1..4: 0 none, 1 the player, 2 the computer."""
+        p = self.players()
+        return [self.e.u8(p + 0x3C * a + 0x1B) for a in range(1, 5)]
+
+    def last_result(self):
+        e = self.e
+        return {"result": e.u8(LAST_RESULT), "mission": e.u8(LAST_RESULT + 1), "day": e.u16(LAST_RESULT + 2),
+                "condition": e.u32(LAST_CONDITION), "condition_day": e.u16(LAST_CONDITION + 4)}
+
+    def state(self):
+        """Units per army and the day (for logs)."""
+        counts = {}
+        for u in self.g.units():
+            counts[u["army"]] = counts.get(u["army"], 0) + 1
+        return {"day": self.e.u16(DAY), "units": counts, "army": self.e.u8(0x030033EC)}
+
+    def autoplay(self, max_days=40, log=None, max_frames=600000):
+        """The computer plays every army (the player's too) until the
+        mission ends or `max_days` pass; answers dialogue with A. Returns
+        the outcome (`last_result`, result 0 if none) and the day reached."""
+        e = self.e
+        mission = self.mission()
+        e.w8(LAST_RESULT, 0)
+        p = self.players()
+        start = e.u16(DAY)
+        last_day = start
+        frames = 0
+        # The computer plays the player's armies too, from the first turn
+        # (called as the battle loads, before army 1's turn begins).
+        if not e.wait_until(lambda: self.in_battle() and self.players() != 0, 20000, step=2):
+            raise NavError("the battle did not load")
+        p = self.players()
+        for a in range(1, 5):
+            if e.u8(p + 0x3C * a + 0x1B) == 1:
+                e.w8(p + 0x3C * a + 0x1B, 2)
+        while frames < max_frames:
+            e.wait(30)
+            frames += 30
+            if e.u8(LAST_RESULT):
+                break
+            if self.scripts_running() or not self.in_battle() or self.on_co_select():
+                e.press("A", 4)
+            d = e.u16(DAY)
+            if d != last_day and self.in_battle():
+                last_day = d
+                if log:
+                    log(f"day {d}: {self.state()}")
+                if d >= start + max_days:
+                    break
+        out = self.last_result()
+        out["days"] = last_day - start + 1
+        out["frames"] = frames
+        out["was_mission"] = mission
+        return out
+
+    def play(self, max_days=40, log=None, max_frames=1500000, **bot):
+        """Plays the mission as a player would: the player's armies (+0x1B
+        = 1) through the pad by `aw2test.bot.Bot`, the computer's by the
+        game. Stops when the mission ends or `max_days` pass."""
+        from .bot import Bot
+        e = self.e
+        b = Bot(self, log=log, **bot)
+        mission = self.mission()
+        e.w8(LAST_RESULT, 0)
+        if not e.wait_until(lambda: self.in_battle() and self.players() != 0, 20000, step=2):
+            raise NavError("the battle did not load")
+        start = e.u16(DAY)
+        last_day = start
+        t0 = e.frame
+        while e.frame - t0 < max_frames:
+            if e.u8(LAST_RESULT):
+                break
+            army = e.u8(0x030033EC)
+            p = self.players()
+            human = 1 <= army <= 4 and e.u8(p + 0x3C * army + 0x1B) == 1
+            if self.in_battle() and human and not self.scripts_running():
+                try:
+                    b.play_turn(army)
+                except NavError as ex:
+                    if log:
+                        log(f"turn of army {army}: {ex}")
+                    b.cancel()
+                continue
+            if self.scripts_running() or not self.in_battle() or self.on_co_select():
+                e.press("A", 4)
+            e.wait(30)
+            d = e.u16(DAY)
+            if d != last_day and self.in_battle():
+                last_day = d
+                if log:
+                    log(f"day {d}: {self.state()}")
+                if d >= start + max_days:
+                    break
+        out = self.last_result()
+        out["days"] = last_day - start + 1
+        out["was_mission"] = mission
+        return out
 
     def size(self):
         return self.e.u16(MAP), self.e.u16(MAP + 2)

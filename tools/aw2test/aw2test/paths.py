@@ -32,10 +32,20 @@ def out_dir(*parts):
     return d
 
 
+LIVE_SAVE = os.path.expanduser("~/Documents/TangoAW2/saves/Advance Wars 2.sav")
+
+
 def base_save():
     """A cartridge save to start from: any save past the campaign prologue (it is
-    only read; the harness writes its maps into a copy)."""
+    only read; the harness writes its maps into a copy). $AW2TEST_BASE_SAVE, or
+    a pinned copy in the output folder (`base.sav`), taken once from the
+    player's own save (which is never written, and which changes as they
+    play: a pinned copy keeps every run starting from the same state)."""
     p = os.environ.get("AW2TEST_BASE_SAVE")
     if p:
         return p
-    return os.path.expanduser("~/Documents/TangoAW2/saves/Advance Wars 2.sav")
+    pinned = os.path.join(out_dir(), "base.sav")
+    if not os.path.exists(pinned):
+        import shutil
+        shutil.copyfile(LIVE_SAVE, pinned)
+    return pinned

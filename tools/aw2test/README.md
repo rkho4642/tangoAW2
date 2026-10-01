@@ -25,10 +25,12 @@ Needs Python 3 (no packages). Paths, all overridable:
 |---|---|---|
 | AW2 ROM | `~/Documents/TangoAW2/roms/Advance_wars_2.gba` | `AW2TEST_ROM` |
 | Dual Strike ROM (`ds` mode) | `~/Documents/TangoAW2/roms/Advance Wars - Dual Strike (USA).nds` | `TANGOAW2_DS_ROM` |
-| base save (read only) | `~/Documents/TangoAW2/saves/Advance Wars 2.sav` | `AW2TEST_BASE_SAVE` |
+| base save (read only) | `tools/aw2test/out/base.sav`, copied once from `~/Documents/TangoAW2/saves/Advance Wars 2.sav` | `AW2TEST_BASE_SAVE` |
 | output | `tools/aw2test/out` | `AW2TEST_OUT` |
 
-The base save can be any save past the campaign prologue; the map goes into
+The base save can be any save past the campaign prologue (with no DS Campaign
+saved: delete `out/base.sav` to take a new copy); the player's own save is
+never written, and the pinned copy keeps runs alike while they play. The map goes into
 design slot 1 of a copy. Each test runs once per mode: `aw2` (no pack) and `ds`
 (the pack from the .nds). A test takes 1 to 5 seconds; they run in parallel.
 

@@ -149,7 +149,15 @@ pub const TAIL_CALLED: u32 = 0xFFFF_FFFF;
 /// Runs a magic function; returns r0.
 pub fn run(core: &mut Core, m: &Magic) -> u32 {
     match *m {
-        Magic::Predicate(f) => predicate(core, f) as u32,
+        Magic::Predicate(f) => {
+            let held = predicate(core, f);
+            if held {
+                core.raw_write_32(crate::ds_campaign::LAST_CONDITION, -1, f);
+                let day = core.raw_read_16(DAY, -1);
+                core.raw_write_16(crate::ds_campaign::LAST_CONDITION + 4, -1, day);
+            }
+            held as u32
+        }
         Magic::CoPair { army, a, b } => {
             let army = if army == 5 { core.raw_read_16(CURRENT_ARMY, -1) as u32 } else { army as u32 };
             let co = core.raw_read_8(players(core) + PLAYER * army + CO, -1);
@@ -180,9 +188,9 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
         0x0235_066C | 0x0235_0824 | 0x0235_0940 | 0x0235_0A1C | 0x0235_0B28 => {
             units(core, army.clamp(1, 4)).iter().all(|u| u.2 & 1 != 0)
         }
-        // The army moving now has no Infantry left (The New Black: the
-        // player loses with the last one).
-        0x0235_07A8 => !units(core, army.clamp(1, 4)).iter().any(|u| u.1 == 1),
+        // Army 1 has no Infantry left (The New Black: the player loses with
+        // the last one; Dual Strike reads army 1's unit range, whoever moves).
+        0x0235_07A8 => !units(core, 1).iter().any(|u| u.1 == 1),
         // Means to an End's ending asks the player (Dual Strike's choice at
         // 0x02297784): AW2 has no choice box, the first answer is taken.
         0x0201_99A4 => true,

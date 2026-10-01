@@ -62,6 +62,10 @@ pub const MENU_LEVEL: u32 = 0x0203_FD13;
 pub const MENU_CHOICE: u32 = 0x0203_FD14;
 /// Real-time countdown (frames), Dual Strike's op 0x5A; 0 off.
 const COUNTDOWN: u32 = 0x0203_FD18;
+/// The last mission's outcome (1 won, 2 lost), its index and day (u16).
+pub const LAST_RESULT: u32 = 0x0203_FD1C;
+/// The last Dual Strike condition that held (its address) and the day.
+pub const LAST_CONDITION: u32 = 0x0203_FD50;
 /// The campaign's flags 0x20..0x9F (16 bytes).
 const FLAGS: u32 = 0x0203_FD20;
 /// The progress record saved to Flash ([`SAVE_SIZE`] bytes).
@@ -478,7 +482,12 @@ fn end_of_battle(core: &mut Core) {
         return;
     }
     let index = core.raw_read_8(MISSION, -1);
-    if battle_won(core) {
+    let won = battle_won(core);
+    // The outcome, for the tests and logs: 1 won, 2 lost, and the day.
+    core.raw_write_8(LAST_RESULT, -1, if won { 1 } else { 2 });
+    core.raw_write_8(LAST_RESULT + 1, -1, index);
+    core.raw_write_16(LAST_RESULT + 2, -1, core.raw_read_16(0x0300_4080, -1));
+    if won {
         let w = core.raw_read_32(P_WON, -1) | (1 << index);
         core.raw_write_32(P_WON, -1, w);
         let step = ORDER.iter().position(|&m| m == index).unwrap_or(0) as u8;
@@ -531,6 +540,24 @@ pub fn map_start(core: &mut Core) {
     core.raw_write_8(NEXT_WEATHER, -1, w);
     core.raw_write_8(FOG, -1, m.fog as u8);
     crate::wasteland::set_ds_look(core, m.look);
+    set_controllers(core, m);
+}
+
+/// Who plays each army (player +0x1B: 1 the player, 2 the computer): in
+/// Dual Strike the player has army 1 and every army whose CO the player
+/// picks (0x1C); the others (Jake's Trial's Rachel, every Black Hole army)
+/// are the computer's. AW2's campaign would give the player every army
+/// not in Black Hole's colours.
+fn set_controllers(core: &mut Core, m: &data::MissionInfo) {
+    let players = core.raw_read_32(0x0849_9598, -1);
+    for a in 1..=4u32 {
+        let p = players + 0x3C * a + 0x1B;
+        if a > m.armies as u32 || core.raw_read_8(p, -1) == 0 {
+            continue;
+        }
+        let human = a == 1 || m.cos[a as usize - 1].0 == 0x1C;
+        core.raw_write_8(p, -1, if human { 1 } else { 2 });
+    }
 }
 
 /// The mission's armies the player picks a CO for (Dual Strike's 0x1C), and
