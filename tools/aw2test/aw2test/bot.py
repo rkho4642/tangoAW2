@@ -106,6 +106,7 @@ class Bot:
         here = (u["x"], u["y"])
         g.select(*here)
         e.wait(8)
+        self.d.dialogue()
         cells = self.range_cells()
         occ = self.occupied()
         free = [c for c in cells if c == here or c not in occ]
@@ -153,6 +154,8 @@ class Bot:
         self.log(f"  {u['type']} {here} -> {kind} {cell}")
         try:
             m = g.move_to(*cell)
+            self.d.dialogue()
+            m = g.menu() or m
         except NavError:
             self.cancel()
             return

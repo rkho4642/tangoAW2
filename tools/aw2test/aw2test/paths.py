@@ -21,7 +21,10 @@ def ds_rom():
 
 
 def runner(name):
-    return os.path.join(REPO, "target", "release", "examples", name)
+    """This checkout's build, or $AW2TEST_RUNNER_DIR's (another build, for
+    before/after comparisons)."""
+    d = os.environ.get("AW2TEST_RUNNER_DIR") or os.path.join(REPO, "target", "release", "examples")
+    return os.path.join(d, name)
 
 
 def out_dir(*parts):

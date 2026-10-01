@@ -35,6 +35,7 @@ MAP_ID = 0x03003FC2
 # Event script slots (gUnknown_0200C528: 10 x 0x18, script pointer first).
 EVENT_SLOTS = 0x0200C528
 TEXT_SKIP = 0x03002514
+TEXT_BOX = 0x08014401         # the dialogue box's proc function
 DAY = 0x03004080
 
 
@@ -79,8 +80,13 @@ class DsCampaign:
         return None
 
     def scripts_running(self):
-        b = self.e.read(EVENT_SLOTS, 0x18 * 10)
-        return any(struct.unpack_from("<I", b, 0x18 * i)[0] for i in range(10))
+        """An event script runs (the slots from 0x0200C510: the unit-selected
+        list's script uses the one before gUnknown_0200C528), or a dialogue
+        box is up."""
+        b = self.e.read(EVENT_SLOTS - 0x18, 0x18 * 11)
+        if any(struct.unpack_from("<I", b, 0x18 * i)[0] for i in range(11)):
+            return True
+        return any(f == TEXT_BOX for _, _, f in self.g.procs())
 
     # -- the menu ---------------------------------------------------------------
     def to_select_mode(self):
@@ -504,6 +510,6 @@ class DsData:
         return {
             "name": self.text(0xC0000000 | h(0x14)).decode("latin-1"),
             "w": width, "h": height, "tiles": tiles, "units": units,
-            "armies": h(0x24), "look": r[0x1A], "weather": r[0x1B], "fog": r[0x1C],
+            "armies": h(0x24), "cos": [r[0x56 + 2 * k] for k in range(4)], "look": r[0x1A], "weather": r[0x1B], "fog": r[0x1C],
             "structure": structure,
         }

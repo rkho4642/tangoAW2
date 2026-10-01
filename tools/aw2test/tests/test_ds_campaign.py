@@ -424,6 +424,12 @@ def _every_mission(step):
         ctx.check(not none, f"{label}: every tile has a terrain ({len(none)} without: {none[:6]})")
         have = sorted((u["army"], u["x"], u["y"], u["type"]) for u in g.units())
         ctx.eq(have, sorted(m["units"]), f"{label}: the deployment")
+        # The player has army 1 and the armies whose CO they pick; the
+        # computer every other (Jake's Trial's Rachel once was the player's).
+        want = [0, 0, 0, 0]
+        for a in range(m["armies"]):
+            want[a] = 1 if a == 0 or m["cos"][a] == 0x1C else 2
+        ctx.eq(d.controllers(), want, f"{label}: who plays each army")
         ctx.eq(e.u8(ram.FOG) != 0, m["fog"] != 0, f"{label}: fog")
         want_weather = {1: 1, 2: 2}.get(m["weather"], 0)
         ctx.eq(e.u8(ram.WEATHER), want_weather, f"{label}: weather")
@@ -448,3 +454,28 @@ def _every_mission(step):
 
 for _s in range(len(dc.ORDER)):
     _every_mission(_s)
+
+
+@test(modes=("ds",))
+def ds_campaign_new_black_no_early_defeat(ctx):
+    """The New Black: the player loses only with their own last Infantry
+    (Dual Strike reads army 1's units whoever moves); Black Hole having
+    none once ended the mission after the first turn."""
+    e, g, d = boot(ctx)
+    d.start(step=1)
+    d.wait_map()
+    e.w8(dc.LAST_RESULT, 0)
+    d.end_turn()
+    for _ in range(600):
+        if e.u16(dc.DAY) >= 3 or e.u8(dc.LAST_RESULT):
+            break
+        if d.scripts_running() or not d.in_battle():
+            e.press("A", 4)
+        e.wait(20)
+    infantry = [u for u in g.units(army=1) if u["type"] == 1]
+    r = d.last_result()
+    if infantry:
+        ctx.eq(r["result"], 0, f"no end with the Infantry alive (day {e.u16(dc.DAY)}, {r})")
+    else:
+        ctx.eq(r["result"], 2, "the Infantry lost: the mission is lost")
+    shot(ctx, e, "day3")
