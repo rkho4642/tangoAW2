@@ -88,10 +88,10 @@ Both press Ready; the game starts from power-on for both. Go to
   7 units with their own pictures and their battle and map animations (the
   Oozium eats what it moves onto), its 9 new COs with their own music and
   power animations, its CO and damage numbers, Com Towers, Sandstorm, its
-  Wasteland, Desert and Snow terrain and the healing Black Crystal and Obelisk, in the Design Room
-  too, eight new Versus maps (2P to 5P) to use them on, and the computer
-  uses all of it. Without the ROM nothing changes; online, both players
-  need it.
+  Wasteland, Desert and Snow terrain and the healing Black Crystal and
+  Obelisk, in the Design Room too, eight new Versus maps (2P to 5P) to use
+  them on, and the computer uses all of it. Without the ROM nothing
+  changes; online, both players need it.
 - **Survival** (with the Dual Strike ROM): Dual Strike's Survival mode on
   Select Mode. Money, Turn or Time Survival: its eleven maps in a row against
   the computer on one budget (500,000 G, 99 days or 25 minutes), with a rank
@@ -104,11 +104,11 @@ Both press Ready; the game starts from power-on for both. Go to
 <table>
 <tr>
 <td><img src="docs/screenshots/ds-megatank-battle.png" width="240" alt="A Megatank firing in battle"></td>
-<td><img src="docs/screenshots/ds-carrier-launch.png" width="240" alt="A Carrier launching its planes"></td>
+<td><img src="docs/screenshots/ds-survival.png" width="240" alt="Turn Survival's first map"></td>
 <td><img src="docs/screenshots/ds-piperunner-pipe.png" width="240" alt="A Piperunner on its pipe"></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/ds-build-base.png" width="240" alt="The base's build menu with the Piperunner and Oozium"></td>
+<td><img src="docs/screenshots/ds-campaign.png" width="240" alt="The DS Campaign's first mission"></td>
 <td><img src="docs/screenshots/ds-von-bolt-ex-machina.png" width="240" alt="Von Bolt's Ex Machina"></td>
 <td><img src="docs/screenshots/ds-black-wastes.png" width="240" alt="Black Wastes, a five-army Wasteland map"></td>
 </tr>
