@@ -185,6 +185,17 @@ class DsCampaign:
             n += 14
         raise NavError("the world map did not come up")
 
+    def cleared_flags(self):
+        """The starred flags drawn on won missions' points (OBJ tile 40,
+        16x16): their (x, y) on screen."""
+        oam = self.e.read(0x07000000, 0x400)
+        out = []
+        for k in range(128):
+            a0, a1, a2 = struct.unpack_from("<3H", oam, 8 * k)
+            if a0 & 0x300 != 0x200 and a2 & 0x3FF == 40 and (a0 & 0xFF) < 160:
+                out.append((a1 & 0x1FF, a0 & 0xFF))
+        return out
+
     def pick_mission(self):
         """On the world map, A on the mission under the cursor, A on its
         panel: the CO screen or the mission comes next."""
@@ -275,10 +286,14 @@ class DsCampaign:
         return (self.e.u16(0x030033E4), self.e.u16(0x030033E6))
 
     def wait_control(self, max_frames=20000):
-        """Presses A through dialogue until the map cursor answers the pad."""
+        """Presses A through dialogue until the map cursor answers the pad.
+        Once the mission is over (the results, the world map) it stops: its
+        LEFT/RIGHT probes would move the world map's cursor."""
         e = self.e
         n = 0
         while n < max_frames:
+            if e.u8(LAST_RESULT) and not self.in_battle():
+                raise NavError("the mission is over")
             if self.scripts_running():
                 e.press("A", 4)
                 e.wait(10)
@@ -487,6 +502,8 @@ class DsCampaign:
                 try:
                     b.play_turn(army)
                 except NavError as ex:
+                    if e.u8(LAST_RESULT):
+                        break
                     if log:
                         log(f"turn of army {army}: {ex}")
                     b.cancel()

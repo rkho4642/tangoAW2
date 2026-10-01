@@ -428,7 +428,7 @@ pub fn tick(core: &mut Core, session: bool) {
     }
     // AW2's sea and grid layer (BG1, blended over the map) is AW2's art:
     // on the DS map it is left off (the map layer, BG3, is its own sea).
-    let on_map = session && core.raw_read_16(BG3CNT, -1) == WORLD_MAP_BG3 && core.raw_read_16(BG1CNT, -1) == WORLD_MAP_BG1;
+    let on_map = session && map_screen(core);
     let d = core.raw_read_16(DISP_CT, -1);
     if on_map {
         if d & BG1_ON != 0 {
@@ -440,6 +440,47 @@ pub fn tick(core: &mut Core, session: bool) {
         core.raw_write_16(DISP_CT, -1, d | BG1_ON);
         core.raw_write_8(BG1_HIDDEN, -1, 0);
     }
+}
+
+/// AW2's flag with Orange Star's star (OBJ tiles 40..43 of the map
+/// screen's own sprites, palette 0), 16x16, drawn where AW2 draws a
+/// mission's flag.
+const CLEARED_FLAG_TILE: u16 = 40;
+const FLAG_DX: i32 = -5;
+const FLAG_DY: i32 = -5;
+
+/// At the sprite flush (`crate::branding::flush`): on the DS map, a won
+/// mission's point keeps a flag. AW2 marks a won mission by painting its
+/// part of the continent in Orange Star's colours; Omega Land's picture has
+/// no such parts, so the point keeps AW2's starred flag instead. The flags
+/// go after the game's sprites: the cursor and the open missions' flags
+/// draw over them. Returns the end of the sprite list.
+pub fn flush_sprites(core: &mut Core, mut at: u32, end: u32) -> u32 {
+    if !installed(core) || !crate::ds_campaign::active(core) || !map_screen(core) {
+        return at;
+    }
+    let Some(w) = world_map() else { return at };
+    let (cam_x, cam_y) = (core.raw_read_16(S_CAMERA_X, -1) as i16 as i32, core.raw_read_16(S_CAMERA_Y, -1) as i16 as i32);
+    for (m, &(px, py, _)) in w.points.iter().enumerate() {
+        if core.raw_read_8(S_FLAGS + m as u32, -1) & CLEARED == 0 || at + 8 > end {
+            continue;
+        }
+        let (x, y) = (px as i32 - cam_x + FLAG_DX, py as i32 - cam_y + FLAG_DY);
+        if !(-16..240).contains(&x) || !(-16..160).contains(&y) {
+            continue;
+        }
+        core.raw_write_16(at, -1, (y as u16) & 0xFF);
+        core.raw_write_16(at + 2, -1, ((x as u16) & 0x1FF) | (1 << 14));
+        core.raw_write_16(at + 4, -1, CLEARED_FLAG_TILE | (3 << 10));
+        core.raw_write_16(at + 6, -1, 0);
+        at += 8;
+    }
+    at
+}
+
+/// The map screen is up (its layers as it sets them).
+fn map_screen(core: &Core) -> bool {
+    core.raw_read_16(BG3CNT, -1) == WORLD_MAP_BG3 && core.raw_read_16(BG1CNT, -1) == WORLD_MAP_BG1
 }
 
 /// gDispIo's DISPCNT shadow, BG1's bit, and the world map's BG3 control

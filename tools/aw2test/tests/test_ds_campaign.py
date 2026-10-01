@@ -275,9 +275,10 @@ for _step, _label in ((5, "The Ocean Blue"), (8, "Victory or Death"), (15, "Snow
 
 @test(modes=("ds",))
 def ds_campaign_win_and_continue(ctx):
-    """The world map: New shows Jake's Trial alone; a win (forced here; the
-    full-mission tests win for real) brings the results, then the map with
-    Jake's Trial cleared and The New Black revealed and under the cursor,
+    """The world map: New shows Jake's Trial alone; picked with the cursor
+    and won through the pad (aw2test.bot), it brings the results, then the map with
+    Jake's Trial cleared (a starred flag on its point) and The New Black
+    revealed and under the cursor,
     Max Attacks still hidden. The progress is in Flash: after a reboot,
     DS CAMPAIGN's Continue shows the same map."""
     e, g, d = boot(ctx)
@@ -288,7 +289,8 @@ def ds_campaign_win_and_continue(ctx):
     shot(ctx, e, "world_map_new")
     d.pick_mission()
     d.wait_map()
-    ctx.require(d.force_win(), "the last enemy unit destroyed")
+    r = d.play(10, **dc.plan(dc.DsData(), 0))
+    ctx.eq(r["result"], 1, f"Jake's Trial won through the pad in {r['days']} days (condition {r['condition']:#x})")
     results = False
     for _ in range(400):
         e.wait(30)
@@ -305,6 +307,7 @@ def ds_campaign_win_and_continue(ctx):
     flags = d.map_flags()
     ctx.eq((flags[0] & 2, flags[1] & 1, flags[2]), (2, 1, 0), "Jake's Trial cleared, The New Black shown, Max Attacks hidden")
     ctx.eq(d.map_mission(), 1, "the cursor on The New Black")
+    ctx.eq(len(d.cleared_flags()), 1, "a starred flag on Jake's Trial's point")
     p = d.progress()
     ctx.eq((p["valid"], p["next"], p["won"]), (True, 1, 1), "progress: mission 0 won, step 1 next")
     shot(ctx, e, "world_map_after_win")
@@ -323,6 +326,8 @@ def ds_campaign_win_and_continue(ctx):
     d.wait_world_map()
     flags = d.map_flags()
     ctx.eq((flags[0] & 2, flags[1] & 1, flags[2]), (2, 1, 0), "after a reboot: the same map")
+    e.wait(30)
+    ctx.eq(len(d.cleared_flags()), 1, "after a reboot: the starred flag")
     shot(ctx, e, "world_map_continue")
     d.pick_mission()
     d.wait_map()
