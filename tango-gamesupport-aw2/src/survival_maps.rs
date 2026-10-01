@@ -108,6 +108,42 @@ pub struct Map {
     pub look: u8,
     /// The speed rank's day limit.
     pub speed_days: u16,
+    /// The picture of the map's 4x4 structure, for maps with one: the
+    /// header's +0x24 points at a `bmap` file name (Convoy Cape and Lone
+    /// Wolf "0a5", the missile pad; Silo Sweep "0a6", the fortress).
+    pub structure: Option<Structure>,
+}
+
+/// The 4x4 structures some Survival maps stand on their map (tiles
+/// 0x1AA..0x1AD and 0x1AE..0x1B1). Dual Strike's pictures of them
+/// (`bmap/0a5`, `bmap/0a6`) are byte for byte AW2's (`0x080D2DA8`,
+/// `0x080D38AC`, which T Minus 15 / Final Front and Show Stopper / Sea
+/// Fortress name in their headers' +0x10).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Structure {
+    MissilePad,
+    Fortress,
+}
+
+impl Structure {
+    /// AW2's picture: the map header's `tileGraphic4x4` (+0x10), which
+    /// `LoadInventionGraphics` (`0x0803FD80`) loads into OBJ VRAM.
+    pub fn aw2_picture(self) -> u32 {
+        match self {
+            Structure::MissilePad => 0x080D_2DA8,
+            Structure::Fortress => 0x080D_38AC,
+        }
+    }
+    /// The structure the tiles show.
+    pub fn of_tiles(tiles: &[u16]) -> Option<Structure> {
+        if tiles.iter().any(|t| (0x1AA..=0x1AD).contains(t)) {
+            Some(Structure::MissilePad)
+        } else if tiles.iter().any(|t| (0x1AE..=0x1B1).contains(t)) {
+            Some(Structure::Fortress)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -230,7 +266,7 @@ impl Reader<'_> {
             name,
             width: w,
             height: h,
-            tiles,
+            tiles: tiles.clone(),
             units,
             armies,
             colours: [self.u8(e + 1)?, self.u8(e + 2)?, self.u8(e + 3)?, self.u8(e + 4)?],
@@ -239,6 +275,17 @@ impl Reader<'_> {
             weather: self.u8(e + 0x33)?,
             look: self.u8(e + 0x32)?,
             speed_days: self.u16(e + 0x44)?,
+            structure: {
+                let name = match self.u32(e + 0x24)? {
+                    0 => String::new(),
+                    p => (0..3).filter_map(|k| self.u8(p + k)).map(|c| c as char).collect(),
+                };
+                match name.as_str() {
+                    "0a5" => Some(Structure::MissilePad),
+                    "0a6" => Some(Structure::Fortress),
+                    _ => Structure::of_tiles(&tiles),
+                }
+            },
         })
     }
 }
@@ -374,7 +421,14 @@ mod tests {
         assert_eq!(first(Kind::Money), "Silo Sweep");
         assert_eq!(first(Kind::Turn), "Convoy Cape");
         assert_eq!(first(Kind::Time), "Red Heart");
+        let structure = |n: &str| s.maps.iter().find(|m| m.name == n).unwrap().structure;
+        assert_eq!(structure("Convoy Cape"), Some(Structure::MissilePad));
+        assert_eq!(structure("Lone Wolf"), Some(Structure::MissilePad));
+        assert_eq!(structure("Silo Sweep"), Some(Structure::Fortress));
+        assert_eq!(s.maps.iter().filter(|m| m.structure.is_some()).count(), 3);
         for m in &s.maps {
+            // A map with a structure names its picture, the one its tiles show.
+            assert_eq!(m.structure, Structure::of_tiles(&m.tiles), "{}", m.name);
             assert!(m.width as usize * m.height as usize <= 0x508 && m.height <= 40, "{}", m.name);
             assert!(m.tiles.iter().all(|&t| t < 0x200), "{}", m.name);
             assert!(m.cos[0].is_some(), "{} has a computer CO", m.name);

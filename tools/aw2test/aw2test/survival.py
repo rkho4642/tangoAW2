@@ -13,6 +13,9 @@ import struct
 from . import paths
 from .rom import DS_OVERLAY0_BASE, DualStrike, lz10
 
+# The structures' pictures in AW2 (Dual Strike's bmap files are the same bytes).
+STRUCTURE_PICTURES = {"0a5": 0x080D2DA8, "0a6": 0x080D38AC}
+
 # survival.rs's RAM
 STATE = 0x0203FA00
 ON, KIND, STAGE, PHASE = STATE, STATE + 1, STATE + 2, STATE + 3
@@ -112,7 +115,16 @@ class Survival:
             "armies": self.u8(e + 0x3C), "colours": [self.u8(e + k) for k in range(1, 5)],
             "look": self.u8(e + 0x32), "weather": self.u8(e + 0x33), "fog": self.u8(e + 0x34),
             "cos": (self.u8(e + 0x70), self.u8(e + 0x72)),
+            "structure": self.structure_file(e),
         }
+
+    def structure_file(self, e):
+        """The bmap file of the map's 4x4 structure's picture (header +0x24)."""
+        p = self.u32(e + 0x24)
+        if p == 0:
+            return None
+        o = p - DS_OVERLAY0_BASE
+        return self.ov0[o:self.ov0.index(b"\0", o)].decode()
 
     def map_id(self, kind, stage):
         """tangoAW2's map id of a run's map `stage`."""

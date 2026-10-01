@@ -692,7 +692,14 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
   Strike's Black Crystal (0x1A1 -> tangoAW2's 0x192), Com Towers (0x1B9..0x1BD
   -> the Labs 0x1D9..0x1DD) and a tall wood of its own (0x146 -> AW2's wood
   0x086; AW2 has no such tile). Their 4x4 structures (Convoy Cape, Lone Wolf,
-  Silo Sweep) are AW2's own tiles, as on AW2's T Minus 15 and Sea Fortress.
+  Silo Sweep) are AW2's own tiles, as on AW2's T Minus 15 and Sea Fortress,
+  and are drawn as a sprite whose picture the map header names
+  (`tileGraphic4x4`, +0x10, loaded by `LoadInventionGraphics`
+  `0x0803FD80`): Dual Strike's header names its picture at +0x24, a `bmap`
+  file ("0a5" the missile pad, "0a6" the fortress), byte for byte AW2's
+  `0x080D2DA8` and `0x080D38AC`, which the converted header names. (The
+  first Survival left +0x10 empty, and those three maps showed whatever OBJ
+  VRAM held there, a CO portrait among it.)
   Units: Carrier and Oozium become tangoAW2's 26 and 27; every unit gets the
   AI byte tangoAW2's Versus maps use (4). Headers: AW2's 0x5C bytes, with the
   map's fog, armies, colours, computer COs (Dual Strike's ids to tangoAW2's),
@@ -710,7 +717,9 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
   Wasteland look for Dual Strike's wasteland maps (its snow and desert looks
   are drawn as the normal look), the run's CO, and for Money the funds (the
   pool) with no income (`propertyFunds` 0, and any funds gained are taken
-  back every frame). Fog is the header's.
+  back every frame), and the map's fog (the War Room sets gPlaySt's fog from
+  the header of the map it opened with, `sub_080346FC`, before one is
+  picked).
 - **The budget in battle**: the map number and what is left (funds, days left
   today included, or the time as m:ss) at the top of the battle map, in AW2's
   own glyph font (OBJ tiles 0x3C0.., palette 0, as `PutAsciiGlyphSprite` draws).
@@ -751,7 +760,8 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
 - A run cannot be suspended mid-map, and turning the console off loses a run
   in progress (Dual Strike saves its survival state); records are saved.
 - The War Room's CO screen colours the player's army by its CO's country and
-  moves a computer army off that colour, as it does for its own maps.
+  moves a computer army off that colour, as it does for its own maps; two
+  armies Dual Strike gives one colour (Single File Isle's allies) get two.
 - Points are AW2's War Room scores (its Speed, Power and Technique), not Dual
   Strike's.
 - The results and records are a panel of AW2's glyph font over SELECT MAP, not
@@ -760,7 +770,8 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
 Tests: `tools/aw2test/tests/test_survival.py` (Select Mode with and without
 the pack, each kind's first map checked tile by tile, unit by unit and for
 fog, weather, look and colours against the .nds directly
-(`aw2test/survival.py`), the budget carried to map 2 and the CO kept, losing
+(`aw2test/survival.py`), every one of the 33 maps likewise in battle with its
+structure's picture named in its header and loaded into OBJ VRAM, the budget carried to map 2 and the CO kept, losing
 each kind by running out, a cleared run's rank, bonus and record, saved and
 read back after a reboot, every army a CPU for days on six maps, nothing of it
 without the pack).

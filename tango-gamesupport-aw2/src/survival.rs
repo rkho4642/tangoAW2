@@ -53,7 +53,7 @@ const MAP_DATA_SIZE: u32 = 0x800;
 const STRINGS: u32 = 0x08E3_0000;
 const STRING_SIZE: u32 = 0x40;
 const SENTINEL: u32 = 0x08E0_7FFC;
-const MAGIC: u32 = 0x5653_5344; // "DSSV"
+const MAGIC: u32 = 0x3256_5344; // "DSV2": headers with the structures' pictures
 
 /// Map ids: the three entries (Money, Turn, Time), then the maps.
 pub const FIRST_ID: u8 = 0xC9;
@@ -126,6 +126,7 @@ const WEATHER_MODE: u32 = PLAYST + 0x2D;
 const NEXT_WEATHER: u32 = PLAYST + 0x2E;
 const DEFAULT_WEATHER: u32 = PLAYST + 0x2F;
 const PLAYST_CO: u32 = PLAYST + 0x3D;
+const FOG: u32 = PLAYST + 0x0D;
 const DAY: u32 = 0x0300_4080;
 const CURRENT_ARMY: u32 = 0x0300_33EC;
 const MAIN_CALLBACK: u32 = 0x0300_0000;
@@ -191,6 +192,9 @@ fn header(map: &maps::Map, tiles: u32, units: u32, name: u16) -> [u8; 0x5C] {
     let w32 = |h: &mut [u8], at: usize, v: u32| h[at..at + 4].copy_from_slice(&v.to_le_bytes());
     let w16 = |h: &mut [u8], at: usize, v: u16| h[at..at + 2].copy_from_slice(&v.to_le_bytes());
     w32(&mut h, 0x00, tiles);
+    // The 4x4 structure's picture (none: the game would load nothing and
+    // draw whatever OBJ VRAM holds there).
+    w32(&mut h, 0x10, map.structure.map_or(0, |s| s.aw2_picture()));
     w16(&mut h, 0x14, TEXT_BASE + name);
     h[0x16] = 1;
     h[0x17] = map.fog as u8;
@@ -538,6 +542,9 @@ pub fn map_start(core: &mut Core) {
     core.raw_write_8(DEFAULT_WEATHER, -1, w);
     core.raw_write_8(WEATHER, -1, w);
     core.raw_write_8(NEXT_WEATHER, -1, w);
+    // Fog: the War Room sets gPlaySt's fog from the header of the map it
+    // started with (`sub_080346FC`, before a map is picked), so it is set here.
+    core.raw_write_8(FOG, -1, map.fog as u8);
     // Dual Strike's look: Wasteland, or Normal (its snow and desert looks
     // are not in tangoAW2).
     crate::wasteland::set_biome(

@@ -75,13 +75,18 @@ def check_map(ctx, e, g, data, m, label):
     ctx.eq((e.u8(sv.BIOME) >> 4) & 7, 1 if m["look"] == 3 else 0, f"{label}: Wasteland look")
     # The War Room gives the player's army its CO's colour and moves a
     # computer army that had it to another.
+    # Two armies Dual Strike gives one colour (Single File Isle's allies)
+    # get two in AW2 likewise.
     mine = e.u8(player(1) + 0x1A)
+    taken = [mine]
     for k in range(2, m["armies"] + 1):
         got = e.u8(player(k) + 0x1A)
-        if m["colours"][k - 1] != mine:
-            ctx.eq(got, m["colours"][k - 1], f"{label}: army {k}'s colour")
+        want = m["colours"][k - 1]
+        if want not in taken:
+            ctx.eq(got, want, f"{label}: army {k}'s colour")
         else:
-            ctx.check(got != mine, f"{label}: army {k}'s colour moved off the player's ({got})")
+            ctx.check(got not in taken, f"{label}: army {k}'s colour moved off one taken ({got})")
+        taken.append(got)
 
 
 def hud_shown(e):
@@ -262,6 +267,39 @@ def survival_clear_record_after_reboot(ctx):
     ctx.eq(sv.records(e2).get(sv.MONEY), (5, st["co"], 123400), "the record survived the reboot")
     e2.wait(30)
     shot(ctx, e2, "record_after_reboot")
+
+
+def _every_map(kind, stage):
+    def fn(ctx):
+        """Each Survival map in battle: every tile and unit as Dual Strike's,
+        and a 4x4 structure drawn with its own picture (the header names
+        it; without one the game draws whatever OBJ VRAM holds there)."""
+        data, e, g = start_run(ctx, kind)
+        m = data.map(data.run(kind)[stage])
+        if stage > 0:
+            g.wait_for_input()
+            e.w8(sv.STAGE, stage - 1)
+            ctx.require(win(ctx, e, g, data.map(data.run(kind)[0])["armies"]), "back on SELECT MAP")
+            ctx.require(sv.pick(e, 0), f"{m['name']} starts")
+        g.wait_idle()
+        e.wait(120)
+        ctx.eq(e.u8(ram.VS_MAP), data.map_id(kind, stage), m["name"])
+        check_map(ctx, e, g, data, m, m["name"])
+        header = e.u32(0x080196EC) + 0x5C * e.u8(ram.VS_MAP)
+        want = sv.STRUCTURE_PICTURES.get(m["structure"], 0)
+        ctx.eq(e.u32(header + 0x10), want, f"{m['name']}: the structure's picture in the header")
+        if want:
+            picture = romlib.lz10(e.read(want, 0x1000))
+            vram = e.read(0x06010000, 0x8000)
+            ctx.check(picture in vram, f"{m['name']}: the structure's picture is in OBJ VRAM")
+        shot(ctx, e, "map")
+    fn.__name__ = f"survival_map_{kind}_{stage:02d}"
+    test(modes=("ds",))(fn)
+
+
+for _k in (sv.MONEY, sv.TURN, sv.TIME):
+    for _s in range(11):
+        _every_map(_k, _s)
 
 
 def _cpu(kind, stage, days=4):
