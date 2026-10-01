@@ -329,7 +329,7 @@ pub const ORDER: [u8; data::MISSIONS] = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 26, 12, 13, 27, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
 ];
 /// The side missions and the campaign flag that opens each.
-pub const SIDE_MISSIONS: [(u8, u32); 3] = [(25, 0x60), (26, 0x61), (27, 0x62)];
+pub const SIDE_MISSIONS: [(u8, u32); 3] = [(25, 0x90), (26, 0x91), (27, 0x92)];
 
 /// The step after `step` in [`ORDER`], skipping side missions not opened.
 fn step_after(core: &Core, step: u8) -> u8 {
@@ -419,6 +419,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (IS_FLAG, Box::new(is_flag)),
         (crate::campaign_menu::SAVE_FLAG, Box::new(crate::campaign_menu::save_flag)),
         (MISSION_NUMBER, Box::new(mission_number)),
+        (BEST_SCORE, Box::new(best_score)),
     ]
 }
 
@@ -465,6 +466,7 @@ fn start(core: &mut Core, new: bool) {
     if req == 1 || !progress_valid(core) {
         new_progress(core);
     }
+    migrate_flags(core);
     // Flags of the session come from the progress record.
     for k in 0..16 {
         let v = core.raw_read_8(P_FLAGS + k, -1);
@@ -507,6 +509,51 @@ fn end_of_battle(core: &mut Core) {
         begin_mission(core, ORDER[next as usize]);
     } else {
         begin_mission(core, index);
+    }
+}
+
+/// A record saved by 0.4.0 kept the lab missions' flags at 0x60..0x62
+/// (AW2's Hard Campaign flag among them): they move to 0x90..0x92.
+fn migrate_flags(core: &mut Core) {
+    for k in 0..3u32 {
+        let (old, new) = (P_FLAGS + (0x60 + k - 0x20) / 8, P_FLAGS + (0x90 + k - 0x20) / 8);
+        let (ob, nb) = (1u8 << ((0x60 + k - 0x20) % 8), 1u8 << ((0x90 + k - 0x20) % 8));
+        if core.raw_read_8(old, -1) & ob != 0 {
+            let v = core.raw_read_8(old, -1);
+            core.raw_write_8(old, -1, v & !ob);
+            let v = core.raw_read_8(new, -1);
+            core.raw_write_8(new, -1, v | nb);
+        }
+    }
+}
+
+/// In a DS mission, the map's Com Towers are Com Towers ([`crate::com_tower`]:
+/// they add firepower, earn nothing, and capturing one does not defeat its
+/// owner); Dual Strike's research labs share their tiles and stay Labs
+/// ([`is_lab_cell`]).
+pub fn towers_active(core: &Core) -> bool {
+    active(core) && core.raw_read_8(MAP_ID, -1) == data::MAP_ID && core.raw_read_8(GAME_MODE, -1) == CAMPAIGN
+}
+
+/// Whether (x, y) is one of the mission's research labs (capturing one
+/// defeats its owner, as AW2's Lab).
+pub fn is_lab_cell(core: &Core, x: u32, y: u32) -> bool {
+    towers_active(core)
+        && campaign(core)
+            .and_then(|c| c.built.missions.get(core.raw_read_8(MISSION, -1) as usize))
+            .is_some_and(|m| m.labs.contains(&(x as u8, y as u8)))
+}
+
+/// `InsertBestScoreRecord`: in campaign mode it keeps a mission's best
+/// score at AW2's results `[mapID - 0x8A]` (`gUnknown_0200C2D0`, 8 bytes
+/// each); a DS mission's id (0xF0) would land on the event script slots
+/// (0x0200C600: a slot that never ends). The DS Campaign keeps no scores.
+const BEST_SCORE: u32 = 0x0801_7720;
+fn best_score(core: &mut Core) {
+    if active(core) && core.raw_read_8(MAP_ID, -1) == data::MAP_ID {
+        let cpu = core.gba_mut().cpu_mut();
+        let lr = cpu.gpr(14) as u32;
+        cpu.set_thumb_pc(lr & !1);
     }
 }
 

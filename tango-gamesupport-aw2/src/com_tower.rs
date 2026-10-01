@@ -31,7 +31,8 @@ const CO_ABILITIES: u32 = 0x0300_3FC8;
 /// Whether Labs are Com Towers now: in Versus, and in the Design Room's
 /// map editor, with the pack.
 pub fn active(core: &Core) -> bool {
-    is_on(core) && (core.raw_read_8(GAME_MODE, -1) == VERSUS || crate::design::in_map_editor(core))
+    is_on(core)
+        && (core.raw_read_8(GAME_MODE, -1) == VERSUS || crate::design::in_map_editor(core) || crate::ds_campaign::towers_active(core))
 }
 
 /// The Lab tile of an owner (0 neutral .. 4; 5 is Black Hole's, tangoAW2's
@@ -139,8 +140,12 @@ fn key_property(core: &mut Core) {
 /// HQ: a tower skips the mark (0x08042834 is past it).
 const CAPTURED: u32 = 0x0804_281E;
 const CAPTURED_DONE: u32 = 0x0804_2834;
+/// The cell being captured (`gUnknown_03003100`: x, y as s16).
+const CAPTURE_CELL: u32 = 0x0300_3100;
 fn captured(core: &mut Core) {
-    if active(core) && core.gba().cpu().gpr(0) as u8 == LAB {
+    let (x, y) = (core.raw_read_16(CAPTURE_CELL, -1) as u32, core.raw_read_16(CAPTURE_CELL + 2, -1) as u32);
+    // A DS Campaign mission's research lab is a Lab (crate::ds_campaign).
+    if active(core) && core.gba().cpu().gpr(0) as u8 == LAB && !crate::ds_campaign::is_lab_cell(core, x, y) {
         core.gba_mut().cpu_mut().set_thumb_pc(CAPTURED_DONE);
     }
 }

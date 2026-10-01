@@ -938,7 +938,9 @@ overlay 1, the campaign's code, at `0x02350560`).
   research-lab missions, The Long March, Lash's Test, Spiral Garden, each
   opened by capturing the city that hides its lab's map in the mission
   before (Black Boats Ahoy!, Frozen Fortress, Snow Hunters: their scripts set
-  campaign flags 0x60..0x62). Second fronts: Victory or Death!, Lightning
+  campaign flags 0x60..0x62; tangoAW2 keeps them at 0x90..0x92, since 0x60
+  is AW2's Hard Campaign flag and with it set every mission used its hard
+  deployment, as 0.4.0 did; a 0.4.0 record's flags move as it loads). Second fronts: Victory or Death!, Lightning
   Strikes, Omens and Signs, Ring of Fire, Means to an End.
 - **Events** are AW2's, grown. Trigger records are 8 bytes, op = 3 * AW2's
   op + the front (0 main, 1 second, 2 either), 0x15/0x16 open a block for
@@ -984,6 +986,11 @@ overlay 1, the campaign's code, at `0x02350560`).
   become magic stubs (Thumb: `ldr r3, =id; ldr r2, =0x0803CC5E; bx r2`, the
   landing trapped) run in Rust (`ds_campaign_rules.rs`, one entry per Dual
   Strike function, read from its code).
+- **Mission end**: AW2's best-score record (`InsertBestScoreRecord`
+  `0x08017720`) is skipped for map id 0xF0: its slot would land on the event
+  script slots (`0x0200C600`) and stall the save prompt. Com Towers capture
+  as in Versus (the battle goes on), except a lab mission's lab cells, which
+  end it as Dual Strike's labs do.
 - **Maps**: Dual Strike's tiles are AW2's but for Com Towers (the Lab
   tiles), Black Crystals (0x192), its Black Obelisks (drawn on AW2's Black
   Cannon tiles, which would fire: tangoAW2's Obelisk), mega missile silos

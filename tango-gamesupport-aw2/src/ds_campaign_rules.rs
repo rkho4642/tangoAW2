@@ -151,7 +151,8 @@ pub fn run(core: &mut Core, m: &Magic) -> u32 {
     match *m {
         Magic::Predicate(f) => {
             let held = predicate(core, f);
-            if held {
+            // (the match-end lists' "player won" is not a mission condition)
+            if held && f != 0x020D_5D2C {
                 core.raw_write_32(crate::ds_campaign::LAST_CONDITION, -1, f);
                 let day = core.raw_read_16(DAY, -1);
                 core.raw_write_16(crate::ds_campaign::LAST_CONDITION + 4, -1, day);
@@ -348,10 +349,11 @@ fn call(core: &mut Core, f: u32, arg: u32) -> bool {
         0x0235_1FE4 => return spawn_oozium(core, 1),
         0x0235_1FB0 => return spawn_oozium(core, 2),
         // A research lab's map was found (the mission's flag): its side
-        // mission opens (campaign flags 0x60..0x62).
-        0x0235_0E34 if local_flag(core, 0) => crate::ds_campaign::set_campaign_flag(core, 0x60),
-        0x0235_0FB8 if local_flag(core, 1) => crate::ds_campaign::set_campaign_flag(core, 0x61),
-        0x0235_10C4 if local_flag(core, 0) => crate::ds_campaign::set_campaign_flag(core, 0x62),
+        // mission opens (campaign flags 0x90..0x92: AW2 reads 0x60 as Hard
+        // Campaign, crate::ds_campaign_data::ds_flag).
+        0x0235_0E34 if local_flag(core, 0) => crate::ds_campaign::set_campaign_flag(core, 0x90),
+        0x0235_0FB8 if local_flag(core, 1) => crate::ds_campaign::set_campaign_flag(core, 0x91),
+        0x0235_10C4 if local_flag(core, 0) => crate::ds_campaign::set_campaign_flag(core, 0x92),
         // The weather: Dual Strike's 0x020D207C(0 clear, 1 snow, 2 rain).
         0x0235_0FA8 => set_weather(core, 1),
         0x0235_16B8 | 0x0235_17C4 => set_weather(core, 0),

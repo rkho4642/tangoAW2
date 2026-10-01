@@ -490,6 +490,17 @@ pub fn wrap_dialogue(t: &[u8], widths: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Dual Strike's campaign flags 0x60..0x6F as the DS Campaign keeps them,
+/// 0x80..0x8F: AW2's own code reads some of 0x60..0x6B while a DS mission
+/// runs (0x60 is Hard Campaign: its deployments).
+pub fn ds_flag(f: u16) -> u16 {
+    if (0x60..0x70).contains(&f) {
+        f + 0x20
+    } else {
+        f
+    }
+}
+
 /// A plain one-line text (names): printable ASCII only.
 pub fn plain(t: &[u8]) -> Vec<u8> {
     t.iter().copied().filter(|&c| (0x20..0x7F).contains(&c)).collect()
@@ -577,6 +588,22 @@ pub struct MissionInfo {
     pub look: u8,
     pub weather: u8,
     pub fog: bool,
+    /// Dual Strike's research labs on the map (its Lab tiles, 0x1D9..0x1DD;
+    /// its Com Towers 0x1B9..0x1BD become the same AW2 tiles).
+    pub labs: Vec<(u8, u8)>,
+}
+
+/// The cells of a Dual Strike map whose tile is a Lab (0x1D9..0x1DD).
+fn lab_cells(ds: &Ds, at: u32) -> Vec<(u8, u8)> {
+    let Some(head) = ds.u32(at) else { return Vec::new() };
+    let size = (head >> 8) as usize;
+    let Some(comp) = ds.bytes(at, 4 + size * 2 + 64).or_else(|| ds.bytes(at, 4 + size + 64)) else { return Vec::new() };
+    let Some(raw) = crate::ds_art::lz10(comp) else { return Vec::new() };
+    let (w, h) = (raw[0] as usize, raw[1] as usize);
+    (0..w * h)
+        .filter(|&i| (0x1D9..=0x1DD).contains(&u16::from_le_bytes([raw[2 + 2 * i], raw[3 + 2 * i]])))
+        .map(|i| ((i % w) as u8, (i / w) as u8))
+        .collect()
 }
 
 /// Blob builder at a fixed ROM address.
@@ -853,7 +880,7 @@ fn convert_command(cx: &mut Ctx, at: u32, c: &[u8]) -> ([u8; 16], Option<(usize,
             cmd(0x40, 0, winner as u16, 0, 0)
         }
         // A campaign flag set (the endings and unlocks, 0x63..0x65).
-        0x4F => cmd(0x44, 0, h(8), 0, 0),
+        0x4F => cmd(0x44, 0, ds_flag(h(8)), 0, 0),
         _ => {
             *cx.unhandled.entry(op as u8).or_default() += 1;
             nop
@@ -1120,6 +1147,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
             look: rec.look,
             weather: rec.weather,
             fog: rec.fog,
+            labs: lab_cells(ds, rec.maps.0),
         });
     }
     // The prologue (bank 0x21) as texts the flow can show.

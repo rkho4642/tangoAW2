@@ -479,3 +479,98 @@ def ds_campaign_new_black_no_early_defeat(ctx):
     else:
         ctx.eq(r["result"], 2, "the Infantry lost: the mission is lost")
     shot(ctx, e, "day3")
+
+
+
+@test(modes=("ds",))
+def ds_campaign_com_tower_capture(ctx):
+    """Ring of Fire: an Infantry finishing the capture of a Black Hole Com
+    Tower takes the tower; Black Hole stays in the battle (a Com Tower is
+    AW2's Lab tile, and capturing a Lab defeats its owner: in 0.4.0 it won
+    the mission). The capture points are set to need one more Capture."""
+    data = dc.DsData()
+    m = data.mission(21)
+    w = m["w"]
+    towers = [(i % w, i // w) for i, t in enumerate(m["tiles"]) if 0x1B9 <= t <= 0x1BD]
+    e, g, d = boot(ctx)
+    d.start(step=24)
+    d.wait_map()
+    occupied = {(u["x"], u["y"]) for u in g.units()}
+    cell = next(c for c in towers if c not in occupied)
+    inf = next(u for u in g.units(army=1) if u["type"] == 1)
+    d.place_unit(inf, *cell)
+    a = g.unit_addr(inf["id"])
+    e.w8(a + 5, (e.u8(a + 5) & 7) | (19 << 3))  # one Capture from done
+    e.wait(4)
+    g.select(*cell)
+    e.wait(8)
+    d.dialogue()
+    menu = g.move_to(*cell)
+    d.dialogue()
+    ctx.require(any(n.lower().startswith("capt") for n in menu["names"]), f"Capture offered ({menu['names']})")
+    g.choose("Capt", g.ACTION_MENU)
+    e.wait(120)
+    d.dialogue()
+    row = e.u16(dc.MAP + 0x417A + 2 * cell[1])
+    owner = e.u8(dc.MAP + 0x1432 + row + cell[0]) >> 5
+    ctx.eq(owner, 1, "the tower is the player's")
+    e.w8(dc.LAST_RESULT, 0)
+    d.wait_control()
+    d.end_turn()
+    for _ in range(400):
+        if e.u8(0x030033EC) == 1 and d.in_battle() and e.u16(dc.DAY) >= 2:
+            break
+        if d.scripts_running():
+            e.press("A", 4)
+        e.wait(30)
+    p = d.players()
+    ctx.check(d.in_battle() and d.mission() == 21 and e.u16(dc.DAY) >= 2,
+              f"Ring of Fire goes on to day 2 (mission {d.mission()}, day {e.u16(dc.DAY)})")
+    ctx.eq(e.u16(p + 0x3C * 2 + 0x14), 0, "Black Hole is still in the battle")
+    ctx.eq(e.u8(dc.LAST_RESULT), 0, "the mission goes on")
+    shot(ctx, e, "after_capture")
+
+
+@test(modes=("ds",))
+def ds_campaign_lab_flags_not_hard(ctx):
+    """A 0.4.0 record with a lab mission open kept its flag at 0x60, AW2's
+    Hard Campaign flag: every mission then used its hard deployment. The
+    flag moves to 0x90 as the record loads, and Max Attacks (which has a
+    hard deployment) gets its normal one."""
+    data = dc.DsData()
+    e, g, d = boot(ctx)
+    d.open_campaign_box()
+    d.chooser_row(1)
+    e.press("A", 8)
+    e.wait(30)
+    e.w32(dc.P_MAGIC, dc.PROGRESS_MAGIC)
+    e.w8(dc.P_NEXT, 2)
+    e.w8(dc.PROGRESS + 0x10 + (0x60 - 0x20) // 8, 1 << ((0x60 - 0x20) % 8))
+    d.box_row(0)
+    e.press("A", 8)
+    ctx.require(e.wait_until(d.active, 900, step=10), "Continue starts")
+    flags = e.read(dc.PROGRESS + 0x10, 16)
+    ctx.eq((flags[(0x60 - 0x20) // 8] >> ((0x60 - 0x20) % 8)) & 1, 0, "flag 0x60 cleared")
+    ctx.eq((flags[(0x90 - 0x20) // 8] >> ((0x90 - 0x20) % 8)) & 1, 1, "moved to 0x90")
+    d.wait_map()
+    have = sorted((u["army"], u["x"], u["y"], u["type"]) for u in g.units())
+    ctx.eq(have, sorted(data.mission(2)["units"]), "Max Attacks: the normal deployment")
+
+
+@test(modes=("ds",))
+def ds_campaign_no_score_overwrite(ctx):
+    """A DS mission's end leaves the event script slots alone (AW2's best
+    score for map id 0xF0 would be written at 0x0200C600, the tenth slot)."""
+    e, g, d = boot(ctx)
+    d.start(new=True)
+    d.wait_map()
+    ctx.require(d.force_win(), "the last enemy unit destroyed")
+    seen = set()
+    for _ in range(400):
+        e.wait(30)
+        seen.add(e.u32(0x0200C600))
+        if d.scripts_running() or not d.in_battle():
+            e.press("A", 4)
+        if d.mission() == 1 and d.in_battle():
+            break
+    ctx.eq(sorted(seen), [0], "the tenth event slot untouched through the results")
