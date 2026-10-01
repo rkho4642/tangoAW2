@@ -112,6 +112,15 @@ const CO_GROUP_SWITCH: u32 = 0x0300_59C0;
 /// Magic flow ids ([`data::Magic::Flow`]).
 pub const FLOW_CO_SETUP: u8 = 1;
 pub const FLOW_SAVE: u8 = 2;
+pub const FLOW_HIDE: u8 = 3;
+
+/// The map menu's Save item: its hide test (menu table entry 0x0849AB64,
+/// `sub_0802C644`). During a session it points at a magic stub that hides
+/// the item: a suspended DS mission would resume as an AW2 one.
+const SAVE_ITEM_TEST: u32 = 0x0849_AB64;
+const SAVE_ITEM_AW2: u32 = 0x0802_C645;
+/// `GetCampaignResultCountPlusOne`: the mission title's number.
+pub const MISSION_NUMBER: u32 = 0x0803_840C;
 
 /// AW2's save staging buffer: the slot writer copies its record from here
 /// (the pointer word 0x0200CC2C holds it).
@@ -159,6 +168,7 @@ fn start_proc_script(save: u32, co_setup: u32) -> Vec<u8> {
 pub struct Campaign {
     pub built: data::Built,
     pub start_proc: u32,
+    pub hide_stub: u32,
 }
 
 static BUILT: OnceLock<Option<Campaign>> = OnceLock::new();
@@ -174,9 +184,10 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let mut built = data::build(&ds, DATA + 0x100, &widths)?;
             let save = built.add_magic(data::Magic::Flow(FLOW_SAVE)) & !1;
             let co_setup = built.add_magic(data::Magic::Flow(FLOW_CO_SETUP));
+            let hide_stub = built.add_magic(data::Magic::Flow(FLOW_HIDE));
             let start_proc = built.add(&start_proc_script(save, co_setup));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
-            Some(Campaign { built, start_proc })
+            Some(Campaign { built, start_proc, hide_stub })
         })
         .as_ref()
 }
@@ -233,6 +244,14 @@ pub fn tick(core: &mut Core, ds: bool) {
                 core.raw_write_32(at, -1, want + field);
             }
         }
+        // The map menu's Save item, hidden during a session.
+        if let Some(c) = campaign(core) {
+            let want = if session { c.hide_stub } else { SAVE_ITEM_AW2 };
+            let now = core.raw_read_32(SAVE_ITEM_TEST, -1);
+            if (now == c.hide_stub || now == SAVE_ITEM_AW2) && now != want {
+                core.raw_write_32(SAVE_ITEM_TEST, -1, want);
+            }
+        }
     }
     if session {
         // ACTIVE is 1 from the start (the menu is still closing), 2 once the
@@ -252,6 +271,17 @@ pub fn tick(core: &mut Core, ds: bool) {
 
 fn in_battle(core: &Core) -> bool {
     core.raw_read_32(0x0300_0004, -1) != 0
+}
+
+/// `GetCampaignResultCountPlusOne` (the mission title's "MISSION n"):
+/// during a session, the DS missions won so far plus one.
+fn mission_number(core: &mut Core) {
+    if !active(core) {
+        return;
+    }
+    let mission = core.raw_read_8(MISSION, -1);
+    let won = core.raw_read_32(P_WON, -1) & !(1 << mission);
+    return_to(core, won.count_ones() + 1);
 }
 
 /// The mission's AW2 map id.
@@ -374,6 +404,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (SET_FLAG, Box::new(set_flag)),
         (IS_FLAG, Box::new(is_flag)),
         (crate::campaign_menu::SAVE_FLAG, Box::new(crate::campaign_menu::save_flag)),
+        (MISSION_NUMBER, Box::new(mission_number)),
     ]
 }
 
@@ -550,6 +581,7 @@ fn landing(core: &mut Core) {
     let r = match campaign(core).and_then(|c| c.built.magic.get(id as usize)).cloned() {
         Some(data::Magic::Flow(FLOW_CO_SETUP)) => co_setup(core),
         Some(data::Magic::Flow(FLOW_SAVE)) => return save(core),
+        Some(data::Magic::Flow(FLOW_HIDE)) => 1,
         Some(m) => crate::ds_campaign_rules::run(core, &m),
         None => 0,
     };

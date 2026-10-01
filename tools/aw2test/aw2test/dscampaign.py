@@ -155,7 +155,7 @@ class DsCampaign:
     def in_battle(self):
         return self.e.u32(0x03000004) != 0
 
-    def wait_map(self, max_frames=8000):
+    def wait_map(self, max_frames=20000):
         """Through the CO select, the mission title and the opening dialogue
         to the player's control. Returns the frames it took."""
         start = self.e.frame
@@ -176,7 +176,7 @@ class DsCampaign:
     def cursor(self):
         return (self.e.u16(0x030033E4), self.e.u16(0x030033E6))
 
-    def wait_control(self, max_frames=8000):
+    def wait_control(self, max_frames=20000):
         """Presses A through dialogue until the map cursor answers the pad."""
         e = self.e
         n = 0
@@ -194,7 +194,8 @@ class DsCampaign:
                 e.hold(back, 6)
                 e.wait(10)
                 return
-            e.press("A", 4)
+            # A menu or CO screen the presses above opened: back out.
+            e.press("B", 4)
             e.wait(20)
             n += 46
         raise NavError(f"no control in {max_frames} frames")
@@ -232,23 +233,36 @@ class DsCampaign:
         units = g.units()
         mine = [u for u in units if u["army"] in player_team and u["type"] in DIRECT]
         enemy = [u for u in units if u["army"] not in player_team]
+        if not mine:
+            # No unit able to fire (Tag Battle's air force, Lightning
+            # Strikes' artillery): one of the player's units becomes a Tank.
+            mine = [u for u in units if u["army"] in player_team]
+            if mine:
+                a = g.unit_addr(mine[0]["id"])
+                e.w8(a, 4)
+                e.w16(a + 4, (e.u16(a + 4) & 0x7F) | (9 << 7))
+                mine[0]["type"] = 4
         if not mine or not enemy:
             return False
-        victim, rest = enemy[0], enemy[1:]
-        for u in rest:
-            self.remove_unit(u)
-        hp_ammo = e.u16(g.unit_addr(victim["id"]) + 4)
-        e.w16(g.unit_addr(victim["id"]) + 4, (hp_ammo & ~0x7F) | 1)
-        att = mine[0]
         w, h = self.size()
-        spot = None
-        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            x, y = victim["x"] + dx, victim["y"] + dy
-            if 0 <= x < w and 0 <= y < h and e.u8(self.layer_cell(x, y)) == 0 and g.terrain_class(x, y) & 0x1F in LAND:
-                spot = (x, y)
+        victim = spot = None
+        # Ground targets first: a Tank can't hit planes or submarines.
+        for v in sorted(enemy, key=lambda u: u["type"] not in DIRECT):
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                x, y = v["x"] + dx, v["y"] + dy
+                if 0 <= x < w and 0 <= y < h and e.u8(self.layer_cell(x, y)) == 0 and g.terrain_class(x, y) & 0x1F in LAND:
+                    victim, spot = v, (x, y)
+                    break
+            if spot:
                 break
         if spot is None:
             return False
+        for u in enemy:
+            if u is not victim:
+                self.remove_unit(u)
+        hp_ammo = e.u16(g.unit_addr(victim["id"]) + 4)
+        e.w16(g.unit_addr(victim["id"]) + 4, (hp_ammo & ~0x7F) | 1)
+        att = mine[0]
         self.place_unit(att, *spot)
         e.wait(4)
         self.fire(spot, (victim["x"], victim["y"]))
@@ -266,7 +280,15 @@ class DsCampaign:
         """The unit at `at` fires (without moving) at `target`, getting
         through any event dialogue on the way."""
         g, e = self.g, self.e
-        g.goto(*at)
+        for tries in range(5):
+            self.dialogue()
+            try:
+                g.goto(*at)
+                break
+            except NavError:
+                if tries == 4:
+                    raise
+                e.wait(30)
         e.press("A", 4)
         e.wait(20)
         self.dialogue()

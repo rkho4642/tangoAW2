@@ -354,22 +354,41 @@ pub fn wrap_dialogue(t: &[u8], widths: &[u8]) -> Vec<u8> {
             .filter(|w| !w.is_empty())
             .map(|w| w.iter().copied().filter(|&c| c == 0x0E || (0x20..0x7F).contains(&c)).collect())
             .collect();
-        let mut lines: Vec<Vec<u8>> = vec![Vec::new()];
-        for w in words {
-            let cur = lines.last_mut().unwrap();
-            let mut longer = cur.clone();
-            if !longer.is_empty() {
-                longer.push(b' ');
+        let wrap = |limit: u32| {
+            let mut lines: Vec<Vec<u8>> = vec![Vec::new()];
+            for w in &words {
+                let cur = lines.last_mut().unwrap();
+                let mut longer = cur.clone();
+                if !longer.is_empty() {
+                    longer.push(b' ');
+                }
+                longer.extend_from_slice(w);
+                if !cur.is_empty() && width(widths, &longer) > limit {
+                    lines.push(w.clone());
+                } else {
+                    *cur = longer;
+                }
             }
-            longer.extend_from_slice(&w);
-            if !cur.is_empty() && width(widths, &longer) > LINE_PIXELS {
-                lines.push(w);
-            } else {
-                *cur = longer;
+            lines
+        };
+        let mut lines = wrap(LINE_PIXELS);
+        // A box that needs more than one of AW2's boxes is spread evenly
+        // over them (the narrowest width that still fits that many boxes),
+        // so no box is left with a word or two.
+        if lines.len() > BOX_LINES {
+            let boxes_needed = lines.len().div_ceil(BOX_LINES);
+            let (mut lo, mut hi) = (48, LINE_PIXELS);
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                if wrap(mid).len() <= boxes_needed * BOX_LINES {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
             }
+            lines = wrap(lo);
         }
-        for (k, chunk) in lines.chunks(BOX_LINES).enumerate() {
-            let _ = k;
+        for chunk in lines.chunks(BOX_LINES) {
             for (li, l) in chunk.iter().enumerate() {
                 if li > 0 {
                     out.push(b'\r');
@@ -971,7 +990,8 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
             hd[0x48 + 4 * k] = 0xFF;
             hd[0x49 + 4 * k] = 0xFF;
         }
-        hd[0x58] = 1;
+        // The mission title's look and music: the player's country.
+        hd[0x58] = rec.colours[0].clamp(1, 4);
         headers.push((map_id, hd));
         missions.push(MissionInfo {
             index: rec.index,
