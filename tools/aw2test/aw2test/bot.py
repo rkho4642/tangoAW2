@@ -39,6 +39,7 @@ CAPTURERS = {1, 2}            # Infantry, Mech
 AIR = {12, 13, 16, 17, 19, 20}
 NAVAL = {18, 21, 22, 23, 24, 25, 26}
 ANTI_AIR = {14, 15, 16}
+OOZIUM = 27
 # Transports that carry infantry and mech (APC, T Copter, Lander), and
 # those that take units over water (a Lander any ground unit, a T Copter
 # infantry and mech); a Lander loads and unloads on a beach or in a port.
@@ -62,7 +63,7 @@ def domain(t):
 
 
 class Bot:
-    def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False):
+    def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
@@ -78,6 +79,15 @@ class Bot:
         self.structures_goal = structures
         self.stance = stance
         self.rush = rush
+        # `seed`: another player's style (how much danger each kind of unit
+        # takes, when it goes on the attack, which unit moves first among
+        # equals); the same seed plays the same game.
+        import random
+        rng = random.Random(seed)
+        jit = (lambda: 1.0) if seed is None else (lambda: rng.uniform(0.6, 1.5))
+        self.w_indirect, self.w_attack, self.w_defend = 12 * jit(), 1.5 * jit(), 8 * jit()
+        self.stronger = 1.25 * jit()
+        self.tiebreak = (lambda u: 0) if seed is None else (lambda u, r=random.Random(seed): r.random())
         from .rom import DualStrike, Image
         self.chart = DualStrike()
         self.image = Image.load()
@@ -188,7 +198,10 @@ class Bot:
             return 0
 
     def damage(self, att, att_hp, dfd, dfd_hp, cell):
-        """Expected damage (in HP points of 100) as AW2 works it out, COs aside."""
+        """Expected damage (in HP points of 100) as AW2 works it out, COs aside.
+        An Oozium has no weapon: moving onto a unit next to it destroys it."""
+        if att == OOZIUM:
+            return 0 if dfd in AIR or dfd in NAVAL else dfd_hp
         b = self.base(att, dfd)
         if b <= 0:
             return 0
@@ -198,7 +211,7 @@ class Bot:
         return min(dfd_hp, int(d))
 
     def armed(self, t):
-        return any(self.base(t, d) > 0 for d in range(1, 26))
+        return t == OOZIUM or any(self.base(t, d) > 0 for d in range(1, 26))
 
     def cost(self, t):
         return max(self.unit_info(t)["cost"], 1000)
@@ -390,7 +403,7 @@ class Bot:
             return self.stance == "attack"
         mine, theirs = self.strength(army)
         day = self.e.u16(DAY)
-        return mine >= 1.25 * theirs or day >= 18 or theirs == 0 or self.quiet.get(army, 0) >= 2
+        return mine >= self.stronger * theirs or day >= 18 or theirs == 0 or self.quiet.get(army, 0) >= 2
 
     def rough_attack(self, u, foes):
         """A quick guess of `u`'s best attack this turn (no range read)."""
@@ -512,11 +525,11 @@ class Bot:
             danger = self.threat(u, c, armed_foes) / hp
             far = gd.get(c, 999) if gd is not None else min(dist(c, gl) for gl in goals)
             if indirect:
-                w = 12
+                w = self.w_indirect
             elif attack:
-                w = 1.5
+                w = self.w_attack
             else:
-                w = 8
+                w = self.w_defend
             return (far + w * danger - 0.3 * self.stars(*c), cells[c])
         best = min(free, key=key)
         return ("wait", best, None)
@@ -825,7 +838,7 @@ class Bot:
             # the protected last.
             def order(u):
                 hit = self.rough_attack(u, targets) if u["type"] not in self.protect else 0
-                return (u["type"] in self.protect, hit == 0, self.unit_info(u["type"])["min"] <= 1, -hit)
+                return (u["type"] in self.protect, hit == 0, self.unit_info(u["type"])["min"] <= 1, -hit, self.tiebreak(u))
             ready.sort(key=order)
             u = ready[0]
             done.add(u["id"])
