@@ -35,6 +35,8 @@ BATTLE_MAIN = 0x08022049
 BACKGROUND_PROCS = (0x08034F8D,)
 # Where the battle map's procs live (probed): IWRAM and an EWRAM pool.
 PROC_AREAS = ((0x03000C00, 0x1300), (0x0200C000, 0x2000))          # main-loop callback while the battle map runs
+# The event-script slots (gUnknown_0200C528: 10 x 0x18), in the EWRAM area.
+EVENT_SLOTS = (0x0200C510, 0x0200C528 + 10 * 0x18)
 
 
 class Game:
@@ -342,6 +344,10 @@ class Game:
         for base, n in PROC_AREAS:
             b = self.e.read(base, n)
             for i in range(0, len(b) - 12, 4):
+                # The event-script slots (script, cursor, callback) are not
+                # procs (a cursor script's would look like one).
+                if EVENT_SLOTS[0] <= base + i < EVENT_SLOTS[1]:
+                    continue
                 s0, s1, fn = struct.unpack_from("<III", b, i)
                 if (0x08400000 <= s0 < 0x08700000 and 0x08400000 <= s1 < 0x08700000
                         and 0x08000000 < fn < 0x08100000 and fn & 1):

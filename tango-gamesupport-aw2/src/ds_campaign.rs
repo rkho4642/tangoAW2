@@ -111,25 +111,25 @@ const CO_GROUP_SWITCH: u32 = 0x0300_59C0;
 
 /// Magic flow ids ([`data::Magic::Flow`]).
 pub const FLOW_CO_SETUP: u8 = 1;
+pub const FLOW_SAVE: u8 = 2;
 
-/// Thumb: `sub_0801A7D8(SAVE_SLOT, PROGRESS, SAVE_SIZE)`, a proc CALL.
-fn save_stub() -> Vec<u8> {
-    let h: [u16; 10] = [
-        0xB500,                   // push {lr}
-        0x2000 | SAVE_SLOT as u16, // movs r0, #slot
-        0x4903,                   // ldr r1, [pc, #12] (PROGRESS)
-        0x2200 | SAVE_SIZE as u16, // movs r2, #size
-        0x4B03,                   // ldr r3, [pc, #12] (writer)
-        0xF000,                   // bl +2 (the bx below)
-        0xF801,
-        0xBD00, // pop {pc}
-        0x4718, // bx r3
-        0x46C0, // nop
-    ];
-    let mut b: Vec<u8> = h.iter().flat_map(|v| v.to_le_bytes()).collect();
-    b.extend_from_slice(&PROGRESS.to_le_bytes());
-    b.extend_from_slice(&(SLOT_WRITER | 1).to_le_bytes());
-    b
+/// AW2's save staging buffer: the slot writer copies its record from here
+/// (the pointer word 0x0200CC2C holds it).
+const STAGING: u32 = 0x0200_0000;
+
+/// The start proc's save (a proc CALL to a magic stub): the progress record
+/// is copied to the staging buffer and the call goes on into AW2's slot
+/// writer, `sub_0801A7D8(SAVE_SLOT, buffer, SAVE_SIZE)`, which returns to
+/// the proc.
+fn save(core: &mut Core) {
+    let mut b = vec![0u8; SAVE_SIZE as usize];
+    core.raw_read_range(PROGRESS, -1, &mut b);
+    core.raw_write_range(STAGING, -1, &b);
+    let cpu = core.gba_mut().cpu_mut();
+    cpu.set_gpr(0, SAVE_SLOT as i32);
+    cpu.set_gpr(1, STAGING as i32);
+    cpu.set_gpr(2, SAVE_SIZE as i32);
+    cpu.set_thumb_pc(SLOT_WRITER);
 }
 
 fn proc_cmd(op: u16, arg: i16, ptr: u32) -> [u8; 8] {
@@ -172,7 +172,7 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let mut widths = vec![0u8; 256];
             core.raw_read_range(FONT_WIDTHS, -1, &mut widths);
             let mut built = data::build(&ds, DATA + 0x100, &widths)?;
-            let save = built.add(&save_stub());
+            let save = built.add_magic(data::Magic::Flow(FLOW_SAVE)) & !1;
             let co_setup = built.add_magic(data::Magic::Flow(FLOW_CO_SETUP));
             let start_proc = built.add(&start_proc_script(save, co_setup));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
@@ -274,13 +274,42 @@ fn new_progress(core: &mut Core) {
 }
 
 /// The campaign's order: Dual Strike's 25 story missions, with its three
-/// research-lab side missions (records 25..27, which Dual Strike offers on
-/// its world map once their COs are available) played where their CO pool
-/// first opens: The Long March after Black Boats Ahoy!, Lash's Test after
-/// Verdant Hills, Spiral Garden after Snow Hunters.
+/// research-lab side missions (records 25..27). Dual Strike opens a side
+/// mission on its world map when the player captures the city hiding the
+/// lab's map in the mission before it (campaign flags 0x60..0x62, set by
+/// the mission's own script): The Long March after Black Boats Ahoy! (flag
+/// 0x60), Lash's Test after Frozen Fortress (0x61), Spiral Garden after
+/// Snow Hunters (0x62). Here a side mission is played next when its flag
+/// is set, and skipped otherwise ([`SIDE_MISSIONS`]).
 pub const ORDER: [u8; data::MISSIONS] = [
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 12, 26, 13, 27, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 26, 12, 13, 27, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
 ];
+/// The side missions and the campaign flag that opens each.
+pub const SIDE_MISSIONS: [(u8, u32); 3] = [(25, 0x60), (26, 0x61), (27, 0x62)];
+
+/// The step after `step` in [`ORDER`], skipping side missions not opened.
+fn step_after(core: &Core, step: u8) -> u8 {
+    let mut s = step as usize + 1;
+    while s < data::MISSIONS {
+        match SIDE_MISSIONS.iter().find(|m| m.0 == ORDER[s]) {
+            Some(&(_, flag)) if !campaign_flag(core, flag) => s += 1,
+            _ => break,
+        }
+    }
+    s as u8
+}
+
+/// A campaign flag (0x20..0x9F) of the session.
+pub fn campaign_flag(core: &Core, id: u32) -> bool {
+    flag_bit(id).is_some_and(|(at, bit)| core.raw_read_8(at, -1) & bit != 0)
+}
+
+pub fn set_campaign_flag(core: &mut Core, id: u32) {
+    if let Some((at, bit)) = flag_bit(id) {
+        let v = core.raw_read_8(at, -1);
+        core.raw_write_8(at, -1, v | bit);
+    }
+}
 
 /// The next mission to play from the progress record (its place in
 /// [`ORDER`]).
@@ -417,7 +446,7 @@ fn end_of_battle(core: &mut Core) {
         let w = core.raw_read_32(P_WON, -1) | (1 << index);
         core.raw_write_32(P_WON, -1, w);
         let step = ORDER.iter().position(|&m| m == index).unwrap_or(0) as u8;
-        let next = step + 1;
+        let next = step_after(core, step);
         core.raw_write_8(P_NEXT, -1, next.min(data::MISSIONS as u8 - 1));
         for k in 0..16 {
             let v = core.raw_read_8(FLAGS + k, -1);
@@ -520,6 +549,7 @@ fn landing(core: &mut Core) {
     let id = core.gba().cpu().gpr(3) as u32;
     let r = match campaign(core).and_then(|c| c.built.magic.get(id as usize)).cloned() {
         Some(data::Magic::Flow(FLOW_CO_SETUP)) => co_setup(core),
+        Some(data::Magic::Flow(FLOW_SAVE)) => return save(core),
         Some(m) => crate::ds_campaign_rules::run(core, &m),
         None => 0,
     };

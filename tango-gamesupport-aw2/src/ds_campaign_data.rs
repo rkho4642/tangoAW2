@@ -539,6 +539,7 @@ struct Ctx<'a> {
     cmd_map: HashMap<u32, u32>,
     unhandled: BTreeMap<u8, u32>,
     colours: [u8; 4],
+    teams: [u8; 4],
 }
 
 impl<'a> Ctx<'a> {
@@ -714,10 +715,24 @@ fn convert_command(cx: &mut Ctx, at: u32, c: &[u8]) -> ([u8; 16], Option<(usize,
             let s = cx.magic(Magic::Countdown(0));
             cmd(0x00, s, 0, 0, 0)
         }
-        0x41 | 0x43 | 0x44 => {
-            let s = cx.magic(Magic::ArmyFlag { op: op as u8, army: h(8) as u8 });
-            cmd(0x00, s, 0, 0, 0)
+        // An army's team wins (0x41/0x42) or loses (0x43/0x44): the other
+        // teams defeated (Dual Strike's 0x02019A6C / 0x02019B00, flag 0x80),
+        // AW2's `DefeatOtherTeamsAndEndMatch(winner)`.
+        0x41 | 0x42 | 0x43 | 0x44 => {
+            let army = match h(8) {
+                1..=4 => h(8) as usize,
+                _ => 1,
+            };
+            let winner = if op <= 0x42 {
+                army
+            } else {
+                let team = cx.teams[army - 1];
+                (1..=4).find(|&a| cx.teams[a - 1] != team && cx.teams[a - 1] != 0).unwrap_or(1)
+            };
+            cmd(0x40, 0, winner as u16, 0, 0)
         }
+        // A campaign flag set (the endings and unlocks, 0x63..0x65).
+        0x4F => cmd(0x44, 0, h(8), 0, 0),
         _ => {
             *cx.unhandled.entry(op as u8).or_default() += 1;
             nop
@@ -871,6 +886,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         cmd_map: HashMap::new(),
         unhandled: BTreeMap::new(),
         colours: [1, 2, 3, 4],
+        teams: [1, 2, 3, 4],
     };
     cx.blob.push(b"DSCAMPGN");
     let recs: Vec<Record> = (0..MISSIONS + SECOND_FRONTS).map(|i| record(ds, i)).collect::<Option<_>>()?;
@@ -879,6 +895,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
     for rec in &recs {
         let map_id = MAP_ID_BASE + rec.index as u8;
         cx.colours = rec.colours;
+        cx.teams = rec.teams;
         // Scripts: every fire record's, and the objective.
         let lists: Vec<u32> = (0..6).map(|k| if rec.header != 0 { ds.u32(rec.header + 4 * k).unwrap_or(0) } else { 0 }).collect();
         let mut entries: Vec<u32> = lists.iter().filter(|&&l| l != 0).flat_map(|&l| trigger_scripts(ds, l)).collect();
