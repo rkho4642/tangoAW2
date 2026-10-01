@@ -70,9 +70,10 @@ fn wheel(core: &Core) -> Option<u32> {
     (PROCS..PROCS_END).step_by(PROC_SIZE as usize).find(|&p| WHEELS.contains(&core.raw_read_32(p, -1)))
 }
 
-/// The Select Mode menu is up.
+/// The Select Mode menu is up (entered from the title, or come back to
+/// from a mode: then only the wheel's proc may be running).
 pub fn on_select_mode(core: &Core) -> bool {
-    proc_with(core, MAIN_MENU).is_some()
+    proc_with(core, MAIN_MENU).is_some() || wheel(core).is_some()
 }
 
 /// The carousel wheel proc, with Campaign's box open.

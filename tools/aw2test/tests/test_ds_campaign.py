@@ -599,3 +599,45 @@ def ds_campaign_no_score_overwrite(ctx):
             e.press("A", 4)
     ctx.require(d.proc_fn_running(dc.WM_CURSOR_LOOP), "back on the world map after the save prompt")
     ctx.eq(sorted(seen), [0], "the tenth event slot untouched through the results")
+
+
+
+@test(modes=("ds",))
+def ds_campaign_map_exit(ctx):
+    """B on the DS world map asks AW2's "Return to Select Mode menu?"; Yes
+    ends the session: the box comes back on DS CAMPAIGN (its Continue opens
+    the DS map again), and AW2 CAMPAIGN's Continue shows AW2's own map with
+    AW2's own progress (before the fix the session stayed on and AW2's
+    Continue showed the DS map)."""
+    e, g, d = boot(ctx)
+    aw2_flags = e.read(dc.WM_STATE + 0x12, 0x2A)
+    d.start(step=3, pick=False)
+    d.wait_world_map()
+    e.wait(30)
+    e.press("B", 6)
+    e.wait(90)
+    shot(ctx, e, "prompt")
+    e.press("LEFT", 6)
+    e.wait(10)
+    e.press("A", 6)
+    e.wait(300)
+    ctx.eq(e.u8(dc.ACTIVE), 0, "back in Select Mode: the session is over")
+    ctx.eq((e.u8(dc.MENU_LEVEL), e.u8(dc.MENU_CHOICE)), (2, 1), "the box on DS CAMPAIGN")
+    e.press("B", 6)
+    e.wait(40)
+    d.chooser_row(0)
+    e.press("A", 8)
+    e.wait(40)
+    e.press("A", 8)
+    for _ in range(60):
+        e.wait(30)
+        if d.world_map_up():
+            break
+        if d.scripts_running():
+            e.press("A", 4)
+    ctx.require(d.world_map_up(), "AW2 CAMPAIGN's Continue: its map")
+    e.wait(60)
+    ctx.eq(e.u8(dc.ACTIVE), 0, "no DS session")
+    ctx.eq(e.read(dc.WM_STATE + 0x12, 0x2A), aw2_flags, "AW2's own missions on the map")
+    ctx.eq(e.u32(0x080769B4), 0x081CC5F0, "AW2's map art")
+    shot(ctx, e, "aw2_map")

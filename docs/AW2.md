@@ -1010,10 +1010,33 @@ overlay 1, the campaign's code, at `0x02350560`).
 - **Flags**: AW2 keeps its campaign progress in campaign flags 0x20..;
   during a session the game's flag get/set (`0x0803CBD8` / `0x0803CBA0`,
   trapped) use the DS Campaign's own (`0x0203FD20`, 16 bytes).
-- **End of a mission** (`sub_08038484`, trapped): a win records the mission
-  and starts the next in order (a lab mission only when its flag is set);
-  a loss plays the mission again; after Means to an End, back to Select
-  Mode. The mission card's number (`GetCampaignResultCountPlusOne`
+- **World map** (`ds_worldmap.rs`): New and Continue open AW2's own
+  campaign map screen (its `WorldMap*` procs: cursor, scrolling, flags,
+  mission panel, reveal, music and sounds) on Dual Strike's Omega Land: its
+  touch-screen map (`ohashi/res_gmap_map1`/`_map2`, LZ77 4bpp tiles and a
+  32x32 tilemap each, ten palettes at `res_gmap` +0x3B08), fitted at the
+  first frame into AW2's 704 map tiles and nine palettes (BG 6..14; tile 0
+  blank), with Dual Strike's mission points (ARM9 `0x0215BA04`). AW2's
+  mission table (`0x08615194`) and reveal table (`0x0861500C`) get DS copies
+  (ROM `0x08FC0000..`), and while a session is on, the literal-pool words
+  that point at AW2's art and tables point at the copies. Open missions have
+  AW2's flag; A opens the mission's panel (its objective, AW2's info window),
+  A again starts it (the CO screen when the player picks). Back on the map
+  after a win the mission is cleared and the missions it opens are revealed
+  as AW2 reveals its own; a won mission's point keeps AW2's starred flag
+  (OBJ tiles 40..43, added at the sprite flush: AW2 paints a won mission's
+  part of its continent instead). AW2's story steps on the way (nation
+  panel, scenes after missions, bonus and alternative missions, the switch
+  in `WorldMapReturn_Init` on its own mission ids, the save prompt) are
+  skipped in a session, AW2's sea-and-grid layer (BG1) is held off on the
+  DS map, and AW2's map state (`0x0202FDFC`, 0xFC bytes, part of its
+  campaign save) is put aside and restored when the session ends.
+- **End of a mission** (`EndOfGame_FinishCampaignMap`, trapped past its
+  prologue at `0x08038488`): the outcome is recorded (a loss leaves the
+  flags as they were), the missions the win opens are written for the
+  reveal, and the function's own tail runs (`ResetRulesAfterCampaignMap`,
+  `StartCampaignAfterMap`: AW2's return to the map). After Means to an End
+  the map stays up with every mission cleared. The mission card's number (`GetCampaignResultCountPlusOne`
   `0x0803840C`, trapped) counts DS missions won.
 - **Music**: the maps play their COs' themes as AW2 does (the new COs'
   Dual Strike themes, `ds_music.rs`); Dual Strike's event songs play AW2's
@@ -1044,7 +1067,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   check that CO only, and there are no tag or Dual Strike powers. CO skills
   are not converted.
 - Normal campaign only (Dual Strike's hard maps and deployments are not
-  used); no world map: missions play in order.
+  used). The world map is Dual Strike's bottom screen only (no top-screen
+  displays); a won mission is not played again.
 - The player's CO is picked on AW2's CO screen from Dual Strike's pool for
   the mission.
 - Results are AW2's results screen; ranks are not kept.
@@ -1060,8 +1084,10 @@ without the pack, AW2's campaign unchanged to its first mission card,
 Survival and the DS Campaign in one boot, Jake's Trial against the .nds
 (card laid out as AW2's, dialogue all Dual Strike's own words, map,
 deployment, name), every mission in battle (tiles, terrain, deployment,
-fog, weather, look, structure picture), five later missions, a forced win saved to Flash and
-continued after a reboot, the Grand Bolt's spawns, the computer playing
+fog, weather, look, structure picture), five later missions, the world
+map (Jake's Trial picked with the cursor and won through the pad, the map
+after the win, saved to Flash and continued after a reboot), the Com Tower
+capture, the lab flags and the score slot fixes, the Grand Bolt's spawns, the computer playing
 three days on four missions with no army dropping out);
 `aw2test/dscampaign.py` drives it and reads Dual Strike's missions directly.
 
