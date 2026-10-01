@@ -545,12 +545,8 @@ pub fn map_start(core: &mut Core) {
     // Fog: the War Room sets gPlaySt's fog from the header of the map it
     // started with (`sub_080346FC`, before a map is picked), so it is set here.
     core.raw_write_8(FOG, -1, map.fog as u8);
-    // Dual Strike's look: Wasteland, or Normal (its snow and desert looks
-    // are not in tangoAW2).
-    crate::wasteland::set_biome(
-        core,
-        if map.look == 3 { crate::wasteland::WASTELAND } else { crate::wasteland::NORMAL },
-    );
+    // Dual Strike's look: Normal (AW2's), Snow, Desert or Wasteland.
+    crate::wasteland::set_ds_look(core, map.look);
     if kind(core) == Kind::Money {
         let left = core.raw_read_32(LEFT, -1);
         core.raw_write_32(player(core, 1) + P_FUNDS, -1, left);

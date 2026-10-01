@@ -31,6 +31,7 @@ pub mod ds_units;
 pub mod ds_weather;
 pub mod sandstorm;
 pub mod wasteland;
+pub mod ds_look;
 pub mod com_tower;
 pub mod co_grid;
 pub mod co_new;

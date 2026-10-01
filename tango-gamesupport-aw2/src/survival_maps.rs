@@ -173,7 +173,10 @@ impl Survival {
 pub fn convert_tile(t: u16) -> u16 {
     match t {
         0x1A1 => 0x192,                     // Black Crystal
-        0x146 => 0x086,                     // a tall wood of Dual Strike's: AW2's wood
+        // Dual Strike's other two mountains (it draws every mountain cell as
+        // one of 0x020, 0x146, 0x147 by position: crate::ds_look): AW2's
+        // mountain, as the DS Campaign's maps (crate::ds_campaign_data).
+        0x146 | 0x147 => 0x022,
         0x1B9..=0x1BD => t - 0x1B9 + 0x1D9, // Com Tower: the Lab tiles
         _ => t,
     }

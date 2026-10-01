@@ -359,6 +359,118 @@ Eight Versus maps for the Dual Strike pack, drawn by `five/design_ds_maps.py`
   pack; `test_pipe_seams.py` checks the build menu and the CPU against intact
   and broken seams.
 
+## Dual Strike's looks (`wasteland.rs`, `ds_look.rs`)
+
+Dual Strike draws a map in one of four looks: Normal, Snow, Desert and
+Wasteland. With the pack, Wasteland is a per-map setting of design maps (the
+Design Room's Waste entry) and the look of tangoAW2's Wasteland Versus maps;
+Survival's maps and the DS Campaign's missions bring their own look (Dual
+Strike's look byte, `wasteland::set_ds_look`). Normal stays AW2's own; Snow,
+Desert and Wasteland are drawn with Dual Strike's own terrain graphics,
+converted from the .nds at run time.
+
+- **Dual Strike's terrain.** Two tilesets of 736 tiles: `bmap/000` (Normal,
+  Snow) and `bmap/001` (Desert, Wasteland), coloured by the look's palette
+  file (`bmap/006` Normal, `00a` Snow, `008` Desert, `009` Wasteland; arm9
+  `0x02167DD4` names them per look): 9 sub-palettes, 0-4 terrain, 5 one grey
+  ramp all fog uses, 6-8 buildings (with per-look building colours,
+  `0x02147F40`..). The metatile table (arm9 `0x02143F40`) is laid out as
+  AW2's (AW2's tile ids, four quadrants each); a second table (`0x02145F40`)
+  holds what reaches into the cell above (mountain peaks, treetops, roofs),
+  drawn on a second layer (`0x020F6E74`). Every mountain cell is drawn as one
+  of three mountains by position (`0x020`, `0x146`, `0x147`: table
+  `0x02169E58` at `(x + x/4 + 2y + y/8) & 15`, `0x020F6F34`); woods are
+  `0x086`/`0x087`. The tile layout is AW2's: `0x100..0x1FF` the sea's,
+  `0x200..0x25F` the river's; the Normal tileset's frames are `bmap/004`
+  (4 sea frames) and `bmap/005` (8 river frames), laid out as AW2's own
+  (`0x080C1FC4`, `0x080C9FC4`). The `bmap/001` looks have no frames of their
+  own in the ROM.
+- **Conversion** (`ds_look::build`, once per look at the first frame with the
+  pack). Per AW2 metatile: cells AW2 draws as plain under a building's sprite
+  (every metatile with plain's quadrants; the Black Crystal's and Obelisk's
+  `0x192`/`0x193`; army 5's properties `0x1B4..0x1B9`) get Dual Strike's
+  plain; mountains get Dual Strike's mountain for the cell's position, woods
+  its two woods by id parity; AW2's bridges `0x13`/`0x14`/`0x36`, which Dual
+  Strike lacks, its bridges `0x15`/`0x16`, and AW2's plains with the peak or
+  treetops of the cell below drawn in (`0x03`, `0x43`, `0x106`, `0x107`,
+  `0x126`, `0x127`) its plain (the peak comes from Dual Strike's upper part
+  instead, below); everything else Dual Strike has (sea, shoals, reefs,
+  rivers, roads, pipes, seams, ...) its own metatile. What it lacks (89
+  metatiles: some road corners, the class-0 strips `0x200..0x245`, `0x280`,
+  `0x282`) keeps AW2's tiles, each AW2 colour taking the look's colour it
+  most often lands on where both games draw a metatile; these are static
+  (they live in the tiles never animated). The volcano rim's upper part
+  (`0x1A5`) is not drawn (AW2 draws the volcano as a sprite).
+- **Peaks and treetops.** A mountain's upper part (its bottom 4 rows) and a
+  wood's (2 rows) are drawn over the bottom half of the cell above, as Dual
+  Strike's second layer does, whatever that cell is (plain, road, another
+  mountain, a wood, sea...), and not past the map's top edge. AW2 has one map
+  layer, so tangoAW2 draws the cells itself while a Dual Strike look is on:
+  traps at `BlitMapRow` (`0x08023BAC`) and `BlitMapColumn` (`0x08023A4C`)
+  draw the row or column the game asked for into BG3's tilemap buffer and
+  return (the game's own code otherwise). A cell under which a mountain or
+  wood stands gets composite tiles: its bottom quadrant with the upper part
+  over it, in the palette of the 4 that draws it best (`Look::composite`).
+  Composites go into the tiles no metatile uses (about 230 per look): one
+  already there is used again, else the first one no tilemap entry uses; all
+  the bookkeeping is VRAM and the tilemap buffer, so it is the same on every
+  console and after a rollback. A sea or river quadrant under a peak keeps
+  its first frame.
+- **Animation.** The Snow look uses `bmap/004`/`005` as they are. Desert and
+  Wasteland derive theirs: each pixel of the look's tile equal to the Normal
+  tileset's frame-0 pixel follows the Normal frames, the rest (shores and
+  banks in the look's own shapes) stays. AW2's own timing plays them
+  (`UpdateTerrainAnimation`).
+- **Colours.** AW2 has 4 terrain palettes (BG 0-3; 4-7 the same darkened for
+  fog); Dual Strike's terrain uses 5. They are grouped into 4 by trying every
+  partition and keeping the one with the least mean colour error per tile
+  (frames and upper parts included), each group cut to 15 colours by folding
+  together the two closest colours (the less used goes into the other: the
+  colours stay Dual Strike's own, and one unlike the rest, a wood's green,
+  stays). Mean colour error per pixel is under 1.5 (squared, 5-bit
+  channels) on every metatile. BG palettes 8-15 are untouched. Fog, rain and
+  snow sets come from the clear set by AW2's own colour relations
+  (least-squares fits of AW2's clear set to its fog, rain and snow sets); the
+  Snow look keeps its colours in snow weather. Sandstorm blows sand over the
+  clear set.
+- **Roads.** Dual Strike's Wasteland and Desert roads are faint tracks;
+  `ds_look::ROAD_SHADE` (0: Dual Strike's own) draws every road this many
+  5-bit steps darker (the darker colours go into the palettes with the
+  rest), and the tests follow it.
+- **Drawing.** Each look's data goes in the ROM image's free space
+  (`0x08E80000 + 0x20000 * (look - 1)`: metatiles, the tiles as LZ77, sea
+  frames, river frames, the clear, rain, snow and sandstorm sets). The game
+  reads its terrain through nine literal-pool words (the tiles
+  `LoadGameplayGraphics` decompresses, `0x080234D8`; the metatiles
+  `BlitMapColumn`/`BlitMapRow` draw from, `0x08023B08`, `0x08023C6C` and
+  their `+6` words `0x08023B1C`, `0x08023BA8`, `0x08023C80`, `0x08023D10`;
+  the frames `LoadSeaAnimFrame`/`LoadRiverAnimFrame` copy, `0x08021D94`,
+  `0x08021DCC`). `wasteland::sync` points them at the look's data while one
+  is drawn and at AW2's otherwise, from RAM alone, at each reader's entry
+  (traps `0x08023360`, `0x08023A4C`, `0x08023BAC`, `0x08021D64`,
+  `0x08021DA0`) and every frame. With the pack off nothing is written and
+  the game draws its own map. `sub_08035020`'s trap (`sandstorm.rs`) gives
+  the look's colour set for the weather.
+- **The Design Room.** A on the map with the Waste entry switches Normal and
+  Wasteland: the next frame the colours, the terrain tiles in VRAM and the
+  map's tilemap (`RenderMap` done in Rust) are the new look's.
+- **Kept AW2's.** Buildings and structures (sprites in AW2; Dual Strike draws
+  them in its map layers), the battle backgrounds of Desert and Snow
+  (Wasteland's are Dual Strike's, `ds_backdrop.rs`), the terrain panel's
+  pictures, the mini maps.
+- Tests: `tools/aw2test/aw2test/looks.py` renders Dual Strike's own drawing
+  from the .nds (lower layer, upper layer into the cell above, the mountain
+  by position, the frame on screen, the weather's and fog's colours) and
+  compares the terrain layer read back from VRAM (BG3's tilemap, tiles,
+  palette RAM: no units, cursor or windows) cell by cell, within the colour
+  reduction's tolerance (mean squared error 6 per pixel). `test_biome.py`
+  (each look's data metatile by metatile; the screen in clear, rain with fog,
+  snow and sandstorm, at several animation frames; the Design Room's switch
+  and scrolling), and whole maps swept with the cursor and checked at every
+  view: tangoAW2's four Wasteland Versus maps (`test_ds_maps.py`) and every
+  Survival map in a Dual Strike look (`test_survival.py`); every DS Campaign
+  mission's first view (`test_ds_campaign.py`).
+
 ## Black Crystal and Black Obelisk (`obelisk.rs`, `five/obelisk_art.py`)
 
 Dual Strike's healing structures, built on two of the game's inventions so
@@ -458,7 +570,7 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 | COs | `co_roster.rs`, `co_new.rs`, `co_powers.rs`, `ds_co_art.rs`, `ds_power_art.rs`, `power_anim.rs` | CO table grown to 96 rows (0x086A0000), Dual Strike's numbers for AW2's COs (and its 200% defence cap), 9 new COs at ids 72..80 (face ids stay unambiguous), their pictures, texts, powers and Dual Strike's power animations (Ex Machina, Covering Fire, Urban Blight), and Dual Strike's choice of power effect on their units |
 | CO screen | `co_grid.rs` | The unit grid (map menu > CO, its last page) gets a second page: ground units, then air and naval units, in the build menus' order, every unit with its icon in the viewed army's colours (the new units in the map sheet's slots for other countries' Infantry and Mech) and its firepower bar (Dual Strike's bonuses take the nearest of AW2's 13 bars) and move / range change |
 | CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike; a base builds Piperunners (for the CPU and in the build menu) only by a pipe or an intact seam |
-| Terrain | `com_tower.rs`, `wasteland.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), the Wasteland look, the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
+| Terrain | `com_tower.rs`, `wasteland.rs`, `ds_look.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), Dual Strike's Wasteland, Desert and Snow looks drawn with its own terrain (below), the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
 | Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation and sound for each (arm9 0x0213E078 / 0x0213E2A0; SE 175 / 176), the camera visiting each |
 | Music | `ds_music.rs` | The nine new COs' own map themes, Dual Strike's, converted to AW2's sound engine (below) |
 | Maps | `five_map.rs`, `five/design_ds_maps.py` | Eight Versus maps (2P to 5P, a Wasteland set and a sea set) with Com Towers, Piperunner pipes and Black Hole's structures (above) |
@@ -476,7 +588,8 @@ powers' code, heal wait), 0x087C0000..0x087C0FFF (power animations),
 0x0862D000..0x0862D0FF (Survival's text ids 0x7172..), 0x08E00000..0x08E4FFFF (Survival: the map
 table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
 0x0862DA38..0x08630A37 (the DS Campaign's text ids 0x7400..0x7FFF),
-0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used).
+0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used),
+0x08E80000..0x08EDFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow).
 Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
@@ -693,8 +806,9 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
   runs' entries (each the run's first map, named after its kind), 0xCC..0xEC
   the maps in Dual Strike's id order. Tiles are AW2's own ids except Dual
   Strike's Black Crystal (0x1A1 -> tangoAW2's 0x192), Com Towers (0x1B9..0x1BD
-  -> the Labs 0x1D9..0x1DD) and a tall wood of its own (0x146 -> AW2's wood
-  0x086; AW2 has no such tile). Their 4x4 structures (Convoy Cape, Lone Wolf,
+  -> the Labs 0x1D9..0x1DD) and its other two mountains (0x146, 0x147 ->
+  AW2's mountain 0x022, as the DS Campaign's maps: Dual Strike draws every
+  mountain cell as one of 0x020, 0x146, 0x147 by position). Their 4x4 structures (Convoy Cape, Lone Wolf,
   Silo Sweep) are AW2's own tiles, as on AW2's T Minus 15 and Sea Fortress,
   and are drawn as a sprite whose picture the map header names
   (`tileGraphic4x4`, +0x10, loaded by `LoadInventionGraphics`
@@ -717,8 +831,8 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
   Room never had fewer than seven maps).
 - **Rules per map** (at every map start, `sandstorm.rs`'s trap `0x08035490`):
   the weather as fixed weather (sandstorm as tangoAW2's fixed sandstorm), the
-  Wasteland look for Dual Strike's wasteland maps (its snow and desert looks
-  are drawn as the normal look), the run's CO, and for Money the funds (the
+  map's look (Snow, Desert and Wasteland drawn with Dual Strike's own terrain,
+  `wasteland::set_ds_look`; Normal is AW2's), the run's CO, and for Money the funds (the
   pool) with no income (`propertyFunds` 0, and any funds gained are taken
   back every frame), and the map's fog (the War Room sets gPlaySt's fog from
   the header of the map it opened with, `sub_080346FC`, before one is
@@ -758,8 +872,6 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
   map) where Dual Strike keeps a pair; the record keeps that CO.
 - The Champion courses (endless, unlocked by clearing the basic ones) are not
   included.
-- Dual Strike's snow and desert looks are drawn as AW2's normal look (the
-  maps' weather is theirs).
 - A run cannot be suspended mid-map, and turning the console off loses a run
   in progress (Dual Strike saves its survival state); records are saved.
 - The War Room's CO screen colours the player's army by its CO's country and
@@ -865,8 +977,9 @@ overlay 1, the campaign's code, at `0x02350560`).
 - **Rules per mission**: the header names AW2's picture of a 4x4
   structure (+0x10, the same bytes as Dual Strike's) and the fog; at each
   mission start (`crate::sandstorm`'s map-start trap `0x08035490`) the fog,
-  the weather as fixed weather (sandstorm as tangoAW2's) and the Wasteland
-  look are set (Dual Strike's snow and desert looks are drawn as normal).
+  the weather as fixed weather (sandstorm as tangoAW2's) and the look are set
+  (Snow, Desert and Wasteland drawn with Dual Strike's own terrain,
+  `wasteland::set_ds_look`).
 - **Means to an End**: the Grand Bolt is a picture of tiles (laid out as a
   sheet) AW2 has no art for; it becomes plains with a Black Obelisk on each
   of its three weak points ((3, 9), (9, 11), (15, 9), where Dual Strike's

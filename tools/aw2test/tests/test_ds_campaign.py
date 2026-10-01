@@ -8,7 +8,7 @@ Without the pack the menu is AW2's own."""
 import os
 
 from aw2test import dscampaign as dc
-from aw2test import paths, ram
+from aw2test import looks, paths, ram
 from aw2test import rom as romlib
 from aw2test import survival as sv
 from aw2test.emu import Emu
@@ -429,7 +429,10 @@ def _every_mission(step):
         ctx.eq(e.u8(ram.WEATHER), want_weather, f"{label}: weather")
         if m["weather"] == 3:
             ctx.eq(e.u8(sv.WEATHER_MODE), 3, f"{label}: sandstorm (fixed weather)")
-        ctx.eq((e.u8(sv.BIOME) >> 4) & 7, 1 if m["look"] == 3 else 0, f"{label}: Wasteland look")
+        biome = {0: looks.NORMAL, 1: looks.SNOW, 2: looks.DESERT, 3: looks.WASTELAND}[m["look"]]
+        ctx.eq((e.u8(sv.BIOME) >> 4) & 7, biome, f"{label}: the look")
+        if biome != looks.NORMAL:
+            looks.check_screen(ctx, g, biome, f"{label}: ")
         header = e.u32(0x080196EC) + 0x5C * e.u8(dc.MAP_ID)
         structure = m["structure"] or ("0a5" if any(0x1AA <= t <= 0x1AD for t in m["tiles"]) else
                                        "0a6" if any(0x1AE <= t <= 0x1B1 for t in m["tiles"]) else None)

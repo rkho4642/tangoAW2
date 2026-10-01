@@ -2,10 +2,14 @@
 units lose a square of range in a sandstorm as the player's do, and it plays a
 Wasteland map with the same rules while the map keeps Wasteland's colours."""
 
-from aw2test import damage
+from aw2test import damage, looks
 from aw2test.harness import test
 
-from tests.test_biome import wasteland_map, PAL_BUFFER, AW2_CLEAR, WASTELAND_CLEAR, BIOME
+wasteland_map = looks.sample_map
+PAL_BUFFER = looks.PAL_BUFFER
+AW2_CLEAR = looks.AW2_CLEAR
+WASTELAND_CLEAR = looks.look_rom(looks.WASTELAND) + looks.AT_CLEAR
+BIOME = looks.BIOME
 
 
 def cpu_indirect(ctx, weather, unit, dist):
@@ -47,6 +51,7 @@ def cpu_turn_on_wasteland(ctx, weather):
         ctx.shot(gg, f"cpu_turn_{weather}")
     g.end_turn(observe=during)
     ctx.eq(g.e.u8(BIOME) >> 4 & 7, 1, "still Wasteland")
+    looks.check_screen(ctx, g, looks.WASTELAND, "after the CPU's turn: ")
     ctx.check(seen["palette"] != g.e.read(AW2_CLEAR, 128), "the CPU's turn is drawn in Wasteland's colours")
     if weather == "clear":
         ctx.eq(seen["palette"], g.e.read(WASTELAND_CLEAR, 128), "Wasteland's clear colours during the CPU's turn")

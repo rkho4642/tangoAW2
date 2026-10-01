@@ -8,12 +8,13 @@ it is there."""
 import os
 import struct
 
-from aw2test import paths, ram
+from aw2test import looks, paths, ram
 from aw2test import rom as romlib
 from aw2test import survival as sv
 from aw2test.emu import Emu
 from aw2test.game import Game
 from aw2test.harness import Skip, test
+from aw2test.stitch import stitch
 
 PLAYERS = 0x020232C0  # army 1's block (four armies)
 P_FUNDS, P_HUMAN, P_YIELD = 0x00, 0x1B, 0x31
@@ -72,7 +73,13 @@ def check_map(ctx, e, g, data, m, label):
                   f"{label}: sandstorm")
     else:
         ctx.eq(e.u8(ram.WEATHER), m["weather"], f"{label}: weather")
-    ctx.eq((e.u8(sv.BIOME) >> 4) & 7, 1 if m["look"] == 3 else 0, f"{label}: Wasteland look")
+    # Dual Strike's look (0 normal, 1 snow, 2 desert, 3 wasteland) as
+    # tangoAW2's biome (crate::wasteland::set_ds_look), drawn with Dual
+    # Strike's terrain (aw2test/looks.py).
+    biome = {0: looks.NORMAL, 1: looks.SNOW, 2: looks.DESERT, 3: looks.WASTELAND}[m["look"]]
+    ctx.eq((e.u8(sv.BIOME) >> 4) & 7, biome, f"{label}: the look")
+    if biome != looks.NORMAL:
+        looks.check_screen(ctx, g, biome, f"{label}: ")
     # The War Room gives the player's army its CO's colour and moves a
     # computer army that had it to another.
     # Two armies Dual Strike gives one colour (Single File Isle's allies)
@@ -302,7 +309,7 @@ for _k in (sv.MONEY, sv.TURN, sv.TIME):
         _every_map(_k, _s)
 
 
-def _cpu(kind, stage, days=4):
+def _cpu(kind, stage, days=4, holds=()):
     def fn(ctx):
         """Every army a CPU on a Survival map: days pass, nothing hangs."""
         data, e, g = start_run(ctx, kind)
@@ -330,16 +337,58 @@ def _cpu(kind, stage, days=4):
             return
         moved = {u["army"] for u in g.units() if before.get(u["id"]) != (u["x"], u["y"], u["hp"])}
         have = {a for a, _, _, _ in m["units"]}
-        ctx.check(have <= moved | {u["army"] for u in g.units() if u["id"] not in before},
+        ctx.check(have <= moved | set(holds) | {u["army"] for u in g.units() if u["id"] not in before},
                   f"{m['name']}: every army with units acted ({sorted(moved)})")
     fn.__name__ = "survival_cpu_" + str(kind) + "_" + str(stage)
     test(modes=("ds",))(fn)
 
 
+def _look(kind, stage):
+    def fn(ctx):
+        """A Survival map in Dual Strike's look, against the .nds."""
+        data, e, g = start_run(ctx, kind)
+        m = data.map(data.run(kind)[stage])
+        if stage > 0:
+            g.wait_for_input()
+            e.w8(sv.STAGE, stage - 1)
+            ctx.require(win(ctx, e, g, data.map(data.run(kind)[0])["armies"]), "back on SELECT MAP")
+            ctx.require(sv.pick(e, 0), f"{m['name']} starts")
+        g.wait_for_input()
+        check_map(ctx, e, g, data, m, m["name"])
+        shot(ctx, e, m["name"].lower().replace(" ", "_").replace(".", ""))
+        biome = {1: looks.SNOW, 2: looks.DESERT, 3: looks.WASTELAND}[m["look"]]
+        sweep = looks.Sweep(ctx, g, biome, f"{m['name']}: ")
+        stitch(ctx, g, m["name"], m["w"], m["h"], each=sweep)
+        sweep.done(m["w"], m["h"])
+    fn.__name__ = "survival_look_" + str(kind) + "_" + str(stage)
+    test(modes=("ds",))(fn)
+
+
+# Every map in a Dual Strike look (Snow, Desert, Wasteland), photographed whole
+# and checked cell by cell against Dual Strike's drawing (Red Heart, Triple
+# Threat, Bad Pangaea, Mr. Fix-It and Frozen Pipes among them).
+def _looked_maps():
+    try:
+        data = sv.Survival()
+    except OSError:
+        return []
+    return [(k, i) for k in (sv.MONEY, sv.TURN, sv.TIME) for i, d in enumerate(data.run(k))
+            if data.map(d)["look"] != 0]
+
+
+for _k, _s in _looked_maps():
+    _look(_k, _s)
+
+
 # Convoy Cape, Crystal Field (Black Crystals), Chokepoint (three armies),
 # The Gooping (Oozium), Triple Threat (the largest), Cape Splinter (volcanoes).
-for _k, _s in ((sv.TURN, 0), (sv.TURN, 8), (sv.MONEY, 2), (sv.MONEY, 7), (sv.MONEY, 6), (sv.TIME, 2)):
-    _cpu(_k, _s)
+# On Crystal Field Black Hole (army 2) only has indirect units by its Crystals,
+# and Dual Strike's mountain border (0x146: survival_maps.rs) keeps army 1's
+# vehicles out of their range: it may hold.
+for _k, _s, _h in ((sv.TURN, 0, ()), (sv.TURN, 8, (2,)), (sv.MONEY, 2, ()), (sv.MONEY, 7, ()), (sv.MONEY, 6, ()), (sv.TIME, 2, ())):
+    _cpu(_k, _s, holds=_h)
+
+
 
 
 @test(modes=("aw2",))

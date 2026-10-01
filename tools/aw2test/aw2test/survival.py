@@ -53,8 +53,8 @@ BUDGETS = 0x02168D04
 
 
 def convert_tile(t):
-    if t == 0x146:
-        return 0x086          # a tall wood of Dual Strike's: wood
+    if t in (0x146, 0x147):
+        return 0x022          # Dual Strike's other mountains: AW2's mountain
     if t == 0x1A1:
         return 0x192          # Black Crystal (obelisk.rs)
     if 0x1B9 <= t <= 0x1BD:

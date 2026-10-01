@@ -297,8 +297,8 @@ pub fn sand_colour(c: u16) -> u16 {
 }
 
 /// `sub_08035020` (map colours for the weather), the palette in r0 just
-/// before it is applied: the sand colours in a sandstorm, and a Wasteland
-/// map's colours ([`crate::wasteland`]). Whatever loads
+/// before it is applied: the sand colours in a sandstorm, and a Dual Strike
+/// look's colours for the weather ([`crate::wasteland::palette_set`]). Whatever loads
 /// the map's colours comes here (map start, a resumed game, the weather
 /// change fade), so the colours follow the sandstorm.
 const MAP_PALETTE: u32 = 0x0803_503C;
@@ -310,13 +310,11 @@ fn map_palette(core: &mut Core) {
     }
     let sand = active(core);
     core.raw_write_8(SAND_SHOWN, -1, sand as u8);
-    let wasteland = crate::wasteland::is_wasteland(core);
-    let set = match (sand, wasteland, core.raw_read_8(WEATHER, -1)) {
-        (true, false, _) => SAND_PALETTE,
-        (true, true, _) => crate::wasteland::SAND_AT,
-        (false, true, 0) => crate::wasteland::CLEAR_AT,
-        (false, true, 2) => crate::wasteland::RAIN_AT,
-        _ => return,
+    let weather = core.raw_read_8(WEATHER, -1);
+    let set = match crate::wasteland::palette_set(core, sand, weather) {
+        Some(set) => set,
+        None if sand => SAND_PALETTE,
+        None => return,
     };
     core.gba_mut().cpu_mut().set_gpr(0, set as i32);
 }

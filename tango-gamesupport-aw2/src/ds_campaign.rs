@@ -511,8 +511,9 @@ const DEFAULT_WEATHER: u32 = 0x0300_3FEF;
 /// At every map start (`crate::sandstorm`'s trap on
 /// `CalcRandomWeatherChances`), in a DS mission: its fog, its weather as
 /// fixed weather (snow, rain, or tangoAW2's sandstorm: fixed with clear as
-/// the default, as Survival's maps), and Dual Strike's Wasteland look (its
-/// snow and desert looks are drawn as the normal one).
+/// the default, as Survival's maps), and Dual Strike's look (Normal is AW2's;
+/// Snow, Desert and Wasteland are drawn with Dual Strike's own terrain,
+/// [`crate::wasteland::set_ds_look`]).
 pub fn map_start(core: &mut Core) {
     if !active(core) || core.raw_read_8(MAP_ID, -1) != data::MAP_ID {
         return;
@@ -529,7 +530,7 @@ pub fn map_start(core: &mut Core) {
     core.raw_write_8(WEATHER, -1, w);
     core.raw_write_8(NEXT_WEATHER, -1, w);
     core.raw_write_8(FOG, -1, m.fog as u8);
-    crate::wasteland::set_biome(core, if m.look == 3 { crate::wasteland::WASTELAND } else { crate::wasteland::NORMAL });
+    crate::wasteland::set_ds_look(core, m.look);
 }
 
 /// The mission's armies the player picks a CO for (Dual Strike's 0x1C), and
