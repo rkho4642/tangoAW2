@@ -638,9 +638,20 @@ fn cmd(op: u32, w1: u32, h8: u16, ha: u16, wc: u32) -> [u8; 16] {
 }
 
 /// AW2 music for a Dual Strike song id (op 0x47), where AW2 has a like one.
+///
+/// Dual Strike's mission scripts play six event songs (its sound archive's
+/// names): its allies' scenes (`BGM_ALLY_EVENT1`/`2`) and a crisis
+/// (`BGM_EVENT_PINCH1`) get the song AW2's campaign plays for its own
+/// allies' alarms (413); Black Hole's scenes (`BGM_ENEMY_EVENT1`/`2`) the one
+/// AW2 plays for Black Hole's officers (411); Von Bolt's
+/// (`BGM_HAGEVOLT_EVENT1`) the one AW2 plays at Sturm's citadel (220).
 fn aw2_song(ds_song: u32) -> Option<u16> {
-    let _ = ds_song;
-    None
+    match ds_song {
+        0x19 | 0x1A | 0x2D => Some(413),
+        0x16 | 0x17 => Some(411),
+        0x23 => Some(220),
+        _ => None,
+    }
 }
 
 /// One Dual Strike command as AW2's. `at` is the AW2 address it lands on
@@ -724,7 +735,9 @@ fn convert_command(cx: &mut Ctx, at: u32, c: &[u8]) -> ([u8; 16], Option<(usize,
             Some(s) => cmd(0x41, 0, s, 0, 0),
             None => nop,
         },
-        0x49 => nop,
+        // The event's song ends (AW2 fades it out the same way, before the
+        // window closes; the map's music comes back after the script).
+        0x49 => cmd(0x42, 0, 0, 0, 0),
         0x51 => cmd(0x46, 0, h(8), h(10), 0),
         0x5A => {
             let s = cx.magic(Magic::Countdown(wc));
