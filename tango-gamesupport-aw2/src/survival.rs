@@ -616,7 +616,9 @@ fn end_of_game(core: &mut Core) {
 const SET_MAP_PLAYED: u32 = 0x0803_CA28;
 fn set_map_played(core: &mut Core) {
     let id = core.gba().cpu().gpr(0) as u32;
-    if id >= FIRST_ID as u32 && core.raw_read_8(ON, -1) == 1 {
+    // The played bits stop at 0xBF: Survival's maps and the DS Campaign's
+    // (crate::ds_campaign) are left out.
+    if id >= FIRST_ID as u32 && (core.raw_read_8(ON, -1) == 1 || crate::ds_campaign::active(core)) {
         let lr = core.gba().cpu().gpr(14) as u32;
         core.gba_mut().cpu_mut().set_thumb_pc(lr & !1);
     }

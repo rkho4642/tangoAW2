@@ -6,25 +6,25 @@ import struct
 from .game import Game, NavError
 
 # tangoAW2's DS Campaign RAM (crate::ds_campaign).
-ACTIVE = 0x0203FA00
-REQUEST = 0x0203FA01
-MISSION = 0x0203FA02
-PROGRESS = 0x0203FA40
+ACTIVE = 0x0203FD10
+REQUEST = 0x0203FD11
+MISSION = 0x0203FD12
+PROGRESS = 0x0203FD30
 P_MAGIC = PROGRESS
 P_NEXT = PROGRESS + 4
 P_WON = PROGRESS + 8
 PROGRESS_MAGIC = 0x43445741
-MAP_ID_BASE = 0xD8
+DS_MAP_ID = 0xF0  # every DS mission is played on this map id
 # The menu's state (crate::campaign_menu).
-MENU_LEVEL = 0x0203FA30
-MENU_CHOICE = 0x0203FA31
+MENU_LEVEL = 0x0203FD13
+MENU_CHOICE = 0x0203FD14
 
 MAP = 0x0201E450         # gMap: size, units layer +0x12, classes +0x1432, rows +0x417A
 # Direct-combat ground units able to fire (Infantry, Mech, Md Tank, Tank,
 # Recon, Neotank, Megatank) and the land classes a unit may stand on.
 DIRECT = (1, 2, 3, 4, 5, 6, 8)
 LAND = (1, 3, 4, 5, 6, 8, 0x0A, 0x0B, 0x0C, 0x0E, 0x14)
-WHEEL = 0x08616A08       # the Select Mode carousel's proc script
+WHEELS = (0x08616A08, 0x08616A40)  # the Select Mode carousel's proc scripts (entered, come back)
 CO_SELECT = 0x086165C0   # the CO select screen's proc script
 SELECT_MODE_CURSOR = 0x0300591C
 CAMPAIGN = 4
@@ -55,6 +55,26 @@ class DsCampaign:
         b = self.e.read(PROGRESS, 0x10)
         magic, nxt, won = struct.unpack_from("<IBxxxI", b, 0)
         return {"valid": magic == PROGRESS_MAGIC, "next": nxt, "won": won}
+
+    def text_shown(self):
+        """The text of the dialogue box an event script shows now (op 0x19,
+        AW2's ShowText), or None."""
+        e = self.e
+        for i in range(10):
+            cur = e.u32(EVENT_SLOTS + 0x18 * i + 4)
+            if not e.u32(EVENT_SLOTS + 0x18 * i) or not 0x08000010 <= cur < 0x09000000:
+                continue
+            # the box being shown (its command done) or about to be
+            for c in (cur - 16, cur):
+                if e.u32(c) == 0x19:
+                    break
+            else:
+                continue
+            tid = e.u16(c + 8)
+            p = e.u32(0x08610A38 + 4 * tid)
+            raw = e.read(p, 400)
+            return raw[:raw.index(b"\0")].decode("latin-1") if b"\0" in raw else None
+        return None
 
     def scripts_running(self):
         b = self.e.read(EVENT_SLOTS, 0x18 * 10)
@@ -115,7 +135,7 @@ class DsCampaign:
 
     def wheel(self):
         for p in range(0x0200D610, 0x0200E418, 0x6C):
-            if self.e.u32(p) == WHEEL:
+            if self.e.u32(p) in WHEELS:
                 return p
         return None
 
@@ -304,3 +324,67 @@ class DsCampaign:
 
     def size(self):
         return self.e.u16(MAP), self.e.u16(MAP + 2)
+
+
+# -- Dual Strike's campaign, read from the .nds (independent of the Rust) -------
+DS_OV0 = 0x022AD560
+DS_RECORDS = 0x022DBD28 + 0xA0 * 0xE0   # the campaign's map records, 0xA0 bytes
+DS_TEXT_GROUPS = DS_OV0 + 0x49690
+# The campaign's order (ds_campaign::ORDER): 25 story missions with the three
+# research-lab side missions (records 25..27) after the missions that open them.
+ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 26, 12, 13, 27, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+
+
+class DsData:
+    """Dual Strike's campaign missions as its ROM has them."""
+
+    def __init__(self, ds=None):
+        from . import rom as romlib
+        self.ds = ds or romlib.DualStrike()
+        self.lz10 = romlib.lz10
+
+    def bytes(self, a, n):
+        o = a - DS_OV0
+        return self.ds.ov0[o:o + n]
+
+    def u32(self, a):
+        return struct.unpack("<I", self.bytes(a, 4))[0]
+
+    def text(self, ref):
+        """A text by reference (bank << 24 | index), as bytes."""
+        p = DS_TEXT_GROUPS
+        while True:
+            key, group = struct.unpack("<II", self.bytes(p, 8))
+            if key == 0xFFFFFFFF:
+                return None
+            if key >> 24 == ref >> 24:
+                break
+            p += 8
+        at = self.u32(group + 4 * (ref & 0xFFFFFF))
+        raw = self.bytes(at, 0x800)
+        return raw[:raw.index(b"\0")]
+
+    def mission(self, i):
+        r = self.bytes(DS_RECORDS + 0xA0 * i, 0xA0)
+        w = lambda o: struct.unpack_from("<I", r, o)[0]
+        h = lambda o: struct.unpack_from("<H", r, o)[0]
+        m = self.lz10(self.bytes(w(0x44), 0x2000))
+        width, height = m[0], m[1]
+        tiles = list(struct.unpack_from(f"<{width * height}H", m, 2))
+        units, army, p = [], None, w(0x4C)
+        while True:
+            u = self.bytes(p, 13)
+            p += 13
+            if u[0] == 0xFF:
+                break
+            if u[0] == 0xFE:
+                army = u[1]
+                continue
+            t = {25: 26, 26: 27}.get(u[2], u[2])  # Carrier, Oozium: tangoAW2's ids
+            if 1 <= t <= 27:
+                units.append((army, u[0], u[1], t))
+        return {
+            "name": self.text(0xC0000000 | h(0x14)).decode("latin-1"),
+            "w": width, "h": height, "tiles": tiles, "units": units,
+            "armies": h(0x24),
+        }

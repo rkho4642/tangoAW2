@@ -368,6 +368,16 @@ fn install(core: &mut Core, help_text: u16) -> bool {
     true
 }
 
+/// The item at a wheel position (the game reads `table[(position + 2) %
+/// n]`, n = 6, or 7 with Survival's entry).
+pub fn item(core: &Core, position: u32) -> u8 {
+    if active(core) {
+        TABLE[(position as usize + 2) % 7]
+    } else {
+        core.raw_read_8(GAME_TABLE + (position + 2) % 6, -1)
+    }
+}
+
 /// Whether the wheel has seven entries now (the patches are in).
 pub fn active(core: &Core) -> bool {
     BUILT.get().is_some_and(|b| b.table_pools.first().is_some_and(|&p| core.raw_read_32(p, -1) == DATA_TABLE))

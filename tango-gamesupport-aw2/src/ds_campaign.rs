@@ -8,11 +8,11 @@
 //!   free space at [`DATA`] (maps, deployments, AW2 event scripts and
 //!   trigger lists, texts, the magic stubs), its texts into the text
 //!   table's free tail ([`crate::ds_campaign_data::TEXT_FIRST`]..).
-//! - **Map table.** AW2 reads every map header from its map table (tangoAW2
-//!   moved it, [`crate::five_map`]). While a DS Campaign session is on
-//!   ([`ACTIVE`]), the table's 37 literal-pool words point at a copy with
-//!   the campaign's maps at ids [`crate::ds_campaign_data::MAP_ID_BASE`]..;
-//!   otherwise at the usual table.
+//! - **Map table.** AW2 reads every map header from its map table; with
+//!   the pack that is tangoAW2's copy with room for 0x100 ids
+//!   ([`crate::survival::TABLE`]). A mission is played on map id
+//!   [`crate::ds_campaign_data::MAP_ID`]: its header is written into that
+//!   entry when the mission starts.
 //! - **Start.** The Select Mode menu's DS Campaign entry
 //!   ([`crate::campaign_menu`]) sets [`REQUEST`]; the game then calls its
 //!   own Campaign New/Continue handler (`sub_0803BA4C` / `sub_0803BA88`),
@@ -39,32 +39,36 @@ use std::sync::OnceLock;
 use crate::ds_campaign_data as data;
 
 /// The campaign's ROM blob: past the Dual Strike music (0x08800000..
-/// 0x08D2FFFF), past the 8 MB cartridge (mGBA grows the image).
-pub const DATA: u32 = 0x08E0_0000;
-const DATA_END: u32 = 0x08F0_0000;
-/// The map table copy used during a session: 0x100 entries.
-const DS_MAP_TABLE: u32 = 0x08DF_0000;
+/// 0x08D2FFFF) and Survival (0x08E00000..0x08E4FFFF), past the 8 MB
+/// cartridge (mGBA grows the image). A mark first, the blob from +0x100.
+pub const DATA: u32 = 0x08F0_0000;
+const DATA_END: u32 = 0x0900_0000;
 const ENTRY: u32 = 0x5C;
 const MAGIC_WORD: u32 = 0x4443_5344; // "DSCD"
-const MAGIC_AT: u32 = DS_MAP_TABLE - 4;
+const MAGIC_AT: u32 = DATA;
 /// AW2's font widths (for re-wrapping Dual Strike's dialogue).
 const FONT_WIDTHS: u32 = 0x084C_36E4;
 
-// --- RAM (EWRAM the game never touches; 0x0203FA00..0x0203FBFF) ------------------
+// --- RAM (EWRAM the game never touches; 0x0203FD10..0x0203FD5F) ------------------
 
 /// 1 while a DS Campaign session is on (from its start to the menu).
-pub const ACTIVE: u32 = 0x0203_FA00;
+pub const ACTIVE: u32 = 0x0203_FD10;
 /// The Select Mode menu's request: 0 none, 1 New, 2 Continue.
-pub const REQUEST: u32 = 0x0203_FA01;
+pub const REQUEST: u32 = 0x0203_FD11;
 /// The mission being played (index 0..27).
-pub const MISSION: u32 = 0x0203_FA02;
+pub const MISSION: u32 = 0x0203_FD12;
+/// The Select Mode sub-menu's level and row ([`crate::campaign_menu`]).
+pub const MENU_LEVEL: u32 = 0x0203_FD13;
+pub const MENU_CHOICE: u32 = 0x0203_FD14;
 /// Real-time countdown (frames), Dual Strike's op 0x5A; 0 off.
-const COUNTDOWN: u32 = 0x0203_FA04;
+const COUNTDOWN: u32 = 0x0203_FD18;
 /// The campaign's flags 0x20..0x9F (16 bytes).
-const FLAGS: u32 = 0x0203_FA10;
+const FLAGS: u32 = 0x0203_FD20;
 /// The progress record saved to Flash ([`SAVE_SIZE`] bytes).
-pub const PROGRESS: u32 = 0x0203_FA40;
-const SAVE_SIZE: u32 = 0x40;
+pub const PROGRESS: u32 = 0x0203_FD30;
+const SAVE_SIZE: u32 = 0x20;
+#[cfg(test)]
+const RAM_END: u32 = 0x0203_FD60;
 /// Progress layout: magic, version, next mission, missions won (bits), the
 /// flags 0x20..0x9F.
 const P_MAGIC: u32 = PROGRESS;
@@ -113,6 +117,12 @@ const CO_GROUP_SWITCH: u32 = 0x0300_59C0;
 pub const FLOW_CO_SETUP: u8 = 1;
 pub const FLOW_SAVE: u8 = 2;
 pub const FLOW_HIDE: u8 = 3;
+pub const FLOW_CLEAR: u8 = 4;
+
+/// The BG0 tilemap buffer's pointer word (`gBG0TilemapBuffer`) and
+/// `BG_EnableSyncBG0` (copies it to VRAM at the next VBlank).
+const BG0_BUFFER_PTR: u32 = 0x0849_9578;
+const BG0_SYNC: u32 = 0x0801_3AEC;
 
 /// The map menu's Save item: its hide test (menu table entry 0x0849AB64,
 /// `sub_0802C644`). During a session it points at a magic stub that hides
@@ -141,6 +151,16 @@ fn save(core: &mut Core) {
     cpu.set_thumb_pc(SLOT_WRITER);
 }
 
+/// Empties the BG0 tilemap buffer, then tail-calls `BG_EnableSyncBG0`
+/// (which returns to the proc).
+fn clear_bg0(core: &mut Core) {
+    let buffer = core.raw_read_32(BG0_BUFFER_PTR, -1);
+    if (0x0200_0000..0x0204_0000).contains(&buffer) {
+        core.raw_write_range(buffer, -1, &[0u8; 0x800]);
+    }
+    core.gba_mut().cpu_mut().set_thumb_pc(BG0_SYNC);
+}
+
 fn proc_cmd(op: u16, arg: i16, ptr: u32) -> [u8; 8] {
     let mut c = [0u8; 8];
     c[0..2].copy_from_slice(&op.to_le_bytes());
@@ -150,14 +170,17 @@ fn proc_cmd(op: u16, arg: i16, ptr: u32) -> [u8; 8] {
 }
 
 /// The proc that starts a mission: save the progress, the CO select when
-/// the player picks COs, then AW2's own mission start
+/// the player picks COs, an empty BG0 (the text layer: AW2's own campaign
+/// reaches its mission card through screens that clear it; from Select
+/// Mode its help line would stay on the card), then AW2's own mission start
 /// (`ResetRulesAfterCampaignMap`, the mission title, the battle).
-fn start_proc_script(save: u32, co_setup: u32) -> Vec<u8> {
+fn start_proc_script(save: u32, co_setup: u32, clear: u32) -> Vec<u8> {
     [
         proc_cmd(0x02, 0, save | 1),
         proc_cmd(0x28, 1, co_setup),
         proc_cmd(0x06, 1, CO_SELECT_PROC),
         proc_cmd(0x0B, 1, 0),
+        proc_cmd(0x02, 0, clear),
         proc_cmd(0x02, 0, RESET_RULES),
         proc_cmd(0x0D, 0, MISSION_PROC),
         proc_cmd(0x00, 0, 0),
@@ -185,7 +208,8 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let save = built.add_magic(data::Magic::Flow(FLOW_SAVE)) & !1;
             let co_setup = built.add_magic(data::Magic::Flow(FLOW_CO_SETUP));
             let hide_stub = built.add_magic(data::Magic::Flow(FLOW_HIDE));
-            let start_proc = built.add(&start_proc_script(save, co_setup));
+            let clear = built.add_magic(data::Magic::Flow(FLOW_CLEAR));
+            let start_proc = built.add(&start_proc_script(save, co_setup, clear));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
             Some(Campaign { built, start_proc, hide_stub })
         })
@@ -207,17 +231,15 @@ fn install(core: &mut Core) -> bool {
     for &(id, at) in &b.texts {
         core.raw_write_32(data::TEXT_TABLE + 4 * id as u32, -1, at);
     }
-    // The session's map table: the usual one, then the campaign's maps.
-    let mut table = vec![0u8; (0x100 * ENTRY) as usize];
-    let n = (crate::five_map::MAP_IDS * ENTRY) as usize;
-    core.raw_read_range(crate::five_map::MAP_TABLE, -1, &mut table[..n]);
-    for (id, h) in &b.headers {
-        let o = (*id as u32 * ENTRY) as usize;
-        table[o..o + ENTRY as usize].copy_from_slice(h);
-    }
-    core.raw_write_range(DS_MAP_TABLE, -1, &table);
     core.raw_write_32(MAGIC_AT, -1, MAGIC_WORD);
     true
+}
+
+/// The map table the game reads, when it has room for [`data::MAP_ID`]
+/// (tangoAW2's 0x100-id copy, in use with the pack).
+fn big_table(core: &Core) -> Option<u32> {
+    let t = crate::five_map::table(core);
+    (t == crate::survival::TABLE).then_some(t)
 }
 
 pub fn active(core: &Core) -> bool {
@@ -235,15 +257,7 @@ pub fn tick(core: &mut Core, ds: bool) {
     if !on && core.raw_read_8(ACTIVE, -1) != 0 {
         core.raw_write_8(ACTIVE, -1, 0);
     }
-    // The map table's pool words: the session's copy or the usual one.
     {
-        let want = if session { DS_MAP_TABLE } else { crate::five_map::MAP_TABLE };
-        for (at, field) in crate::five_map::TABLE_POINTERS {
-            let now = core.raw_read_32(at, -1);
-            if (now == crate::five_map::MAP_TABLE + field || now == DS_MAP_TABLE + field) && now != want + field {
-                core.raw_write_32(at, -1, want + field);
-            }
-        }
         // The map menu's Save item, hidden during a session.
         if let Some(c) = campaign(core) {
             let want = if session { c.hide_stub } else { SAVE_ITEM_AW2 };
@@ -284,10 +298,6 @@ fn mission_number(core: &mut Core) {
     return_to(core, won.count_ones() + 1);
 }
 
-/// The mission's AW2 map id.
-pub fn map_id(index: u8) -> u8 {
-    data::MAP_ID_BASE + index
-}
 
 // --- Progress --------------------------------------------------------------------
 
@@ -428,19 +438,14 @@ fn proc_start_instead(core: &mut Core, script: u32) {
 /// AW2's mission start.
 fn begin_mission(core: &mut Core, index: u8) {
     let Some(c) = campaign(core) else { return };
+    let (Some(table), Some((_, header))) = (big_table(core), c.built.headers.iter().find(|h| h.0 == index)) else { return };
+    // The mission's header goes into the map table's entry for MAP_ID.
+    core.raw_write_range(table + ENTRY * data::MAP_ID as u32, -1, header);
     core.raw_write_8(ACTIVE, -1, 1);
     core.raw_write_8(MISSION, -1, index);
     core.raw_write_32(COUNTDOWN, -1, 0);
     core.raw_write_8(GAME_MODE, -1, CAMPAIGN);
-    core.raw_write_8(MAP_ID, -1, map_id(index));
-    // Point the map table at the session's copy right away (the battle
-    // loads in this frame's procs).
-    for (at, field) in crate::five_map::TABLE_POINTERS {
-        let now = core.raw_read_32(at, -1);
-        if now == crate::five_map::MAP_TABLE + field {
-            core.raw_write_32(at, -1, DS_MAP_TABLE + field);
-        }
-    }
+    core.raw_write_8(MAP_ID, -1, data::MAP_ID);
     proc_start_instead(core, c.start_proc);
 }
 
@@ -448,7 +453,7 @@ fn begin_mission(core: &mut Core, index: u8) {
 /// session instead of AW2's campaign.
 fn start(core: &mut Core, new: bool) {
     let req = core.raw_read_8(REQUEST, -1);
-    if req == 0 || !crate::ds_weather::is_on(core) || campaign(core).is_none() {
+    if req == 0 || !crate::ds_weather::is_on(core) || campaign(core).is_none() || big_table(core).is_none() {
         return;
     }
     let _ = new;
@@ -582,6 +587,7 @@ fn landing(core: &mut Core) {
         Some(data::Magic::Flow(FLOW_CO_SETUP)) => co_setup(core),
         Some(data::Magic::Flow(FLOW_SAVE)) => return save(core),
         Some(data::Magic::Flow(FLOW_HIDE)) => 1,
+        Some(data::Magic::Flow(FLOW_CLEAR)) => return clear_bg0(core),
         Some(m) => crate::ds_campaign_rules::run(core, &m),
         None => 0,
     };
@@ -594,9 +600,15 @@ mod tests {
 
     #[test]
     fn ram_fits() {
-        assert!(PROGRESS + SAVE_SIZE <= 0x0203_FC00);
+        assert!(PROGRESS + SAVE_SIZE <= RAM_END);
         assert!(FLAGS + 16 <= PROGRESS);
-        assert!(DS_MAP_TABLE + 0x100 * ENTRY <= DATA);
-        assert!(map_id(data::MISSIONS as u8 + data::SECOND_FRONTS as u8 - 1) as u32 <= 0xFF);
+        assert!(P_FLAGS + 16 <= PROGRESS + SAVE_SIZE);
+        assert!(COUNTDOWN + 4 <= FLAGS);
+        // Past Survival's RAM (0x0203FA00..0x0203FD0F) and before the CPU
+        // tactics' (0x0203FD60..).
+        assert!(ACTIVE >= 0x0203_FD10 && RAM_END <= 0x0203_FD60);
+        // Past Survival's ids and inside its table.
+        assert!(data::MAP_ID > 0xEC);
+        assert!(DATA >= 0x08E5_0000);
     }
 }

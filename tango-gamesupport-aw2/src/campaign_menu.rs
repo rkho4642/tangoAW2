@@ -4,7 +4,7 @@
 //! [`crate::ds_campaign`]). Without the pack the menu is AW2's own.
 //!
 //! The menu is AW2's carousel (`MainMenuCarouselWheel_InputLoop`, the proc
-//! running [`WHEEL`]): Campaign opens a box of two rows (Continue, New),
+//! running one of [`WHEELS`]): Campaign opens a box of two rows (Continue, New),
 //! its cursor at +0x66 (6 or 7: the row is its parity), open while +0x64 is
 //! positive. tangoAW2 keeps a level ([`LEVEL`]): 0 the chooser (the box's
 //! rows show "AW2 CAMPAIGN" and "DS CAMPAIGN"; UP/DOWN and A are taken
@@ -26,11 +26,13 @@ const PROCS_END: u32 = 0x0200_E418;
 const PROC_SIZE: u32 = 0x6C;
 /// `ProcScr_MainMenu`: the SELECT MODE menu.
 const MAIN_MENU: u32 = 0x0849_E818;
-/// The carousel wheel's proc script (its input loop is
-/// `MainMenuCarouselWheel_InputLoop`, 0x08081D30).
-const WHEEL: u32 = 0x0861_6A08;
-/// The carousel's kinds by slot: `KINDS[(index + 2) % 6]`, 0 = Campaign.
-const KINDS: u32 = 0x0861_696C;
+/// The carousel wheel's proc scripts (their input loop is
+/// `MainMenuCarouselWheel_InputLoop`, 0x08081D30): the one started on
+/// entering Select Mode, and the one running when the menu comes back from
+/// a mode (`sub_08081334` starts the first unless the second is up).
+const WHEELS: [u32; 2] = [0x0861_6A08, 0x0861_6A40];
+/// Campaign's item id on the carousel (its items by position:
+/// [`crate::mode_menu::item`]).
 const W_INDEX: u32 = 0x52;
 const W_BOX: u32 = 0x64;
 const W_CURSOR: u32 = 0x66;
@@ -40,16 +42,17 @@ const CAMPAIGN: u8 = 0;
 const ROW0: u16 = 6;
 
 /// tangoAW2's menu state (EWRAM, crate::ds_campaign's block).
-pub const LEVEL: u32 = 0x0203_FA30;
+pub const LEVEL: u32 = crate::ds_campaign::MENU_LEVEL;
 /// The chooser's row: 0 AW2, 1 DS.
-pub const CHOICE: u32 = 0x0203_FA31;
+pub const CHOICE: u32 = crate::ds_campaign::MENU_CHOICE;
 
 /// `GetCampaignSaveFlag` (returns `gUnknown_03003F30[1]`).
 pub const SAVE_FLAG: u32 = 0x0803_BC7C;
 
 /// Free OBJ tiles on the Select Mode screen (the game uses up to 734 and
-/// 768..771; tangoAW2's badge 992..): two 80x16 labels, 20 tiles each.
-const TILES: u32 = 800;
+/// 768..771; Survival's small label 800..831, crate::mode_menu; tangoAW2's
+/// badge 992..): two 80x16 labels, 36 tiles each.
+const TILES: u32 = 832;
 const OBJ_VRAM: u32 = 0x0601_0000;
 /// The game's label tiles: the top row's and the bottom row's.
 const GAME_LABEL_TILES: [u16; 2] = [664, 676];
@@ -63,6 +66,10 @@ fn proc_with(core: &Core, script: u32) -> Option<u32> {
     (PROCS..PROCS_END).step_by(PROC_SIZE as usize).find(|&p| core.raw_read_32(p, -1) == script)
 }
 
+fn wheel(core: &Core) -> Option<u32> {
+    (PROCS..PROCS_END).step_by(PROC_SIZE as usize).find(|&p| WHEELS.contains(&core.raw_read_32(p, -1)))
+}
+
 /// The Select Mode menu is up.
 pub fn on_select_mode(core: &Core) -> bool {
     proc_with(core, MAIN_MENU).is_some()
@@ -70,9 +77,9 @@ pub fn on_select_mode(core: &Core) -> bool {
 
 /// The carousel wheel proc, with Campaign's box open.
 fn campaign_box(core: &Core) -> Option<u32> {
-    let p = proc_with(core, WHEEL)?;
+    let p = wheel(core)?;
     let index = core.raw_read_16(p + W_INDEX, -1) as u32;
-    let kind = core.raw_read_8(KINDS + (index + 2) % 6, -1);
+    let kind = crate::mode_menu::item(core, index);
     let open = (core.raw_read_16(p + W_BOX, -1) as i16) > 0;
     (kind == CAMPAIGN && open).then_some(p)
 }
@@ -90,7 +97,7 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
     let Some(p) = campaign_box(core) else {
         // Box closed (or elsewhere): back to the chooser, nothing requested
         // unless a choice was just made.
-        if core.raw_read_8(LEVEL, -1) != 0 && proc_with(core, WHEEL).is_some_and(|w| core.raw_read_16(w + W_CHOSEN, -1) == 0) {
+        if core.raw_read_8(LEVEL, -1) != 0 && wheel(core).is_some_and(|w| core.raw_read_16(w + W_CHOSEN, -1) == 0) {
             core.raw_write_8(LEVEL, -1, 0);
             core.raw_write_8(crate::ds_campaign::REQUEST, -1, 0);
         }

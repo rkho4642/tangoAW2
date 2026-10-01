@@ -47,8 +47,11 @@ pub const SECOND_FRONTS: usize = 5;
 const TEXT_GROUPS: u32 = OV0 + 0x49690;
 const MAP_NAMES_BASE: u32 = 0x022F_6BF8; // the 0xC0 bank (general texts)
 
-/// AW2 map ids for the campaign: the 28 missions, then the 5 second fronts.
-pub const MAP_ID_BASE: u8 = 0xD8;
+/// The AW2 map id a DS mission is played on: its header is written into
+/// the map table's entry for it when the mission starts (tangoAW2's map
+/// table with room for 0x100 ids, [`crate::survival::TABLE`]; Survival
+/// uses 0xC9..0xEC).
+pub const MAP_ID: u8 = 0xF0;
 
 /// A view of Dual Strike's memory from the pack.
 pub struct Ds<'a> {
@@ -437,7 +440,7 @@ pub struct Built {
     pub base: u32,
     /// AW2 text ids and their strings' addresses (in the blob).
     pub texts: Vec<(u16, u32)>,
-    /// Map headers (0x5C bytes) by AW2 map id.
+    /// Map headers (0x5C bytes) by record index (missions, then fronts).
     pub headers: Vec<(u8, [u8; 0x5C])>,
     /// Magic functions by id (the stub's r3).
     pub magic: Vec<Magic>,
@@ -477,7 +480,7 @@ impl Built {
 pub struct MissionInfo {
     pub index: usize,
     pub name: String,
-    pub map_id: u8,
+    /// The record index of its second front (not played: see docs/AW2.md).
     pub second_front: Option<u8>,
     pub number: u8,
     pub cos: [(u8, u8); 4],
@@ -925,7 +928,6 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
     let mut headers = Vec::new();
     let mut missions = Vec::new();
     for rec in &recs {
-        let map_id = MAP_ID_BASE + rec.index as u8;
         cx.colours = rec.colours;
         cx.teams = rec.teams;
         // Scripts: every fire record's, and the objective.
@@ -1005,12 +1007,11 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         }
         // The mission title's look and music: the player's country.
         hd[0x58] = rec.colours[0].clamp(1, 4);
-        headers.push((map_id, hd));
+        headers.push((rec.index as u8, hd));
         missions.push(MissionInfo {
             index: rec.index,
             name: String::from_utf8_lossy(&name).into_owned(),
-            map_id,
-            second_front: (rec.second_front >= 0xFC).then(|| MAP_ID_BASE + (rec.second_front - FIRST_RECORD as u16) as u8),
+            second_front: (rec.second_front >= 0xFC).then(|| (rec.second_front - FIRST_RECORD as u16) as u8),
             number: rec.number,
             cos: rec.cos,
             colours: rec.colours,
@@ -1105,7 +1106,7 @@ mod tests {
         unknown.dedup();
         eprintln!("not implemented: {unknown:?}");
         for m in &b.missions {
-            eprintln!("{:2} {:20} map {:02x} {}x{} cos {:?} pool {:?}", m.index, m.name, m.map_id, m.width, m.height, m.cos, m.pool);
+            eprintln!("{:2} {:20} front {:?} {}x{} cos {:?} pool {:?}", m.index, m.name, m.second_front, m.width, m.height, m.cos, m.pool);
         }
         assert_eq!(b.missions.len(), MISSIONS + SECOND_FRONTS);
         assert_eq!(b.missions[0].name, "Jake's Trial");
