@@ -301,19 +301,20 @@ Q = [
 ]
 g = mirror(Q, {(0, 0): '1', (1, 0): '2', (0, 1): '3', (1, 1): '4'})
 put(g, 9, 9, [
-    "...R....R...",
-    "...R.NN.R...",
-    "..XRRRRRRX..",
-    ".LBR....RC..",
-    "...R.###R...",
-    ".W.R.#O#R.E.",
-    "...R.###R...",
-    "..CR..5.RC..",
-    "..CR....RBL.",
-    "..XRRRRRRX..",
-    "...R.SS.R...",
-    "...R..A.R...",
+    "....R...R...",
+    "....RN.NR...",
+    "..X.R...R.X.",
+    "..B.RRRRR.C.",
+    "....R###R...",
+    ".W..R#O#R.E.",
+    "....R###R...",
+    "..C.RRRRR.C.",
+    "..C.R...R.B.",
+    "..X.R.5.R.X.",
+    "....RS.SR...",
+    "....R.A.R...",
 ])
+g[14][6] = 'L'; g[15][23] = 'L'   # Lasers, out from the fortress
 emit('Black Monolith', {a: [1, 1, 2, 5, 6, 10] for a in range(1, 6)}, g)
 
 # Black Rampart (5P, tall): after the campaign's fortress maps. Black Hole
