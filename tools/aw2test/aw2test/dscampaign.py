@@ -386,8 +386,14 @@ class DsData:
             t = {25: 26, 26: 27}.get(u[2], u[2])  # Carrier, Oozium: tangoAW2's ids
             if 1 <= t <= 27:
                 units.append((army, u[0], u[1], t))
+        sp = w(0x0C)
+        structure = None
+        if sp:
+            raw = self.bytes(sp, 8)
+            structure = raw[:raw.index(b"\0")].decode()
         return {
             "name": self.text(0xC0000000 | h(0x14)).decode("latin-1"),
             "w": width, "h": height, "tiles": tiles, "units": units,
-            "armies": h(0x24),
+            "armies": h(0x24), "look": r[0x1A], "weather": r[0x1B], "fog": r[0x1C],
+            "structure": structure,
         }

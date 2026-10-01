@@ -146,6 +146,14 @@ pub struct Record {
     pub cos: [(u8, u8); 4],
     pub colours: [u8; 4],
     pub teams: [u8; 4],
+    /// The look (0 normal, 1 snow, 2 desert, 3 wasteland), the weather (0
+    /// clear, 1 snow, 2 rain, 3 sandstorm) and fog (+0x1A..+0x1C).
+    pub look: u8,
+    pub weather: u8,
+    pub fog: bool,
+    /// The `bmap` file of its 4x4 structure's picture (+0x0C: "0a5" the
+    /// missile pad, "0a6" the fortress), if any.
+    pub structure: Option<String>,
     pub raw: Vec<u8>,
 }
 
@@ -174,6 +182,13 @@ pub fn record(ds: &Ds, index: usize) -> Option<Record> {
         cos,
         colours: [r[0x89], r[0x8A], r[0x8B], r[0x8C]],
         teams: [r[0x8E], r[0x8F], r[0x90], r[0x91]],
+        look: r[0x1A],
+        weather: r[0x1B],
+        fog: r[0x1C] != 0,
+        structure: match w(0x0C) {
+            0 => None,
+            p => ds.cstr(p).map(|s| String::from_utf8_lossy(&s).into_owned()),
+        },
         raw: r,
     })
 }
@@ -559,6 +574,9 @@ pub struct MissionInfo {
     pub day_limit: u16,
     pub width: u8,
     pub height: u8,
+    pub look: u8,
+    pub weather: u8,
+    pub fog: bool,
 }
 
 /// Blob builder at a fixed ROM address.
@@ -1044,7 +1062,17 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         w32(&mut hd, 0x08, objective);
         w16(&mut hd, 0x14, name_id);
         hd[0x16] = 2;
-        hd[0x17] = 0; // fog: the mission's rules set it (crate::ds_campaign)
+        // A 4x4 structure's picture (AW2's own: Dual Strike's are the same
+        // bytes); without it the game draws whatever OBJ VRAM holds there.
+        let structure = match rec.structure.as_deref() {
+            Some("0a5") => Some(crate::survival_maps::Structure::MissilePad),
+            Some("0a6") => Some(crate::survival_maps::Structure::Fortress),
+            _ => crate::survival_maps::Structure::of_tiles(&tiles),
+        };
+        w32(&mut hd, 0x10, structure.map_or(0, |s| s.aw2_picture()));
+        // Fog (`ResetRulesAfterCampaignMap` reads it; the mission start
+        // sets it too, crate::ds_campaign::map_start).
+        hd[0x17] = rec.fog as u8;
         hd[0x18] = rec.armies.clamp(2, 4);
         w16(&mut hd, 0x1A, 1); // the campaign's category
         w16(&mut hd, 0x1C, 1);
@@ -1089,6 +1117,9 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
             day_limit: rec.day_limit.0,
             width: w,
             height: h,
+            look: rec.look,
+            weather: rec.weather,
+            fog: rec.fog,
         });
     }
     // The prologue (bank 0x21) as texts the flow can show.

@@ -8,7 +8,8 @@ Without the pack the menu is AW2's own."""
 import os
 
 from aw2test import dscampaign as dc
-from aw2test import paths
+from aw2test import paths, ram
+from aw2test import rom as romlib
 from aw2test import survival as sv
 from aw2test.emu import Emu
 from aw2test.game import Game, NavError
@@ -386,3 +387,61 @@ def ds_campaign_grand_bolt(ctx):
     g.goto(9, 8)
     e.wait(30)
     shot(ctx, e, "grand_bolt")
+
+
+# Dual Strike's tiles tangoAW2 converts (Com Towers, tall woods, Black
+# Crystals, mega missile silos, Black Obelisks and their frames).
+CONVERTED = set(range(0x1B9, 0x1BE)) | {0x146, 0x147, 0x1A1, 0x1A2, 0x1A3, 0x1A4, 0x1A6, 0x1A8, 0x1A9,
+                                        0x186, 0x187, 0x188, 0x18C, 0x18D, 0x18E}
+STRUCTURE_PICTURES = {"0a5": 0x080D2DA8, "0a6": 0x080D38AC}
+
+
+def _every_mission(step):
+    def fn(ctx):
+        """Each mission in battle against the .nds: size, every tile (but
+        those tangoAW2 converts) and its terrain, the deployment, fog,
+        weather and look, and a 4x4 structure drawn with its own picture
+        (the header names it; without one the game draws whatever OBJ VRAM
+        holds there)."""
+        data = dc.DsData()
+        index = dc.ORDER[step]
+        m = data.mission(index)
+        e, g, d = boot(ctx)
+        d.start(step=step)
+        d.wait_map()
+        label = m["name"]
+        ctx.eq(d.mission(), index, label)
+        ctx.eq(d.size(), (m["w"], m["h"]), f"{label}: size")
+        w, h = m["w"], m["h"]
+        rows = [e.u16(dc.MAP + 0x417A + 2 * y) for y in range(h)]
+        tiles = [e.u16(dc.MAP + 0xA22 + 2 * (rows[y] + x)) for y in range(h) for x in range(w)]
+        classes = [e.u8(dc.MAP + 0x1432 + rows[y] + x) for y in range(h) for x in range(w)]
+        grand_bolt = index == 24
+        bad = [(i % w, i // w) for i, (t, want) in enumerate(zip(tiles, m["tiles"]))
+               if t != want and want not in CONVERTED and not (grand_bolt and t in (0x01, 0x193, 0x1A4))]
+        ctx.check(not bad, f"{label}: every tile as Dual Strike's ({len(bad)} differ: {bad[:6]})")
+        none = [(i % w, i // w) for i, c in enumerate(classes) if c == 0]
+        ctx.check(not none, f"{label}: every tile has a terrain ({len(none)} without: {none[:6]})")
+        have = sorted((u["army"], u["x"], u["y"], u["type"]) for u in g.units())
+        ctx.eq(have, sorted(m["units"]), f"{label}: the deployment")
+        ctx.eq(e.u8(ram.FOG) != 0, m["fog"] != 0, f"{label}: fog")
+        want_weather = {1: 1, 2: 2}.get(m["weather"], 0)
+        ctx.eq(e.u8(ram.WEATHER), want_weather, f"{label}: weather")
+        if m["weather"] == 3:
+            ctx.eq(e.u8(sv.WEATHER_MODE), 3, f"{label}: sandstorm (fixed weather)")
+        ctx.eq((e.u8(sv.BIOME) >> 4) & 7, 1 if m["look"] == 3 else 0, f"{label}: Wasteland look")
+        header = e.u32(0x080196EC) + 0x5C * e.u8(dc.MAP_ID)
+        structure = m["structure"] or ("0a5" if any(0x1AA <= t <= 0x1AD for t in m["tiles"]) else
+                                       "0a6" if any(0x1AE <= t <= 0x1B1 for t in m["tiles"]) else None)
+        want = STRUCTURE_PICTURES.get(structure, 0)
+        ctx.eq(e.u32(header + 0x10), want, f"{label}: the structure's picture in the header")
+        if want:
+            picture = romlib.lz10(e.read(want, 0x1000))
+            ctx.check(picture in e.read(0x06010000, 0x8000), f"{label}: the structure's picture is in OBJ VRAM")
+        shot(ctx, e, "map")
+    fn.__name__ = f"ds_campaign_map_{step:02d}"
+    test(modes=("ds",))(fn)
+
+
+for _s in range(len(dc.ORDER)):
+    _every_mission(_s)

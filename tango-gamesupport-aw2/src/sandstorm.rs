@@ -147,6 +147,7 @@ fn map_start(core: &mut Core) {
     }
     crate::wasteland::map_start(core);
     crate::survival::map_start(core);
+    crate::ds_campaign::map_start(core);
 }
 
 // --- Rules screen --------------------------------------------------------

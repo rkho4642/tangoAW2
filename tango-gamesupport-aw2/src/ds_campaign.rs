@@ -501,6 +501,37 @@ fn end_of_battle(core: &mut Core) {
     }
 }
 
+/// gPlaySt's fog and weather (now, mode, default, next).
+const FOG: u32 = 0x0300_3FCD;
+const WEATHER: u32 = 0x0300_3FEC;
+const WEATHER_MODE: u32 = 0x0300_3FED;
+const NEXT_WEATHER: u32 = 0x0300_3FEE;
+const DEFAULT_WEATHER: u32 = 0x0300_3FEF;
+
+/// At every map start (`crate::sandstorm`'s trap on
+/// `CalcRandomWeatherChances`), in a DS mission: its fog, its weather as
+/// fixed weather (snow, rain, or tangoAW2's sandstorm: fixed with clear as
+/// the default, as Survival's maps), and Dual Strike's Wasteland look (its
+/// snow and desert looks are drawn as the normal one).
+pub fn map_start(core: &mut Core) {
+    if !active(core) || core.raw_read_8(MAP_ID, -1) != data::MAP_ID {
+        return;
+    }
+    let Some(m) = campaign(core).and_then(|c| c.built.missions.get(core.raw_read_8(MISSION, -1) as usize)) else { return };
+    let (mode, w) = match m.weather {
+        1 => (3, 1),
+        2 => (3, 2),
+        3 => (3, 0),
+        _ => (0, 0),
+    };
+    core.raw_write_8(WEATHER_MODE, -1, mode);
+    core.raw_write_8(DEFAULT_WEATHER, -1, w);
+    core.raw_write_8(WEATHER, -1, w);
+    core.raw_write_8(NEXT_WEATHER, -1, w);
+    core.raw_write_8(FOG, -1, m.fog as u8);
+    crate::wasteland::set_biome(core, if m.look == 3 { crate::wasteland::WASTELAND } else { crate::wasteland::NORMAL });
+}
+
 /// The mission's armies the player picks a CO for (Dual Strike's 0x1C), and
 /// the COs to pick from; fills the CO select screen's lists. 1 if there is
 /// a pick to make.

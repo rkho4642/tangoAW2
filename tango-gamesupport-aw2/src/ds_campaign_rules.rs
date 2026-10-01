@@ -180,6 +180,12 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
         0x0235_066C | 0x0235_0824 | 0x0235_0940 | 0x0235_0A1C | 0x0235_0B28 => {
             units(core, army.clamp(1, 4)).iter().all(|u| u.2 & 1 != 0)
         }
+        // The army moving now has no Infantry left (The New Black: the
+        // player loses with the last one).
+        0x0235_07A8 => !units(core, army.clamp(1, 4)).iter().any(|u| u.1 == 1),
+        // Means to an End's ending asks the player (Dual Strike's choice at
+        // 0x02297784): AW2 has no choice box, the first answer is taken.
+        0x0201_99A4 => true,
         // Every unit of the army out of fuel.
         0x0235_0708 => units(core, army.clamp(1, 4)).iter().all(|u| u.5 == 0),
         // The action's cell is right of column 7.
@@ -260,7 +266,7 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
 /// The predicates and calls [`predicate`] and [`call`] know (the rest are
 /// false / do nothing); a test lists the campaign's others.
 #[cfg(test)]
-pub const KNOWN: &[u32] = &[0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_0560, 0x0235_21A4, 0x0235_20F8, 0x0235_204C, 0x0235_1F34, 0x0235_1EB8, 0x0235_1E3C, 0x0235_2018, 0x0235_1FE4, 0x0235_1FB0, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4];
+pub const KNOWN: &[u32] = &[0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_07A8, 0x0201_99A4, 0x0235_0560, 0x0235_21A4, 0x0235_20F8, 0x0235_204C, 0x0235_1F34, 0x0235_1EB8, 0x0235_1E3C, 0x0235_2018, 0x0235_1FE4, 0x0235_1FB0, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4];
 
 /// The Obelisk standing on weak point `k` ([`GRAND_BOLT_WEAK_POINTS`]: its
 /// bottom row's middle; the inventions list keeps its top-left cell).
