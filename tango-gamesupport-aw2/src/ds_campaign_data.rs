@@ -490,9 +490,63 @@ pub fn wrap_dialogue(t: &[u8], widths: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The first text an objective script shows (op 0x19/0x1A's reference).
+fn objective_text(ds: &Ds, script: u32) -> Option<Vec<u8>> {
+    if script == 0 {
+        return None;
+    }
+    for k in 0..64 {
+        let c = ds.bytes(script + 16 * k, 16)?;
+        match c[0] {
+            0x19 | 0x1A => return ds.text(u32::from_le_bytes(c[12..16].try_into().ok()?)),
+            0x02..=0x04 => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// A text as at most two lines of AW2's box (line breaks `\r`): the words
+/// that fit, cut at the end of a sentence when there is one.
+pub fn two_lines(t: &[u8], widths: &[u8]) -> Vec<u8> {
+    let words: Vec<Vec<u8>> = t
+        .split(|&c| c == b' ' || c == b'\r' || c == 0x0E || c == 0x0F)
+        .filter(|w| !w.is_empty())
+        .map(|w| w.iter().copied().filter(|&c| (0x20..0x7F).contains(&c)).collect::<Vec<u8>>())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let mut lines: Vec<Vec<u8>> = vec![Vec::new()];
+    let mut taken = 0;
+    for w in &words {
+        let cur = lines.last().unwrap();
+        let mut longer = cur.clone();
+        if !longer.is_empty() {
+            longer.push(b' ');
+        }
+        longer.extend_from_slice(w);
+        if !cur.is_empty() && width(widths, &longer) > LINE_PIXELS {
+            if lines.len() == 2 {
+                break;
+            }
+            lines.push(w.clone());
+        } else {
+            *lines.last_mut().unwrap() = longer;
+        }
+        taken += 1;
+    }
+    let mut out = lines.join(&b'\r');
+    if taken < words.len() {
+        // Cut back to the last full sentence, if any.
+        if let Some(p) = out.iter().rposition(|&c| c == b'.' || c == b'!' || c == b'?') {
+            out.truncate(p + 1);
+        }
+    }
+    out
+}
+
 /// Dual Strike's campaign flags 0x60..0x6F as the DS Campaign keeps them,
 /// 0x80..0x8F: AW2's own code reads some of 0x60..0x6B while a DS mission
-/// runs (0x60 is Hard Campaign: its deployments).
+/// runs (0x60 is Hard Campaign: its deployments, its world map).
 pub fn ds_flag(f: u16) -> u16 {
     if (0x60..0x70).contains(&f) {
         f + 0x20
@@ -574,6 +628,9 @@ impl Built {
 pub struct MissionInfo {
     pub index: usize,
     pub name: String,
+    /// The world map's mission panel text: the mission's objective (the
+    /// first text of its objective script), two lines.
+    pub info_text: u16,
     /// The record index of its second front (not played: see docs/AW2.md).
     pub second_front: Option<u8>,
     pub number: u8,
@@ -1080,6 +1137,8 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         let units_hard = if rec.units.1 != 0 { cx.blob.push(&convert_units(ds, rec.units.1)) } else { 0 };
         let name = ds.name(rec.name).map(|n| plain(&n)).unwrap_or_else(|| format!("Mission {}", rec.index + 1).into_bytes());
         let name_id = cx.text_id(name.clone());
+        let info = objective_text(ds, rec.objective).map(|t| two_lines(&t, cx.widths)).unwrap_or_else(|| name.clone());
+        let info_text = cx.text_id(info);
 
         let mut hd = [0u8; 0x5C];
         let w32 = |hd: &mut [u8; 0x5C], o: usize, v: u32| hd[o..o + 4].copy_from_slice(&v.to_le_bytes());
@@ -1134,6 +1193,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         missions.push(MissionInfo {
             index: rec.index,
             name: String::from_utf8_lossy(&name).into_owned(),
+            info_text,
             second_front: (rec.second_front >= 0xFC).then(|| (rec.second_front - FIRST_RECORD as u16) as u8),
             number: rec.number,
             cos: rec.cos,

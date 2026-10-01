@@ -42,7 +42,7 @@ use crate::ds_campaign_data as data;
 /// 0x08D2FFFF) and Survival (0x08E00000..0x08E4FFFF), past the 8 MB
 /// cartridge (mGBA grows the image). A mark first, the blob from +0x100.
 pub const DATA: u32 = 0x08F0_0000;
-const DATA_END: u32 = 0x0900_0000;
+const DATA_END: u32 = crate::ds_worldmap::BASE;
 const ENTRY: u32 = 0x5C;
 const MAGIC_WORD: u32 = 0x4443_5344; // "DSCD"
 const MAGIC_AT: u32 = DATA;
@@ -62,6 +62,8 @@ pub const MENU_LEVEL: u32 = 0x0203_FD13;
 pub const MENU_CHOICE: u32 = 0x0203_FD14;
 /// Real-time countdown (frames), Dual Strike's op 0x5A; 0 off.
 const COUNTDOWN: u32 = 0x0203_FD18;
+/// 1 once [`MISSION`]'s header is in the map table (the world map's sync).
+const MISSION_SET: u32 = 0x0203_FD15;
 /// The last mission's outcome (1 won, 2 lost), its index and day (u16).
 pub const LAST_RESULT: u32 = 0x0203_FD1C;
 /// The last Dual Strike condition that held (its address) and the day.
@@ -95,15 +97,20 @@ const MISSION_PROC: u32 = 0x0849_EBFC;
 /// Campaign New / Continue handlers (Select Mode's leaves 1 and 0).
 pub const CAMPAIGN_NEW: u32 = 0x0803_BA4C;
 pub const CAMPAIGN_CONTINUE: u32 = 0x0803_BA88;
-/// The campaign's end-of-battle handler.
-pub const CAMPAIGN_END: u32 = 0x0803_8484;
+/// The campaign's end-of-battle handler (`EndOfGame_FinishCampaignMap`),
+/// trapped past its prologue (its `bl IsPlayer1TeamAlive`), and its
+/// `bl ResetRulesAfterCampaignMap` (with r4 = 0 it then starts AW2's
+/// after-mission campaign proc and returns).
+pub const CAMPAIGN_END: u32 = 0x0803_8488;
+const CAMPAIGN_END_RESET: u32 = 0x0803_84F4;
+/// AW2's campaign proc that opens the world map and starts the battle the
+/// player picks there (`gUnknown_0849EB7C`, AW2's Continue).
+const WORLD_MAP_PROC: u32 = 0x0849_EB7C;
 /// "Was the battle won" (army 1's team alive).
 const BATTLE_WON: u32 = 0x0803_861C;
 /// AW2's campaign flags: set (id, value), is set (id).
 pub const SET_FLAG: u32 = 0x0803_CBA0;
 pub const IS_FLAG: u32 = 0x0803_CBD8;
-/// Return to the Select Mode menu.
-const RETURN_TO_MENU: u32 = 0x0803_B83D;
 
 /// AW2's save slot writer `sub_0801A7D8(slot, buffer, size)`.
 const SLOT_WRITER: u32 = 0x0801_A7D8;
@@ -173,29 +180,20 @@ fn proc_cmd(op: u16, arg: i16, ptr: u32) -> [u8; 8] {
     c
 }
 
-/// The proc that starts a mission: save the progress, the CO select when
-/// the player picks COs, an empty BG0 (the text layer: AW2's own campaign
-/// reaches its mission card through screens that clear it; from Select
-/// Mode its help line would stay on the card), then AW2's own mission start
-/// (`ResetRulesAfterCampaignMap`, the mission title, the battle).
-fn start_proc_script(save: u32, co_setup: u32, clear: u32) -> Vec<u8> {
-    [
-        proc_cmd(0x02, 0, save | 1),
-        proc_cmd(0x28, 1, co_setup),
-        proc_cmd(0x06, 1, CO_SELECT_PROC),
-        proc_cmd(0x0B, 1, 0),
-        proc_cmd(0x02, 0, clear),
-        proc_cmd(0x02, 0, RESET_RULES),
-        proc_cmd(0x0D, 0, MISSION_PROC),
-        proc_cmd(0x00, 0, 0),
-    ]
-    .concat()
+/// The proc that opens the DS Campaign: save the progress, then AW2's own
+/// world map ([`crate::ds_worldmap`]: the mission picked there, its CO
+/// screen, `ResetRulesAfterCampaignMap`, the mission title, the battle).
+fn start_proc_script(save: u32) -> Vec<u8> {
+    let _ = (CO_SELECT_PROC, RESET_RULES, MISSION_PROC);
+    [proc_cmd(0x02, 0, save | 1), proc_cmd(0x0D, 0, WORLD_MAP_PROC), proc_cmd(0x00, 0, 0)].concat()
 }
 
 pub struct Campaign {
     pub built: data::Built,
     pub start_proc: u32,
     pub hide_stub: u32,
+    /// The CO screen's setup (a mission's `coSelect` on the world map).
+    pub co_setup: u32,
 }
 
 static BUILT: OnceLock<Option<Campaign>> = OnceLock::new();
@@ -213,9 +211,10 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let co_setup = built.add_magic(data::Magic::Flow(FLOW_CO_SETUP));
             let hide_stub = built.add_magic(data::Magic::Flow(FLOW_HIDE));
             let clear = built.add_magic(data::Magic::Flow(FLOW_CLEAR));
-            let start_proc = built.add(&start_proc_script(save, co_setup, clear));
+            let _ = clear;
+            let start_proc = built.add(&start_proc_script(save));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
-            Some(Campaign { built, start_proc, hide_stub })
+            Some(Campaign { built, start_proc, hide_stub, co_setup })
         })
         .as_ref()
 }
@@ -237,6 +236,52 @@ fn install(core: &mut Core) -> bool {
     }
     core.raw_write_32(MAGIC_AT, -1, MAGIC_WORD);
     true
+}
+
+/// The world map's data (built on the first DS session: it takes a moment).
+fn install_world_map(core: &mut Core) -> bool {
+    let Some(c) = campaign(core) else { return false };
+    let picks: Vec<bool> =
+        c.built.missions.iter().take(data::MISSIONS).map(|m| m.cos.iter().take(m.armies as usize).any(|&(co, _)| co == 0x1C)).collect();
+    let texts: Vec<u16> = c.built.missions.iter().take(data::MISSIONS).map(|m| m.info_text).collect();
+    crate::ds_worldmap::install(core, &picks, c.co_setup, &texts)
+}
+
+/// On the world map, the mission under the cursor is the one played: its
+/// header is written into [`data::MAP_ID`]'s entry (the map's mission panel
+/// reads it, and the battle starts on it).
+fn sync_mission(core: &mut Core) {
+    let m = core.raw_read_32(crate::ds_worldmap::S_MISSION, -1);
+    if m as usize >= data::MISSIONS || core.raw_read_8(MISSION, -1) as u32 == m && core.raw_read_8(MISSION_SET, -1) == 1 {
+        return;
+    }
+    let Some(c) = campaign(core) else { return };
+    let (Some(table), Some((_, header))) = (big_table(core), c.built.headers.iter().find(|h| h.0 as u32 == m)) else { return };
+    core.raw_write_range(table + ENTRY * data::MAP_ID as u32, -1, header);
+    core.raw_write_8(MISSION, -1, m as u8);
+    core.raw_write_8(MISSION_SET, -1, 1);
+    core.raw_write_32(COUNTDOWN, -1, 0);
+}
+
+/// The missions open on the world map: the first story mission not won
+/// (in [`ORDER`]), and each lab mission whose flag is set and which is
+/// not won.
+pub fn available(core: &Core) -> Vec<u8> {
+    let mut out = Vec::new();
+    if let Some(&m) = ORDER.iter().find(|&&m| !SIDE_MISSIONS.iter().any(|s| s.0 == m) && !won(core, m)) {
+        out.push(m);
+    }
+    for &(m, flag) in &SIDE_MISSIONS {
+        if campaign_flag(core, flag) && !won(core, m) {
+            out.push(m);
+        }
+    }
+    out
+}
+
+/// The missions won so far.
+fn won_list(core: &Core) -> Vec<u8> {
+    (0..data::MISSIONS as u8).filter(|&m| won(core, m)).collect()
 }
 
 /// The map table the game reads, when it has room for [`data::MAP_ID`]
@@ -284,7 +329,11 @@ pub fn tick(core: &mut Core, ds: bool) {
         if n > 1 && in_battle(core) {
             core.raw_write_32(COUNTDOWN, -1, n - 1);
         }
+        if !in_battle(core) {
+            sync_mission(core);
+        }
     }
+    crate::ds_worldmap::tick(core, on && active(core));
 }
 
 fn in_battle(core: &Core) -> bool {
@@ -330,18 +379,6 @@ pub const ORDER: [u8; data::MISSIONS] = [
 ];
 /// The side missions and the campaign flag that opens each.
 pub const SIDE_MISSIONS: [(u8, u32); 3] = [(25, 0x90), (26, 0x91), (27, 0x92)];
-
-/// The step after `step` in [`ORDER`], skipping side missions not opened.
-fn step_after(core: &Core, step: u8) -> u8 {
-    let mut s = step as usize + 1;
-    while s < data::MISSIONS {
-        match SIDE_MISSIONS.iter().find(|m| m.0 == ORDER[s]) {
-            Some(&(_, flag)) if !campaign_flag(core, flag) => s += 1,
-            _ => break,
-        }
-    }
-    s as u8
-}
 
 /// A campaign flag (0x20..0x9F) of the session.
 pub fn campaign_flag(core: &Core, id: u32) -> bool {
@@ -419,6 +456,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (IS_FLAG, Box::new(is_flag)),
         (crate::campaign_menu::SAVE_FLAG, Box::new(crate::campaign_menu::save_flag)),
         (MISSION_NUMBER, Box::new(mission_number)),
+        (crate::ds_worldmap::SAVE_PROMPT, Box::new(save_prompt)),
         (BEST_SCORE, Box::new(best_score)),
     ]
 }
@@ -439,46 +477,59 @@ fn proc_start_instead(core: &mut Core, script: u32) {
     cpu.set_thumb_pc(PROC_START);
 }
 
-/// Starts mission `index` in a DS session: campaign mode, its map, and
-/// AW2's mission start.
-fn begin_mission(core: &mut Core, index: u8) {
-    let Some(c) = campaign(core) else { return };
-    let (Some(table), Some((_, header))) = (big_table(core), c.built.headers.iter().find(|h| h.0 == index)) else { return };
-    // The mission's header goes into the map table's entry for MAP_ID.
-    core.raw_write_range(table + ENTRY * data::MAP_ID as u32, -1, header);
-    core.raw_write_8(ACTIVE, -1, 1);
-    core.raw_write_8(MISSION, -1, index);
-    core.raw_write_32(COUNTDOWN, -1, 0);
-    core.raw_write_8(GAME_MODE, -1, CAMPAIGN);
-    core.raw_write_8(MAP_ID, -1, data::MAP_ID);
-    proc_start_instead(core, c.start_proc);
-}
-
 /// Campaign New / Continue: with a DS Campaign request, start the DS
-/// session instead of AW2's campaign.
+/// session instead of AW2's campaign: its world map, from the progress.
 fn start(core: &mut Core, new: bool) {
     let req = core.raw_read_8(REQUEST, -1);
     if req == 0 || !crate::ds_weather::is_on(core) || campaign(core).is_none() || big_table(core).is_none() {
         return;
     }
     let _ = new;
+    if !install_world_map(core) {
+        return;
+    }
     core.raw_write_8(REQUEST, -1, 0);
     if req == 1 || !progress_valid(core) {
         new_progress(core);
     }
-    migrate_flags(core);
+    // A record saved by 0.4.0 kept the lab missions' flags at 0x60..0x62
+    // (AW2's Hard Campaign flag among them): they move to 0x90..0x92.
+    for k in 0..3u32 {
+        let (old, new) = (P_FLAGS + (0x60 + k - 0x20) / 8, P_FLAGS + (0x90 + k - 0x20) / 8);
+        let (ob, nb) = (1u8 << ((0x60 + k - 0x20) % 8), 1u8 << ((0x90 + k - 0x20) % 8));
+        if core.raw_read_8(old, -1) & ob != 0 {
+            let v = core.raw_read_8(old, -1);
+            core.raw_write_8(old, -1, v & !ob);
+            let v = core.raw_read_8(new, -1);
+            core.raw_write_8(new, -1, v | nb);
+        }
+    }
     // Flags of the session come from the progress record.
     for k in 0..16 {
         let v = core.raw_read_8(P_FLAGS + k, -1);
         core.raw_write_8(FLAGS + k, -1, v);
     }
-    let step = next_step(core);
-    begin_mission(core, ORDER[step as usize]);
+    crate::ds_worldmap::backup_aw2_state(core);
+    let open = available(core);
+    // The cursor on the mission at the progress's step if it is open (a
+    // lab mission), else the first open one.
+    let at_step = ORDER[next_step(core) as usize];
+    let focus = if open.contains(&at_step) { at_step } else { open.first().copied().unwrap_or(0) };
+    crate::ds_worldmap::write_state(core, &open, &won_list(core), focus);
+    core.raw_write_8(ACTIVE, -1, 1);
+    core.raw_write_8(MISSION_SET, -1, 0);
+    core.raw_write_8(GAME_MODE, -1, CAMPAIGN);
+    core.raw_write_8(MAP_ID, -1, data::MAP_ID);
+    sync_mission(core);
+    let Some(c) = campaign(core) else { return };
+    proc_start_instead(core, c.start_proc);
 }
 
-/// The campaign's end of battle: record a win and go on to the next
-/// mission; after a loss, play the mission again. After the last mission,
-/// back to the Select Mode menu (the campaign stays won).
+/// The campaign's end of battle, past `EndOfGame_FinishCampaignMap`'s
+/// prologue: record the outcome, write which missions the win opens, and
+/// carry on into the function's own tail (`ResetRulesAfterCampaignMap`,
+/// then `StartCampaignAfterMap`: AW2's world map after a mission, which
+/// marks a won mission cleared and reveals the newly opened ones).
 fn end_of_battle(core: &mut Core) {
     if !active(core) {
         return;
@@ -489,41 +540,62 @@ fn end_of_battle(core: &mut Core) {
     core.raw_write_8(LAST_RESULT, -1, if won { 1 } else { 2 });
     core.raw_write_8(LAST_RESULT + 1, -1, index);
     core.raw_write_16(LAST_RESULT + 2, -1, core.raw_read_16(0x0300_4080, -1));
+    let before = available(core);
     if won {
         let w = core.raw_read_32(P_WON, -1) | (1 << index);
         core.raw_write_32(P_WON, -1, w);
-        let step = ORDER.iter().position(|&m| m == index).unwrap_or(0) as u8;
-        let next = step_after(core, step);
-        core.raw_write_8(P_NEXT, -1, next.min(data::MISSIONS as u8 - 1));
         for k in 0..16 {
             let v = core.raw_read_8(FLAGS + k, -1);
             core.raw_write_8(P_FLAGS + k, -1, v);
         }
-        if next as usize >= data::MISSIONS {
-            // The campaign is over: P_NEXT stays on the last mission.
-            core.raw_write_8(P_NEXT + 1, -1, 1);
-            core.raw_write_8(ACTIVE, -1, 0);
-            core.gba_mut().cpu_mut().set_thumb_pc(RETURN_TO_MENU & !1);
-            return;
-        }
-        begin_mission(core, ORDER[next as usize]);
     } else {
-        begin_mission(core, index);
+        // A lost mission leaves the flags as they were before it.
+        for k in 0..16 {
+            let v = core.raw_read_8(P_FLAGS + k, -1);
+            core.raw_write_8(FLAGS + k, -1, v);
+        }
+    }
+    let after = available(core);
+    let newly: Vec<u8> = after.iter().copied().filter(|m| !before.contains(m)).collect();
+    // The progress's step: the next story mission (or, when every mission
+    // is won, the campaign is over).
+    let next = after.iter().filter_map(|m| ORDER.iter().position(|o| o == m)).min();
+    match next {
+        Some(s) => core.raw_write_8(P_NEXT, -1, s as u8),
+        None => core.raw_write_8(P_NEXT + 1, -1, 1),
+    }
+    crate::ds_worldmap::write_reveal(core, index, &newly);
+    // Back on the map, the cursor waits on the mission just opened (else
+    // the next one open, else the one just played).
+    if let Some(&m) = newly.first().or(after.first()) {
+        crate::ds_worldmap::point_at(core, m);
+    }
+    core.raw_write_32(crate::ds_worldmap::S_MISSION, -1, index as u32);
+    core.raw_write_8(crate::ds_worldmap::S_WON, -1, won as u8);
+    let cpu = core.gba_mut().cpu_mut();
+    cpu.set_gpr(4, 0);
+    cpu.set_thumb_pc(CAMPAIGN_END_RESET);
+}
+
+/// `InsertBestScoreRecord`: in campaign mode it keeps a mission's best
+/// score at AW2's results `[mapID - 0x8A]` (`gUnknown_0200C2D0`, 8 bytes
+/// each); a DS mission's id (0xF0) would land on the event script slots
+/// (0x0200C600: a slot that never ends, which held the map's save
+/// prompt). The DS Campaign keeps no scores.
+const BEST_SCORE: u32 = 0x0801_7720;
+fn best_score(core: &mut Core) {
+    if active(core) && core.raw_read_8(MAP_ID, -1) == data::MAP_ID {
+        let cpu = core.gba_mut().cpu_mut();
+        let lr = cpu.gpr(14) as u32;
+        cpu.set_thumb_pc(lr & !1);
     }
 }
 
-/// A record saved by 0.4.0 kept the lab missions' flags at 0x60..0x62
-/// (AW2's Hard Campaign flag among them): they move to 0x90..0x92.
-fn migrate_flags(core: &mut Core) {
-    for k in 0..3u32 {
-        let (old, new) = (P_FLAGS + (0x60 + k - 0x20) / 8, P_FLAGS + (0x90 + k - 0x20) / 8);
-        let (ob, nb) = (1u8 << ((0x60 + k - 0x20) % 8), 1u8 << ((0x90 + k - 0x20) % 8));
-        if core.raw_read_8(old, -1) & ob != 0 {
-            let v = core.raw_read_8(old, -1);
-            core.raw_write_8(old, -1, v & !ob);
-            let v = core.raw_read_8(new, -1);
-            core.raw_write_8(new, -1, v | nb);
-        }
+/// AW2's save prompt after a mission (`SaveScreenCampaign_StartMessage`):
+/// in a DS session the DS Campaign saves its own record instead.
+fn save_prompt(core: &mut Core) {
+    if active(core) {
+        save(core);
     }
 }
 
@@ -542,19 +614,6 @@ pub fn is_lab_cell(core: &Core, x: u32, y: u32) -> bool {
         && campaign(core)
             .and_then(|c| c.built.missions.get(core.raw_read_8(MISSION, -1) as usize))
             .is_some_and(|m| m.labs.contains(&(x as u8, y as u8)))
-}
-
-/// `InsertBestScoreRecord`: in campaign mode it keeps a mission's best
-/// score at AW2's results `[mapID - 0x8A]` (`gUnknown_0200C2D0`, 8 bytes
-/// each); a DS mission's id (0xF0) would land on the event script slots
-/// (0x0200C600: a slot that never ends). The DS Campaign keeps no scores.
-const BEST_SCORE: u32 = 0x0801_7720;
-fn best_score(core: &mut Core) {
-    if active(core) && core.raw_read_8(MAP_ID, -1) == data::MAP_ID {
-        let cpu = core.gba_mut().cpu_mut();
-        let lr = cpu.gpr(14) as u32;
-        cpu.set_thumb_pc(lr & !1);
-    }
 }
 
 /// gPlaySt's fog and weather (now, mode, default, next).

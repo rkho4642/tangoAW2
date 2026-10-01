@@ -21,6 +21,7 @@ pub mod ds_battle;
 pub mod ds_campaign;
 pub mod ds_campaign_data;
 pub mod ds_campaign_rules;
+pub mod ds_worldmap;
 pub mod ds_co_art;
 pub mod ds_music;
 pub mod ds_pack;

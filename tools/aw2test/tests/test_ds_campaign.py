@@ -196,6 +196,7 @@ def ds_campaign_with_survival(ctx):
     d.box_row(1)
     e.press("A", 8)
     ctx.require(e.wait_until(d.active, 900, step=10), "the DS Campaign starts")
+    d.pick_mission()
     ctx.eq(e.u8(sv.ON), 0, "Survival stays off")
     d.wait_map()
     ctx.eq(d.mission(), 0, "Jake's Trial")
@@ -274,29 +275,39 @@ for _step, _label in ((5, "The Ocean Blue"), (8, "Victory or Death"), (15, "Snow
 
 @test(modes=("ds",))
 def ds_campaign_win_and_continue(ctx):
-    """A win (forced) shows the results and starts the next mission; the
-    progress is in Flash: after a reboot, DS CAMPAIGN's Continue resumes
-    there."""
+    """The world map: New shows Jake's Trial alone; a win (forced here; the
+    full-mission tests win for real) brings the results, then the map with
+    Jake's Trial cleared and The New Black revealed and under the cursor,
+    Max Attacks still hidden. The progress is in Flash: after a reboot,
+    DS CAMPAIGN's Continue shows the same map."""
     e, g, d = boot(ctx)
-    d.start(new=True)
+    d.start(new=True, pick=False)
+    d.wait_world_map()
+    flags = d.map_flags()
+    ctx.eq((flags[0], flags[1], flags[2]), (1, 0, 0), "New: Jake's Trial shown, the others not")
+    shot(ctx, e, "world_map_new")
+    d.pick_mission()
     d.wait_map()
     ctx.require(d.force_win(), "the last enemy unit destroyed")
     results = False
-    for _ in range(240):
+    for _ in range(400):
         e.wait(30)
         if not d.in_battle() and not results:
             e.wait(60)
             shot(ctx, e, "results")
             results = True
+        if d.world_map_up() and e.u8(dc.WM_STATE + 0x10):
+            break
         if d.scripts_running() or not d.in_battle():
             e.press("A", 4)
-        if d.mission() == 1 and d.in_battle():
-            break
-    ctx.eq(d.mission(), 1, "the next mission (The New Black)")
+    ctx.require(d.world_map_up(), "back on the world map")
+    e.wait(60)
+    flags = d.map_flags()
+    ctx.eq((flags[0] & 2, flags[1] & 1, flags[2]), (2, 1, 0), "Jake's Trial cleared, The New Black shown, Max Attacks hidden")
+    ctx.eq(d.map_mission(), 1, "the cursor on The New Black")
     p = d.progress()
     ctx.eq((p["valid"], p["next"], p["won"]), (True, 1, 1), "progress: mission 0 won, step 1 next")
-    d.wait_map()
-    shot(ctx, e, "mission2")
+    shot(ctx, e, "world_map_after_win")
     save = e.save(os.path.join(ctx.out, "after_win"))
     e.close()
 
@@ -309,8 +320,13 @@ def ds_campaign_win_and_continue(ctx):
     ctx.eq(d.progress()["next"], 1, "the saved progress")
     e.press("A", 8)
     ctx.require(e.wait_until(d.active, 900, step=10), "Continue starts")
+    d.wait_world_map()
+    flags = d.map_flags()
+    ctx.eq((flags[0] & 2, flags[1] & 1, flags[2]), (2, 1, 0), "after a reboot: the same map")
+    shot(ctx, e, "world_map_continue")
+    d.pick_mission()
     d.wait_map()
-    ctx.eq(d.mission(), 1, "resumed at The New Black")
+    ctx.eq(d.mission(), 1, "The New Black picked on the map")
 
 
 @test(modes=("ds",))
@@ -545,6 +561,7 @@ def ds_campaign_lab_flags_not_hard(ctx):
     e.wait(30)
     e.w32(dc.P_MAGIC, dc.PROGRESS_MAGIC)
     e.w8(dc.P_NEXT, 2)
+    e.w32(dc.P_WON, 0b11)
     e.w8(dc.PROGRESS + 0x10 + (0x60 - 0x20) // 8, 1 << ((0x60 - 0x20) % 8))
     d.box_row(0)
     e.press("A", 8)
@@ -552,6 +569,7 @@ def ds_campaign_lab_flags_not_hard(ctx):
     flags = e.read(dc.PROGRESS + 0x10, 16)
     ctx.eq((flags[(0x60 - 0x20) // 8] >> ((0x60 - 0x20) % 8)) & 1, 0, "flag 0x60 cleared")
     ctx.eq((flags[(0x90 - 0x20) // 8] >> ((0x90 - 0x20) % 8)) & 1, 1, "moved to 0x90")
+    d.pick_mission()
     d.wait_map()
     have = sorted((u["army"], u["x"], u["y"], u["type"]) for u in g.units())
     ctx.eq(have, sorted(data.mission(2)["units"]), "Max Attacks: the normal deployment")
@@ -560,7 +578,8 @@ def ds_campaign_lab_flags_not_hard(ctx):
 @test(modes=("ds",))
 def ds_campaign_no_score_overwrite(ctx):
     """A DS mission's end leaves the event script slots alone (AW2's best
-    score for map id 0xF0 would be written at 0x0200C600, the tenth slot)."""
+    score for map id 0xF0 would be written at 0x0200C600, the tenth slot,
+    and the save prompt before the world map would wait on it)."""
     e, g, d = boot(ctx)
     d.start(new=True)
     d.wait_map()
@@ -569,8 +588,9 @@ def ds_campaign_no_score_overwrite(ctx):
     for _ in range(400):
         e.wait(30)
         seen.add(e.u32(0x0200C600))
+        if d.proc_fn_running(dc.WM_CURSOR_LOOP):
+            break
         if d.scripts_running() or not d.in_battle():
             e.press("A", 4)
-        if d.mission() == 1 and d.in_battle():
-            break
+    ctx.require(d.proc_fn_running(dc.WM_CURSOR_LOOP), "back on the world map after the save prompt")
     ctx.eq(sorted(seen), [0], "the tenth event slot untouched through the results")

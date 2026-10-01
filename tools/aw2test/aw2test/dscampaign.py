@@ -13,7 +13,12 @@ PROGRESS = 0x0203FD30
 P_MAGIC = PROGRESS
 P_NEXT = PROGRESS + 4
 P_WON = PROGRESS + 8
+P_FLAGS = PROGRESS + 0x10
 PROGRESS_MAGIC = 0x43445741
+WM_STATE = 0x0202FDFC          # the world map's state (camera, cursor, mission +0x0C, flags +0x12)
+WM_CURSOR_LOOP = 0x0807703D    # WorldMapCursor_Loop
+WM_INFO_LOOP = 0x08077791      # WorldMapMissionInfo_InputLoop
+LAB_FLAGS = {25: 0x90, 26: 0x91, 27: 0x92}
 DS_MAP_ID = 0xF0  # every DS mission is played on this map id
 # The menu's state (crate::campaign_menu).
 LAST_RESULT = 0x0203FD1C      # 1 won / 2 lost, mission, day (u16)
@@ -112,7 +117,7 @@ class DsCampaign:
             raise NavError("the Campaign box did not open")
         self.e.wait(20)
 
-    def start(self, new=True, step=None):
+    def start(self, new=True, step=None, pick=True):
         """From the title: Campaign -> DS Campaign -> New (or Continue). With
         `step`, the progress record is set to start at that place of the
         campaign's order (a test aid)."""
@@ -124,8 +129,17 @@ class DsCampaign:
         if e.u8(MENU_LEVEL) != 2:
             raise NavError(f"not in the DS box (level {e.u8(MENU_LEVEL)})")
         if step is not None:
+            # Every mission before `step` won (a lab mission's own flag set
+            # when `step` is one), the cursor's place at `step`.
             e.w32(P_MAGIC, PROGRESS_MAGIC)
             e.w8(P_NEXT, step)
+            won = 0
+            for m in ORDER[:step]:
+                won |= 1 << m
+            e.w32(P_WON, won)
+            if ORDER[step] in LAB_FLAGS:
+                f = LAB_FLAGS[ORDER[step]] - 0x20
+                e.w8(P_FLAGS + f // 8, e.u8(P_FLAGS + f // 8) | (1 << (f % 8)))
             new = False
         self.box_row(1 if new else 0)
         e.press("A", 8)
@@ -133,9 +147,60 @@ class DsCampaign:
         # a new game, your previous data will be overwritten.") first.
         for _ in range(40):
             if e.wait_until(self.active, 30, step=5):
-                return
+                break
             e.press("A", 8)
-        raise NavError("the DS Campaign did not start")
+        else:
+            raise NavError("the DS Campaign did not start")
+        if pick:
+            self.pick_mission()
+
+    # -- the world map --------------------------------------------------------------
+    def proc_fn_running(self, fn):
+        """A proc of the pool (0x0200D610, 0x6C each) repeats `fn` (+0x10)."""
+        b = self.e.read(0x0200D610, 0x6C * 30)
+        return any(struct.unpack_from("<I", b, 0x6C * k + 0x10)[0] == fn and struct.unpack_from("<I", b, 0x6C * k)[0]
+                   for k in range(30))
+
+    def world_map_up(self):
+        """The world map's cursor answers the pad (WorldMapCursor_Loop)."""
+        return self.proc_fn_running(WM_CURSOR_LOOP)
+
+    def map_mission(self):
+        """The mission the world map's cursor is on (its state's +0x0C)."""
+        return self.e.u32(WM_STATE + 0x0C)
+
+    def map_flags(self):
+        """Per mission: 1 shown (selectable), 2 cleared."""
+        return list(self.e.read(WM_STATE + 0x12, 28))
+
+    def wait_world_map(self, max_frames=6000):
+        e = self.e
+        n = 0
+        while n < max_frames:
+            if self.world_map_up() and e.u8(WM_STATE + 0x10):
+                return True
+            if self.scripts_running() or not self.world_map_up() and not self.in_battle():
+                e.press("A", 4)
+            e.wait(10)
+            n += 14
+        raise NavError("the world map did not come up")
+
+    def pick_mission(self):
+        """On the world map, A on the mission under the cursor, A on its
+        panel: the CO screen or the mission comes next."""
+        e = self.e
+        self.wait_world_map()
+        e.press("A", 6)
+        if not e.wait_until(lambda: self.proc_fn_running(WM_INFO_LOOP), 300, step=5):
+            raise NavError("the mission panel did not open")
+        gone = lambda: not self.proc_fn_running(WM_INFO_LOOP) and not self.proc_fn_running(WM_CURSOR_LOOP)
+        # (A while the panel's text is still being written finishes it.)
+        for _ in range(12):
+            e.wait(30)
+            e.press("A", 6)
+            if e.wait_until(lambda: self.on_co_select() or gone() or self.in_battle(), 90, step=10):
+                return
+        raise NavError("the mission was not picked")
 
     def chooser_row(self, row):
         e = self.e
@@ -452,6 +517,27 @@ DS_TEXT_GROUPS = DS_OV0 + 0x49690
 # The campaign's order (ds_campaign::ORDER): 25 story missions with the three
 # research-lab side missions (records 25..27) after the missions that open them.
 ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 26, 12, 13, 27, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+
+
+# How the test player plays a mission (aw2test.bot.Bot's options), by
+# mission index: units the mission is lost without (The New Black's
+# Infantry, Black Boats Ahoy!'s Lander), and the cells it is won on.
+PLANS = {1: {"protect": [1]}, 9: {"protect": [23]}}
+
+
+def plan(data, index):
+    """The bot's options for mission `index`: PLANS, and as goals Dual
+    Strike's research labs (the lab missions are won on them) and, for
+    Surrounded!, its Com Towers."""
+    m = data.mission(index)
+    w = m["w"]
+    cells = [(i % w, i // w) for i, t in enumerate(m["tiles"]) if 0x1D9 <= t <= 0x1DD]
+    if index == 22:
+        cells += [(i % w, i // w) for i, t in enumerate(m["tiles"]) if 0x1B9 <= t <= 0x1BD]
+    out = dict(PLANS.get(index, {}))
+    if cells:
+        out["goals"] = cells
+    return out
 
 
 class DsData:

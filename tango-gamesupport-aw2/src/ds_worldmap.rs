@@ -1,0 +1,586 @@
+//! The DS Campaign's world map: AW2's own campaign map screen (the
+//! `WorldMap*` procs, names from the aw2bhr decompilation) run on Dual
+//! Strike's Omega Land, with Dual Strike's mission points, read from the
+//! player's .nds at run time.
+//!
+//! - **Art.** Dual Strike draws its campaign map (`ohashi/res_gmap_map1`
+//!   and `_map2`: each LZ77 4bpp tiles then an LZ77 32x32 tilemap, the left
+//!   and right halves of a 480x240 picture; ten palettes at `res_gmap`
+//!   +0x3B08). AW2's map layer is the same shape (two 32x32 screens of a
+//!   64x32 layer), with room for 704 tiles and nine palettes (BG 6..14):
+//!   the least used palette's tiles are drawn with the closest other one,
+//!   and the most alike tiles of a palette are folded together until 703
+//!   are left beside a blank one ([`fit`]).
+//! - **Mission points.** Dual Strike's table of them (ARM9 `0x0215BA04`, 12
+//!   bytes: map record id, x, y, data) gives each mission's place on the
+//!   map; AW2's mission table (`gUnknown_08615194`, 0x30 bytes a mission:
+//!   map id, marker style, stars, flag x/y, ..., the CO screen's setup)
+//!   gets a DS copy ([`MISSIONS`]) with every mission on map id
+//!   [`crate::ds_campaign_data::MAP_ID`] (the header of the mission under
+//!   the cursor is written there, [`crate::ds_campaign`]).
+//! - **Unlocking.** AW2 reveals missions after a win from a table
+//!   (`gUnknown_0861500C`: per mission, the missions to reveal and the
+//!   cleared missions that must precede them); the DS copy's every record
+//!   points at one list written before each return to the map: the
+//!   missions the win has just made available.
+//! - While a DS session is on, the literal-pool words of these tables and
+//!   of the art point at the DS copies, and traps leave out AW2's story:
+//!   the nation panel, its scenes after missions, its bonus missions, its
+//!   alternative missions, the save prompt (the DS Campaign saves its own
+//!   record). AW2's map state (`gUnknown_0202FDFC`, also its campaign
+//!   save's) is kept aside for the session.
+
+use mgba::core::Core;
+use std::sync::OnceLock;
+
+/// tangoAW2's world map data in the ROM image: past the DS Campaign's.
+pub const BASE: u32 = 0x08FC_0000;
+const MAGIC: u32 = 0x5041_4D57; // "WMAP"
+const TILES: u32 = BASE + 0x100;
+const TILEMAP: u32 = BASE + 0x8000;
+const PALETTE: u32 = BASE + 0x9800;
+const MISSION_TABLE: u32 = BASE + 0xA000;
+const REVEAL_TABLE: u32 = BASE + 0xB000;
+const REVEAL_LIST: u32 = BASE + 0xB200;
+const CONDITION: u32 = BASE + 0xB220;
+const CONDITION_IDS: u32 = BASE + 0xB230;
+const ZEROS: u32 = BASE + 0xB400;
+const AW2_STATE_BACKUP: u32 = BASE + 0xB800;
+const BACKUP_MARK: u32 = BASE + 0xB900;
+#[cfg(test)]
+const END: u32 = BASE + 0x10000;
+
+/// AW2's world map state (camera, cursor, mission, flags per mission,
+/// markers): 0xFC bytes, as its profile saves them.
+pub const STATE: u32 = 0x0202_FDFC;
+const STATE_SIZE: u32 = 0xFC;
+const S_CAMERA_X: u32 = STATE;
+const S_CAMERA_Y: u32 = STATE + 2;
+const S_CURSOR_X: u32 = STATE + 4;
+const S_CURSOR_Y: u32 = STATE + 6;
+pub const S_MISSION: u32 = STATE + 0x0C;
+const S_SNAPPED: u32 = STATE + 0x10;
+pub const S_WON: u32 = STATE + 0x11;
+pub const S_FLAGS: u32 = STATE + 0x12;
+const S_MARKERS: u32 = STATE + 0x3C;
+/// unk12 bits: shown (a marker), cleared.
+pub const SHOWN: u8 = 1;
+pub const CLEARED: u8 = 2;
+
+/// The map layer's graphics fit where AW2's 704 tiles go (0x06008000 up
+/// to BG1's tilemap at 0x0600D800); tile 0 is blank.
+const MAX_TILES: usize = 704;
+const MISSION_RECORD: u32 = 0x30;
+const AW2_MISSIONS: u32 = 0x2A;
+const MAP_WIDTH: i32 = 512;
+const MAP_HEIGHT: i32 = 256;
+
+/// AW2's literal-pool words of the world map's art and tables.
+const TILES_POOLS: [u32; 1] = [0x0807_69B4];
+const AW2_TILES: u32 = 0x081C_C5F0;
+const TILEMAP_POOLS: [u32; 3] = [0x0807_6AD0, 0x0807_6B14, 0x0807_6BB4];
+const AW2_TILEMAP: u32 = 0x081D_0BAC;
+const PALETTE_POOLS: [u32; 3] = [0x0807_5C94, 0x0807_5E08, 0x0807_69BC];
+const AW2_PALETTE: u32 = 0x081D_1504;
+const MISSION_POOLS: [u32; 18] = [
+    0x0806_1890, 0x0806_190C, 0x0807_47EC, 0x0807_4A24, 0x0807_4A98, 0x0807_5920, 0x0807_59C8, 0x0807_6C3C, 0x0807_6C60,
+    0x0807_6FF4, 0x0807_72F8, 0x0807_73A0, 0x0807_7DD8, 0x0807_7ED4, 0x0807_7F18, 0x0807_7F68, 0x0807_7FD8, 0x0807_8234,
+];
+const AW2_MISSION_TABLE: u32 = 0x0861_5194;
+const REVEAL_POOLS: [u32; 2] = [0x0807_6C14, 0x0807_8350];
+const AW2_REVEAL_TABLE: u32 = 0x0861_500C;
+/// The mission panel's rank (AW2's results by mission, `gUnknown_0200C2D0`).
+const RANK_POOLS: [u32; 1] = [0x0807_758C];
+const AW2_RANKS: u32 = 0x0200_C2D0;
+
+/// Dual Strike's mission points (ARM9).
+const DS_POINTS: u32 = 0x0215_BA04;
+
+pub struct WorldMap {
+    tiles: Vec<u8>,
+    tilemap: Vec<u8>,
+    palette: Vec<u8>,
+    /// Per DS mission (record index 0..27): x, y, Dual Strike's flags
+    /// (0x1 a lab mission, 0x2 the last).
+    pub points: Vec<(i16, i16, u16)>,
+}
+
+static BUILT: OnceLock<Option<WorldMap>> = OnceLock::new();
+
+pub fn world_map() -> Option<&'static WorldMap> {
+    BUILT.get_or_init(build).as_ref()
+}
+
+fn u16_at(b: &[u8], o: usize) -> Option<u16> {
+    Some(u16::from_le_bytes(b.get(o..o + 2)?.try_into().ok()?))
+}
+
+/// The byte length of an LZ77 stream at `start` (to find what follows it).
+fn lz_len(b: &[u8], start: usize) -> Option<usize> {
+    let size = u32::from_le_bytes([*b.get(start + 1)?, *b.get(start + 2)?, *b.get(start + 3)?, 0]) as usize;
+    let (mut out, mut p) = (0, start + 4);
+    while out < size {
+        let flags = *b.get(p)?;
+        p += 1;
+        for bit in 0..8 {
+            if out >= size {
+                break;
+            }
+            if flags & (0x80 >> bit) != 0 {
+                out += (*b.get(p)? as usize >> 4) + 3;
+                p += 2;
+            } else {
+                out += 1;
+                p += 1;
+            }
+        }
+    }
+    Some(p - start)
+}
+
+/// One half of the map: (4bpp tiles, 32x32 tilemap entries).
+fn half(file: &[u8]) -> Option<(Vec<u8>, Vec<u16>)> {
+    let tiles = crate::ds_art::lz10(file)?;
+    let at = (lz_len(file, 0)? + 3) & !3;
+    let map = crate::ds_art::lz10(file.get(at..)?)?;
+    let ents = (0..1024).map(|i| u16_at(&map, 2 * i)).collect::<Option<Vec<_>>>()?;
+    Some((tiles, ents))
+}
+
+type Pixels = [u8; 64];
+
+fn rgb(c: u16) -> [i32; 3] {
+    [(c & 31) as i32, ((c >> 5) & 31) as i32, ((c >> 10) & 31) as i32]
+}
+
+fn build() -> Option<WorldMap> {
+    let pack = crate::ds_pack::pack()?;
+    let res = pack.file("ohashi/res_gmap")?;
+    let colours: Vec<u16> = (0..160).map(|i| u16_at(res, 0x3B08 + 2 * i)).collect::<Option<_>>()?;
+    let mut cells: Vec<(Pixels, u8)> = Vec::with_capacity(2048);
+    for name in ["ohashi/res_gmap_map1", "ohashi/res_gmap_map2"] {
+        let (tiles, ents) = half(pack.file(name)?)?;
+        for e in ents {
+            let (k, hf, vf, pal) = ((e & 0x3FF) as usize, e & 0x400 != 0, e & 0x800 != 0, (e >> 12) as u8);
+            let mut px = [0u8; 64];
+            for y in 0..8 {
+                for x in 0..8 {
+                    let (sx, sy) = (if hf { 7 - x } else { x }, if vf { 7 - y } else { y });
+                    let b = *tiles.get(32 * k + 4 * sy + sx / 2)?;
+                    px[8 * y + x] = (b >> (4 * (sx & 1))) & 15;
+                }
+            }
+            cells.push((px, pal.min(9)));
+        }
+    }
+    let (tiles, tilemap, palette) = fit(&cells, &colours, MAX_TILES - 1, 6);
+    // Mission points.
+    let mut points = Vec::new();
+    for i in 0..crate::ds_campaign_data::MISSIONS as u32 {
+        let id = crate::ds_campaign_data::FIRST_RECORD + i;
+        let mut found = None;
+        for k in 0..40 {
+            let r = pack.arm9_at(DS_POINTS + 12 * k, 12)?;
+            let rid = u32::from_le_bytes(r[0..4].try_into().ok()?);
+            if rid == 0 {
+                break;
+            }
+            if rid & 0xFFFF == id {
+                found = Some((i16::from_le_bytes([r[4], r[5]]), i16::from_le_bytes([r[6], r[7]]), (rid >> 16) as u16));
+            }
+        }
+        points.push(found?);
+    }
+    Some(WorldMap { tiles, tilemap, palette, points })
+}
+
+/// Dual Strike's 2048 map cells (left screen then right, each 32x32, as
+/// pixels and a palette 0..9) as AW2's layer: at most `max_tiles` 4bpp
+/// tiles, nine palettes from BG palette `first_pal`, a 64x32 tilemap in
+/// two screens. Returns (tiles, tilemap bytes, palette bytes).
+pub fn fit(cells: &[(Pixels, u8)], colours: &[u16], max_tiles: usize, first_pal: u16) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    let col = |p: u8, i: u8| rgb(colours[16 * p as usize + i as usize]);
+    // Ten palettes into nine: the least used one's cells take, pixel by
+    // pixel, the closest colours of the kept palette that draws them best.
+    let mut use_ = [0usize; 10];
+    for c in cells {
+        use_[c.1 as usize] += 1;
+    }
+    let drop = (0..10).min_by_key(|&p| use_[p]).unwrap() as u8;
+    let kept: Vec<u8> = (0..10).filter(|&p| p != drop).collect();
+    let near = |a: [i32; 3], b: [i32; 3]| (0..3).map(|k| (a[k] - b[k]).pow(2)).sum::<i32>();
+    // Dual Strike draws colour 0 of these palettes (AW2 shows the backdrop
+    // through it): such pixels take the palette's closest other colour.
+    let cells: Vec<(Pixels, u8)> = cells
+        .iter()
+        .map(|&(mut px, p)| {
+            let zero = col(p, 0);
+            let sub = (1..16u8).min_by_key(|&j| near(zero, col(p, j))).unwrap();
+            for v in px.iter_mut() {
+                if *v == 0 {
+                    *v = sub;
+                }
+            }
+            (px, p)
+        })
+        .collect();
+    let cells: Vec<(Pixels, u8)> = cells
+        .iter()
+        .map(|&(px, p)| {
+            if p != drop {
+                return (px, p);
+            }
+            let mut best: Option<(i32, u8, Pixels)> = None;
+            for &q in &kept {
+                let mut out = [0u8; 64];
+                let mut err = 0;
+                for (i, &v) in px.iter().enumerate() {
+                    let c = col(p, v);
+                    let (j, e) = (0..16u8).map(|j| (j, near(c, col(q, j)))).min_by_key(|x| x.1).unwrap();
+                    out[i] = j;
+                    err += e;
+                }
+                if best.as_ref().map_or(true, |b| err < b.0) {
+                    best = Some((err, q, out));
+                }
+            }
+            let b = best.unwrap();
+            (b.2, b.1)
+        })
+        .collect();
+    // Unique tiles and how often each is used.
+    let mut uniq: Vec<(Pixels, u8)> = Vec::new();
+    let mut weight: Vec<f64> = Vec::new();
+    let mut of_cell = Vec::with_capacity(cells.len());
+    {
+        let mut index = std::collections::HashMap::new();
+        for c in &cells {
+            let id = *index.entry(*c).or_insert_with(|| {
+                uniq.push(*c);
+                weight.push(0.0);
+                uniq.len() - 1
+            });
+            weight[id] += 1.0;
+            of_cell.push(id);
+        }
+    }
+    // Fold the tile whose nearest neighbour (same palette) costs least
+    // (distance x uses) into it, until few enough are left.
+    let n = uniq.len();
+    let pix: Vec<Vec<i32>> = uniq.iter().map(|(px, p)| px.iter().flat_map(|&v| col(*p, v)).collect()).collect();
+    let dist = |a: usize, b: usize| -> f64 {
+        if uniq[a].1 != uniq[b].1 {
+            return f64::INFINITY;
+        }
+        pix[a].iter().zip(&pix[b]).map(|(x, y)| ((x - y) * (x - y)) as f64).sum()
+    };
+    let mut alive = vec![true; n];
+    let mut rep: Vec<usize> = (0..n).collect();
+    let nearest = |i: usize, alive: &[bool]| -> (usize, f64) {
+        let mut best = (usize::MAX, f64::INFINITY);
+        for j in 0..n {
+            if j != i && alive[j] {
+                let d = dist(i, j);
+                if d < best.1 {
+                    best = (j, d);
+                }
+            }
+        }
+        best
+    };
+    let mut nn: Vec<(usize, f64)> = (0..n).map(|i| nearest(i, &alive)).collect();
+    let mut count = n;
+    while count > max_tiles {
+        let i = (0..n)
+            .filter(|&i| alive[i] && nn[i].0 != usize::MAX)
+            .min_by(|&a, &b| (nn[a].1 * weight[a]).partial_cmp(&(nn[b].1 * weight[b])).unwrap())
+            .unwrap();
+        let j = nn[i].0;
+        alive[i] = false;
+        rep[i] = j;
+        weight[j] += weight[i];
+        count -= 1;
+        for k in 0..n {
+            if alive[k] && nn[k].0 == i {
+                nn[k] = nearest(k, &alive);
+            }
+        }
+    }
+    let root = |mut i: usize| {
+        while rep[i] != i {
+            i = rep[i];
+        }
+        i
+    };
+    // Number the kept tiles, write them out. Tile 0 stays blank: the map
+    // screen's other layers on these graphics (BG2) are drawn with it.
+    let mut number = vec![usize::MAX; n];
+    let mut tiles = vec![0u8; 32];
+    for i in 0..n {
+        if alive[i] {
+            number[i] = tiles.len() / 32;
+            let px = &uniq[i].0;
+            for y in 0..8 {
+                for x in (0..8).step_by(2) {
+                    tiles.push(px[8 * y + x] | (px[8 * y + x + 1] << 4));
+                }
+            }
+        }
+    }
+    let pal_of = |p: u8| first_pal + kept.iter().position(|&k| k == p).unwrap() as u16;
+    let mut tilemap = Vec::with_capacity(4096);
+    for &id in &of_cell {
+        let r = root(id);
+        let e = (pal_of(uniq[r].1) << 12) | number[r] as u16;
+        tilemap.extend_from_slice(&e.to_le_bytes());
+    }
+    let mut palette = Vec::with_capacity(0x120);
+    for &p in &kept {
+        for i in 0..16 {
+            palette.extend_from_slice(&colours[16 * p as usize + i].to_le_bytes());
+        }
+    }
+    (tiles, tilemap, palette)
+}
+
+fn installed(core: &Core) -> bool {
+    core.raw_read_32(BASE, -1) == MAGIC
+}
+
+/// Writes the world map's art and tables into the ROM image (once).
+pub fn install(core: &mut Core, cos_pick: &[bool], co_setup: u32, info_texts: &[u16]) -> bool {
+    if installed(core) {
+        return true;
+    }
+    let Some(w) = world_map() else { return false };
+    let tiles = crate::lz77::compress(&w.tiles);
+    let map = crate::lz77::compress(&w.tilemap);
+    assert!(TILES + tiles.len() as u32 <= TILEMAP && TILEMAP + map.len() as u32 <= PALETTE);
+    core.raw_write_range(TILES, -1, &tiles);
+    core.raw_write_range(TILEMAP, -1, &map);
+    core.raw_write_range(PALETTE, -1, &w.palette);
+    // The missions.
+    let mut table = vec![0u8; (MISSION_RECORD * AW2_MISSIONS) as usize];
+    for (i, &(x, y, flags)) in w.points.iter().enumerate() {
+        let r = &mut table[i * MISSION_RECORD as usize..(i + 1) * MISSION_RECORD as usize];
+        r[0..2].copy_from_slice(&(crate::ds_campaign_data::MAP_ID as u16).to_le_bytes());
+        // Marker style: Dual Strike's lab missions and its last stand out.
+        r[2] = if flags & 2 != 0 { 8 } else if flags & 1 != 0 { 4 } else { 0 };
+        r[3] = 0;
+        r[4] = 0;
+        r[6..8].copy_from_slice(&x.to_le_bytes());
+        r[8..10].copy_from_slice(&y.to_le_bytes());
+        // The mission panel's text (its +0x10 is a text id).
+        r[0x10..0x12].copy_from_slice(&info_texts.get(i).copied().unwrap_or(0).to_le_bytes());
+        if cos_pick.get(i).copied().unwrap_or(false) {
+            r[0x20..0x24].copy_from_slice(&co_setup.to_le_bytes());
+        }
+    }
+    core.raw_write_range(MISSION_TABLE, -1, &table);
+    // Reveals: every record (mission + 0..3) points at the one list and
+    // condition the end of a mission writes.
+    let mut reveal = Vec::new();
+    for _ in 0..AW2_MISSIONS + 4 {
+        reveal.extend_from_slice(&REVEAL_LIST.to_le_bytes());
+        reveal.extend_from_slice(&CONDITION.to_le_bytes());
+    }
+    core.raw_write_range(REVEAL_TABLE, -1, &reveal);
+    core.raw_write_range(REVEAL_LIST, -1, &[0xFF; 16]);
+    core.raw_write_range(CONDITION, -1, &[0; 16]);
+    core.raw_write_range(ZEROS, -1, &[0; 0x400]);
+    core.raw_write_32(BASE, -1, MAGIC);
+    true
+}
+
+fn set32(core: &mut Core, at: u32, v: u32) {
+    if core.raw_read_32(at, -1) != v {
+        core.raw_write_32(at, -1, v);
+    }
+}
+
+/// Every frame: the pool words point at the DS copies during a session,
+/// at AW2's otherwise (and AW2's map state comes back after a session).
+pub fn tick(core: &mut Core, session: bool) {
+    if !installed(core) {
+        return;
+    }
+    let pick = |ds: u32, aw2: u32| if session { ds } else { aw2 };
+    for at in TILES_POOLS {
+        set32(core, at, pick(TILES, AW2_TILES));
+    }
+    for at in TILEMAP_POOLS {
+        set32(core, at, pick(TILEMAP, AW2_TILEMAP));
+    }
+    for at in PALETTE_POOLS {
+        set32(core, at, pick(PALETTE, AW2_PALETTE));
+    }
+    for at in MISSION_POOLS {
+        set32(core, at, pick(MISSION_TABLE, AW2_MISSION_TABLE));
+    }
+    for at in REVEAL_POOLS {
+        set32(core, at, pick(REVEAL_TABLE, AW2_REVEAL_TABLE));
+    }
+    for at in RANK_POOLS {
+        set32(core, at, pick(ZEROS, AW2_RANKS));
+    }
+    if !session && core.raw_read_8(BACKUP_MARK, -1) == 1 {
+        restore_aw2_state(core);
+    }
+    // AW2's sea and grid layer (BG1, blended over the map) is AW2's art:
+    // on the DS map it is left off (the map layer, BG3, is its own sea).
+    let on_map = session && core.raw_read_16(BG3CNT, -1) == WORLD_MAP_BG3 && core.raw_read_16(BG1CNT, -1) == WORLD_MAP_BG1;
+    let d = core.raw_read_16(DISP_CT, -1);
+    if on_map {
+        if d & BG1_ON != 0 {
+            core.raw_write_16(DISP_CT, -1, d & !BG1_ON);
+            core.raw_write_8(BG1_HIDDEN, -1, 1);
+        }
+    } else if core.raw_read_8(BG1_HIDDEN, -1) == 1 {
+        // Off the map, BG1 is the next screen's (the mission card's): on.
+        core.raw_write_16(DISP_CT, -1, d | BG1_ON);
+        core.raw_write_8(BG1_HIDDEN, -1, 0);
+    }
+}
+
+/// gDispIo's DISPCNT shadow, BG1's bit, and the world map's BG3 control
+/// (char block 2, screen 30, 512x256): the map screen is up.
+const DISP_CT: u32 = 0x0300_30CC;
+const BG1_ON: u16 = 1 << 9;
+const BG3CNT: u32 = 0x0400_000E;
+const WORLD_MAP_BG3: u16 = 0x5E0B;
+/// BG1 as the map screen sets it (its sea and grid: screen 27).
+const BG1CNT: u32 = 0x0400_000A;
+/// 1 while BG1 is held off ([`crate::ds_campaign`]'s RAM block).
+const BG1_HIDDEN: u32 = 0x0203_FD16;
+const WORLD_MAP_BG1: u16 = 0x1B02;
+
+/// AW2's map state is put aside when a DS session starts.
+pub fn backup_aw2_state(core: &mut Core) {
+    if core.raw_read_8(BACKUP_MARK, -1) == 1 {
+        return;
+    }
+    let mut b = vec![0u8; STATE_SIZE as usize];
+    core.raw_read_range(STATE, -1, &mut b);
+    core.raw_write_range(AW2_STATE_BACKUP, -1, &b);
+    core.raw_write_8(BACKUP_MARK, -1, 1);
+}
+
+fn restore_aw2_state(core: &mut Core) {
+    let mut b = vec![0u8; STATE_SIZE as usize];
+    core.raw_read_range(AW2_STATE_BACKUP, -1, &mut b);
+    core.raw_write_range(STATE, -1, &b);
+    core.raw_write_8(BACKUP_MARK, -1, 0);
+}
+
+/// The DS session's map state: `available` missions shown (with markers),
+/// `won` ones cleared, the cursor on `focus`.
+pub fn write_state(core: &mut Core, available: &[u8], won: &[u8], focus: u8) {
+    let Some(w) = world_map() else { return };
+    core.raw_write_range(STATE, -1, &[0u8; STATE_SIZE as usize]);
+    for &m in won {
+        let v = core.raw_read_8(S_FLAGS + m as u32, -1);
+        core.raw_write_8(S_FLAGS + m as u32, -1, v | CLEARED);
+    }
+    for &m in available {
+        let v = core.raw_read_8(S_FLAGS + m as u32, -1);
+        core.raw_write_8(S_FLAGS + m as u32, -1, v | SHOWN);
+    }
+    // The marker list starts empty (the map rebuilds it from the flags).
+    core.raw_write_16(S_MARKERS, -1, 0xFFFF);
+    let _ = w;
+    point_at(core, focus);
+    core.raw_write_32(S_MISSION, -1, focus as u32);
+    core.raw_write_8(S_SNAPPED, -1, 0);
+}
+
+/// The camera and cursor on mission `m`'s point.
+pub fn point_at(core: &mut Core, m: u8) {
+    let Some(w) = world_map() else { return };
+    let (x, y, _) = w.points.get(m as usize).copied().unwrap_or((240, 120, 0));
+    let cam_x = (x as i32 - 120).clamp(0, MAP_WIDTH - 240);
+    let cam_y = (y as i32 - 80).clamp(0, MAP_HEIGHT - 160);
+    core.raw_write_16(S_CAMERA_X, -1, cam_x as u16);
+    core.raw_write_16(S_CAMERA_Y, -1, cam_y as u16);
+    core.raw_write_16(S_CURSOR_X, -1, (x as i32 - cam_x) as u16);
+    core.raw_write_16(S_CURSOR_Y, -1, (y as i32 - cam_y) as u16);
+}
+
+/// Before the map returns after mission `mission`: the missions to reveal
+/// (`newly`) and the condition (the mission itself cleared).
+pub fn write_reveal(core: &mut Core, mission: u8, newly: &[u8]) {
+    let mut list = [0xFFu8; 16];
+    for (k, &m) in newly.iter().take(15).enumerate() {
+        list[k] = m;
+    }
+    core.raw_write_range(REVEAL_LIST, -1, &list);
+    core.raw_write_range(CONDITION_IDS, -1, &[mission, 0xFF]);
+    core.raw_write_32(CONDITION, -1, CONDITION_IDS);
+    core.raw_write_8(CONDITION + 4, -1, 1);
+    core.raw_write_8(CONDITION + 5, -1, 0xFF);
+}
+
+// --- Traps -----------------------------------------------------------------------
+
+fn ret(core: &mut Core) {
+    let cpu = core.gba_mut().cpu_mut();
+    let lr = cpu.gpr(14) as u32;
+    cpu.set_thumb_pc(lr & !1);
+}
+
+/// `WorldMapReturn_Init`'s switch on AW2's story missions (7, 0xF, 0x17,
+/// 0x29): a DS mission takes the plain path (label 2).
+const RETURN_SWITCH: u32 = 0x0807_827E;
+const RETURN_PLAIN: u32 = 0x0807_82B0;
+/// `WorldMapReturn_RevealBonusMissions`, `sub_08076B20` (AW2's alternative
+/// missions), `StartWorldMapNationPanel`: AW2's story, left out.
+const BONUS: u32 = 0x0807_8358;
+const ALTERNATIVES: u32 = 0x0807_6B20;
+const NATION_PANEL: u32 = 0x0807_639C;
+/// `SaveScreenCampaign_StartMessage`: AW2's "save?" after a mission.
+pub const SAVE_PROMPT: u32 = 0x0803_D92C;
+
+pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
+    vec![
+        (
+            RETURN_SWITCH,
+            Box::new(|core: &mut Core| {
+                if crate::ds_campaign::active(core) {
+                    core.gba_mut().cpu_mut().set_thumb_pc(RETURN_PLAIN);
+                }
+            }),
+        ),
+        (BONUS, Box::new(|core: &mut Core| if crate::ds_campaign::active(core) { ret(core) })),
+        (ALTERNATIVES, Box::new(|core: &mut Core| if crate::ds_campaign::active(core) { ret(core) })),
+        (NATION_PANEL, Box::new(|core: &mut Core| if crate::ds_campaign::active(core) { ret(core) })),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_fits() {
+        assert!(BACKUP_MARK < END);
+        assert!(AW2_STATE_BACKUP + STATE_SIZE <= BACKUP_MARK);
+        assert!(REVEAL_TABLE + 8 * (AW2_MISSIONS + 4) <= REVEAL_LIST);
+        assert!(MISSION_TABLE + MISSION_RECORD * AW2_MISSIONS <= REVEAL_TABLE);
+        assert!(END <= 0x0900_0000);
+    }
+
+    #[test]
+    fn fit_keeps_a_small_map_whole() {
+        // Two palettes, three distinct tiles: nothing to fold.
+        let colours: Vec<u16> = (0..160).map(|i| i as u16 * 7).collect();
+        let mut cells = Vec::new();
+        for k in 0..2048 {
+            let mut px = [0u8; 64];
+            px[0] = (k % 3) as u8;
+            cells.push((px, (k % 2) as u8));
+        }
+        let (tiles, map, pal) = fit(&cells, &colours, 896, 6);
+        assert_eq!(tiles.len() / 32, 7);
+        assert_eq!(map.len(), 4096);
+        assert_eq!(pal.len(), 0x120);
+    }
+}
