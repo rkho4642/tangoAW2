@@ -182,6 +182,18 @@ impl App {
                     }
                     Ok("settings") => return iced::Task::done(Message::TabSelected(super::Tab::Settings)),
                     Ok("replays") => return iced::Task::done(Message::TabSelected(super::Tab::Replays)),
+                    // `link:<code>` (or `link:/host`, `link:/connect <addr>`)
+                    // fills in the link code and presses Fight; the lobby
+                    // then readies by itself (see `update_netplay`). For
+                    // netplay tests between two copies, or the iOS
+                    // Simulator and a desktop.
+                    Ok(s) if s.starts_with("link:") => {
+                        let code = s["link:".len()..].to_string();
+                        return iced::Task::batch([
+                            iced::Task::done(Message::Play(crate::tabs::play::Message::LinkCodeChanged(code))),
+                            iced::Task::done(Message::Play(crate::tabs::play::Message::FightPressed)),
+                        ]);
+                    }
                     _ => {}
                 }
                 iced::Task::none()

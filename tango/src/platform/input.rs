@@ -498,7 +498,8 @@ impl Mapping {
                 0
             }
         };
-        bit_if(&self.up, keys::UP)
+        state.touch
+            | bit_if(&self.up, keys::UP)
             | bit_if(&self.down, keys::DOWN)
             | bit_if(&self.left, keys::LEFT)
             | bit_if(&self.right, keys::RIGHT)
@@ -571,6 +572,10 @@ pub enum Event {
     GamepadDisconnected {
         id: GamepadId,
     },
+    /// The on-screen touch controller's whole state, as console key bits
+    /// ([`tango_session::keys`]). It bypasses the mapping: the buttons
+    /// drawn on the screen are the console's own.
+    TouchPad(u32),
 }
 
 /// Live held-input state combined from keyboard + every connected
@@ -586,6 +591,8 @@ pub enum Event {
 pub struct HeldState {
     keys: HashSet<Physical>,
     gamepads: HashMap<GamepadId, GamepadHeld>,
+    /// Console key bits held on the on-screen touch controller.
+    touch: u32,
 }
 
 /// One connected pad's held buttons + last-known axis values.
@@ -605,6 +612,7 @@ impl HeldState {
             Event::Button { id, button, pressed } => self.set_button(id, button, pressed),
             Event::Axis { id, axis, value } => self.set_axis(id, axis, value),
             Event::GamepadDisconnected { id } => self.remove_gamepad(id),
+            Event::TouchPad(bits) => self.touch = bits,
         }
     }
 

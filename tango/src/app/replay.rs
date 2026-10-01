@@ -237,21 +237,26 @@ impl App {
             .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| self.config.replays_path());
-        iced::Task::perform(
-            async move {
-                rfd::AsyncFileDialog::new()
-                    .set_directory(&initial_dir)
-                    .set_file_name(&default_name)
-                    .add_filter(filter_name, &[ext])
-                    .save_file()
-                    .await
-                    .map(|h| h.path().to_path_buf())
-            },
-            move |maybe_path| match maybe_path {
-                Some(output) => make_msg(output),
-                None => tabs::replays::Message::NoOp,
-            },
-        )
+        // iOS has no save dialog and no ffmpeg to encode with: video
+        // export is a desktop feature.
+        #[cfg(target_os = "ios")]
+        let _ = (initial_dir, default_name, filter_name);
+        #[cfg(target_os = "ios")]
+        let pick = async { None::<std::path::PathBuf> };
+        #[cfg(not(target_os = "ios"))]
+        let pick = async move {
+            rfd::AsyncFileDialog::new()
+                .set_directory(&initial_dir)
+                .set_file_name(&default_name)
+                .add_filter(filter_name, &[ext])
+                .save_file()
+                .await
+                .map(|h| h.path().to_path_buf())
+        };
+        iced::Task::perform(pick, move |maybe_path| match maybe_path {
+            Some(output) => make_msg(output),
+            None => tabs::replays::Message::NoOp,
+        })
         .map(Message::Replays)
     }
 

@@ -19,6 +19,11 @@ impl App {
             }
             // The data-folder "Change…" button opens a native folder
             // picker, which answers asynchronously as DataFolderPicked.
+            // iOS: the data folder is always the app's Documents; the
+            // button shows it in the Files app instead.
+            #[cfg(target_os = "ios")]
+            Some(E::PickDataFolder) => return super::desktop::open_path(&self.config.data_path),
+            #[cfg(not(target_os = "ios"))]
             Some(E::PickDataFolder) => {
                 let initial = self.config.data_path.clone();
                 return iced::Task::perform(
@@ -34,6 +39,22 @@ impl App {
             }
             // "Choose…" on the background image row: a native image
             // picker, answered as BackgroundImagePicked.
+            // iOS: the Files picker; the pick is a temporary copy, so
+            // keep it in the data folder.
+            #[cfg(target_os = "ios")]
+            Some(E::PickBackgroundImage) => {
+                let dir = self.config.data_path.join("backgrounds");
+                return iced::Task::perform(
+                    async move {
+                        let files =
+                            crate::platform::ios::pick_files(crate::platform::ios::PickKind::Image, false).await;
+                        crate::platform::ios::import_into(&files, &dir);
+                        files.first().and_then(|f| f.file_name()).map(|n| dir.join(n))
+                    },
+                    |path| Message::Settings(tabs::settings::Message::BackgroundImagePicked(path)),
+                );
+            }
+            #[cfg(not(target_os = "ios"))]
             Some(E::PickBackgroundImage) => {
                 return iced::Task::perform(
                     async move {
@@ -172,6 +193,22 @@ impl App {
                 self.persist_config();
                 iced::Task::none()
             }
+            // iOS: import the ROMs (and the Dual Strike files) from the
+            // Files picker straight into roms/, then rescan. They can
+            // also be dropped into the app's folder in the Files app.
+            #[cfg(target_os = "ios")]
+            M::OpenRomsFolder => {
+                let p = self.config.roms_path();
+                iced::Task::perform(
+                    async move {
+                        let files =
+                            crate::platform::ios::pick_files(crate::platform::ios::PickKind::AnyFile, true).await;
+                        crate::platform::ios::import_into(&files, &p)
+                    },
+                    |_| Message::Welcome(tabs::welcome::Message::RescanRoms),
+                )
+            }
+            #[cfg(not(target_os = "ios"))]
             M::OpenRomsFolder => {
                 let p = self.config.roms_path();
                 let _ = std::fs::create_dir_all(&p);

@@ -14,7 +14,7 @@ pub(crate) fn view(ctx: Ctx<'_>) -> Element<'_, SessionMessage> {
         iced::alignment::Horizontal::Center,
         iced::alignment::Vertical::Center,
     );
-    let body = emulator_body(frame, [None, None]);
+    let body = emulator_body(frame, [None, None], true);
     let mut stacked = stack![body];
     if state.controls_anim.visible(now) {
         stacked = stacked.push(corner_commands_overlay(lang, state, SessionMessage::Close, false));

@@ -6,6 +6,17 @@ use crate::{discord, netplay, session};
 /// Allow PvP's bounded Goodbye send to finish before the runtime exits.
 const PVP_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
 
+#[cfg(target_os = "ios")]
+pub(super) fn copy_html_to_clipboard(text: String, _html: String) {
+    crate::platform::ios::set_clipboard_text(&text);
+}
+
+#[cfg(target_os = "ios")]
+pub(super) fn copy_image_to_clipboard(img: image::RgbaImage) {
+    crate::platform::ios::set_clipboard_image(&img);
+}
+
+#[cfg(not(target_os = "ios"))]
 pub(super) fn copy_html_to_clipboard(text: String, html: String) {
     tokio::task::spawn_blocking(move || match arboard::Clipboard::new() {
         Ok(mut cb) => {
@@ -22,6 +33,7 @@ pub(super) fn copy_html_to_clipboard(text: String, html: String) {
     });
 }
 
+#[cfg(not(target_os = "ios"))]
 pub(super) fn copy_image_to_clipboard(img: image::RgbaImage) {
     let (width, height) = (img.width() as usize, img.height() as usize);
     let bytes = img.into_raw();
@@ -44,6 +56,10 @@ pub(super) fn copy_image_to_clipboard(img: image::RgbaImage) {
 /// Shared by the per-tab `OpenPath` effects.
 pub(super) fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message> {
     let path = path.as_ref();
+    // iOS: the folder in the Files app (a file opens its folder).
+    #[cfg(target_os = "ios")]
+    crate::platform::ios::open_folder(path);
+    #[cfg(not(target_os = "ios"))]
     if let Err(e) = open::that(path) {
         log::error!("open {}: {e}", path.display());
     }
@@ -52,6 +68,9 @@ pub(super) fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message
 
 /// Open an external link with the OS's default handler.
 pub(super) fn open_url(url: &str) -> iced::Task<Message> {
+    #[cfg(target_os = "ios")]
+    crate::platform::ios::open_url(url);
+    #[cfg(not(target_os = "ios"))]
     if let Err(e) = open::that(url) {
         log::warn!("open url {url}: {e}");
     }
@@ -65,6 +84,9 @@ pub(super) fn reveal_path(path: impl AsRef<std::path::Path>) -> iced::Task<Messa
     // opener::reveal blocks until the platform helper finishes; run it off
     // the update loop so a wedged file manager can't stall the UI.
     let path = path.as_ref().to_path_buf();
+    #[cfg(target_os = "ios")]
+    crate::platform::ios::open_folder(&path);
+    #[cfg(not(target_os = "ios"))]
     std::thread::spawn(move || {
         if let Err(e) = opener::reveal(&path) {
             log::error!("reveal {}: {e}", path.display());

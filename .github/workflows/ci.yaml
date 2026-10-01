@@ -132,3 +132,32 @@ jobs:
 
       - name: Check
         run: cargo check --bin tango --features gamesupport-all --profile release-dist --target x86_64-unknown-linux-gnu
+
+  check-ios:
+    runs-on: macos-14
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-ios
+          cache-on-failure: true
+
+      # ios/cargo.sh applies the iOS dependency fixes (ios/deps.py); same
+      # triple and profile as ios/build.sh, so release-ios can reuse the
+      # build-script output.
+      - name: Check
+        run: ./ios/cargo.sh check --bin tango --profile release-dist --target aarch64-apple-ios

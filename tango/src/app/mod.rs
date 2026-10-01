@@ -313,6 +313,11 @@ impl App {
             // Window events drive the geometry-persistence loop.
             iced::window::events().map(|(id, ev)| Message::Window(id, ev)),
         ];
+        // iOS: re-lay the UI out when the on-screen keyboard comes and
+        // goes (the root view lifts above it; see `view_in_safe_area`),
+        // which nothing in iced's own event stream reports.
+        #[cfg(target_os = "ios")]
+        subs.push(iced::time::every(std::time::Duration::from_millis(300)).map(|_| Message::NoOp));
         // Per-frame redraw driver, alive only while something is
         // actually moving: any registered animation mid-flight
         // (screen entrances, overlay transitions, pane enters —

@@ -59,6 +59,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let rc_path = std::path::Path::new(&std::env::var("OUT_DIR")?).join("resource.rc");
         std::fs::write(&rc_path, generate_rc(icon_path.as_deref())?)?;
         embed_resource::compile(&rc_path);
+    } else if target_os == "ios" {
+        // UIKit / GameController / AVFoundation glue (platform/ios).
+        println!("cargo:rerun-if-changed=src/platform/ios/bridge.m");
+        cc::Build::new()
+            .file("src/platform/ios/bridge.m")
+            .flag("-fobjc-arc")
+            .flag("-fmodules")
+            .compile("tango_ios_bridge");
+        for fw in [
+            "UIKit",
+            "GameController",
+            "AVFoundation",
+            "UniformTypeIdentifiers",
+            "Foundation",
+        ] {
+            println!("cargo:rustc-link-lib=framework={fw}");
+        }
     } else if target_os == "macos" {
         // SDL3 (>= 3.4) uses `@available(macOS 26.0, *)` runtime checks in
         // SDL_cocoawindow.m, which clang lowers to calls to the compiler-rt

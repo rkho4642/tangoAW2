@@ -15,6 +15,8 @@ path = "src/main.rs"
 # into the exe. No-op on other targets via the cfg check in
 # build.rs.
 embed-resource = "1"
+# iOS only: compiles the UIKit glue (src/platform/ios/bridge.m).
+cc = "1"
 
 [dependencies]
 iced.workspace = true
@@ -52,14 +54,11 @@ tango-session = { path = "../tango-session" }
 # natively and the browser Gamepad API on wasm; all the backend glue and
 # the SDL subsystem trim live there, and tango sees only its
 # backend-neutral `Button`/`Axis`/`GamepadEvent` types.
-gamepad-facade = { workspace = true, default-features = true }
 # Native audio output. The session side always mixes at 48 kHz; this
 # boundary negotiates the current default device's format and converts
 # to it, so a device swap can change sample rate without rebuilding the
 # running emulator session.
 cpal = "0.18"
-rfd = "0.14"
-arboard = { version = "3", default-features = false, features = ["image-data"] }
 # Auto-generated Rust bindings for the Lucide icon font. Gives us
 # `Icon::Foo`, `char::from(Icon::Foo)`, and (with the iced feature)
 # `LUCIDE_FONT_BYTES` so we don't have to maintain a hand-rolled
@@ -91,26 +90,6 @@ directories-next = "2"
 log.workspace = true
 env_logger = "0.9"
 anyhow.workspace = true
-# Cross-platform native crash catcher: POSIX signal handlers on
-# Linux, a Mach exception server on macOS (needed for
-# EXC_BAD_ACCESS), SetUnhandledExceptionFilter + a vectored handler
-# on Windows. Installed in the child UI process so segfaults from
-# mgba / datachannel / wgpu C code are caught.
-crash-handler = "0.6"
-# Out-of-process minidump writing + IPC. The child's crash handler
-# only ships the crash context over this channel; the supervisor
-# writes the `.dmp` by reading the suspended child. Unifies on
-# crash-context 0.6.3 with crash-handler, and self-links dbghelp on
-# Windows (no extra link config).
-minidumper = "0.8"
-# For an async-signal-safe raw write(2) from the crash handler's
-# no-server fallback path — `std::io::stderr().lock()` (a lock) and
-# `format!` (an allocation) are both unusable in a signal/exception
-# handler. `libc::write` maps to the CRT `_write` on Windows too.
-libc = "0.2"
-# Stack-allocated string for formatting the crash summary in the handler
-# without heap allocation (see platform/crash/client.rs).
-arrayvec = "0.7"
 clap.workspace = true
 
 [features]
@@ -141,3 +120,37 @@ features = ["reveal"]
 # range here keeps both halves on 0.61.
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-core = "0.61"
+
+# Desktop only. iOS has one process (no crash supervisor), a document
+# picker instead of rfd's dialogs, and reads controllers through the
+# GameController framework instead of SDL (SDL's iOS joystick code needs
+# its UIKit video layer, which the gamepad-only SDL build leaves out).
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+gamepad-facade = { workspace = true, default-features = true }
+rfd = "0.14"
+arboard = { version = "3", default-features = false, features = ["image-data"] }
+# Cross-platform native crash catcher: POSIX signal handlers on
+# Linux, a Mach exception server on macOS (needed for
+# EXC_BAD_ACCESS), SetUnhandledExceptionFilter + a vectored handler
+# on Windows. Installed in the child UI process so segfaults from
+# mgba / datachannel / wgpu C code are caught.
+crash-handler = "0.6"
+# Out-of-process minidump writing + IPC. The child's crash handler
+# only ships the crash context over this channel; the supervisor
+# writes the `.dmp` by reading the suspended child. Unifies on
+# crash-context 0.6.3 with crash-handler, and self-links dbghelp on
+# Windows (no extra link config).
+minidumper = "0.8"
+# For an async-signal-safe raw write(2) from the crash handler's
+# no-server fallback path — `std::io::stderr().lock()` (a lock) and
+# `format!` (an allocation) are both unusable in a signal/exception
+# handler. `libc::write` maps to the CRT `_write` on Windows too.
+libc = "0.2"
+# Stack-allocated string for formatting the crash summary in the handler
+# without heap allocation (see platform/crash/client.rs).
+arrayvec = "0.7"
+
+# iOS: the gamepad types without SDL; UIKit/GameController/AVFoundation
+# through objc2.
+[target.'cfg(target_os = "ios")'.dependencies]
+gamepad-facade.workspace = true

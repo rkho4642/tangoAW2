@@ -10,7 +10,10 @@
 //!   hooks it installs in the child UI.
 
 pub mod audio;
+#[cfg(not(target_os = "ios"))]
 pub mod crash;
 pub mod input;
 pub mod input_capture;
+#[cfg(target_os = "ios")]
+pub mod ios;
 pub mod video;

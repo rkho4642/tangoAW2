@@ -34,6 +34,10 @@ fn default_frame_delay() -> u32 {
     crate::session::pvp::DEFAULT_FRAME_DELAY
 }
 
+fn default_fractional_scaling() -> bool {
+    cfg!(target_os = "ios")
+}
+
 fn default_ui_scale() -> f32 {
     1.0
 }
@@ -227,8 +231,10 @@ pub struct Config {
     /// scale that fits the window. Default (false) snaps to the
     /// largest whole-integer multiple of the source texture so
     /// every source pixel maps to the same host-pixel count —
-    /// no bilinear shimmer at non-integer scales.
-    #[serde(default)]
+    /// no bilinear shimmer at non-integer scales. On by default on iOS,
+    /// where a phone or tablet screen is better filled than
+    /// letterboxed to a whole multiple.
+    #[serde(default = "default_fractional_scaling")]
     pub fractional_scaling: bool,
     /// How a DS game's two screens stack in the emulator pane.
     /// Applied at draw time, so switching it mid-session re-lays the
@@ -365,7 +371,7 @@ impl Default for Config {
             background_image: None,
             accent: AccentColor::default(),
             video_filter: String::new(),
-            fractional_scaling: false,
+            fractional_scaling: default_fractional_scaling(),
             ds_screen_stacking: DsScreenStacking::default(),
             ds_primary_screen: DsPrimaryScreen::default(),
             show_replay_inputs: false,
@@ -418,6 +424,13 @@ impl Config {
         // Host locations aren't persisted (see `cache_dir`), so bind
         // them on every load rather than only on a fresh default.
         config.library.cache_dir = cache_dir();
+        // iOS moves the app's container on every install and update, so
+        // a saved absolute path goes stale: the data folder is always
+        // the app's Documents.
+        #[cfg(target_os = "ios")]
+        {
+            config.library.data_path = default_data_path();
+        }
         if !config.advance_wars_skin {
             config.advance_wars_skin = true;
             config.theme = ThemeMode::AdvanceWars;
@@ -512,6 +525,9 @@ pub fn config_dir() -> Option<std::path::PathBuf> {
     if let Some(profile) = profile_dir() {
         return Some(profile.join("config"));
     }
+    #[cfg(target_os = "ios")]
+    return Some(crate::platform::ios::config_dir());
+    #[allow(unreachable_code)]
     directories_next::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION).map(|d| d.config_dir().to_path_buf())
 }
 
@@ -526,6 +542,9 @@ fn cache_dir() -> Option<std::path::PathBuf> {
     if let Some(profile) = profile_dir() {
         return Some(profile.join("cache"));
     }
+    #[cfg(target_os = "ios")]
+    return Some(crate::platform::ios::cache_dir());
+    #[allow(unreachable_code)]
     directories_next::ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION).map(|d| d.cache_dir().to_path_buf())
 }
 
@@ -536,6 +555,11 @@ fn default_data_path() -> std::path::PathBuf {
     if let Some(profile) = profile_dir() {
         return profile.join("data");
     }
+    // iOS: the app's Documents, which the Files app shows as the app's
+    // own folder (roms/, saves/, replays/ ...).
+    #[cfg(target_os = "ios")]
+    return crate::platform::ios::documents_dir();
+    #[allow(unreachable_code)]
     directories_next::UserDirs::new()
         .and_then(|u| u.document_dir().map(|d| d.join(DATA_DIR_NAME)))
         .unwrap_or_else(|| std::path::PathBuf::from("./tango-data"))

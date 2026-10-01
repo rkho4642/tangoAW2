@@ -75,6 +75,8 @@ fn is_target_installer(s: &str) -> bool {
         s.ends_with("-x86_64-linux.AppImage")
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
         s.ends_with("-aarch64-linux.AppImage")
+    } else if cfg!(target_os = "ios") {
+        s.ends_with("-ios.ipa")
     } else {
         false
     }
@@ -115,7 +117,16 @@ fn do_update(path: &std::path::Path) {
     std::process::exit(0);
 }
 
-#[cfg(not(target_os = "windows"))]
+/// iOS: an app cannot install itself; the sideloading app (AltStore,
+/// SideStore, Sideloadly) does. The downloaded .ipa is in the app's
+/// folder in Files (updater/), and the release page opens so the player
+/// can hand it over.
+#[cfg(target_os = "ios")]
+fn do_update(_path: &std::path::Path) {
+    crate::platform::ios::open_url("https://github.com/rkoh46/tangoAW2/releases/latest");
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "ios")))]
 fn do_update(path: &std::path::Path) {
     // No automated hand-off outside Windows (it would take macOS
     // CFBundle + Linux execve gymnastics). Open the downloaded

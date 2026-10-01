@@ -60,6 +60,18 @@ enum Command {
     Join { link_code: String },
 }
 
+#[cfg(target_os = "ios")]
+pub fn main() {
+    // One process on iOS: no supervisor to spawn a child or write
+    // minidumps (the system keeps crash reports for the device). The
+    // log goes to the console and to logs/ in the app's Documents.
+    if let Err(e) = run_app() {
+        eprintln!("iced app exited with error: {e:?}");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
 pub fn main() {
     if platform::crash::is_child() {
         // Child process — the actual UI. Stderr is captured by
@@ -175,8 +187,33 @@ fn restore_window_size(config: &mut config::Config) -> (f32, f32) {
     )
 }
 
+/// iOS: the whole UI inside the screen's safe area (clear of the notch,
+/// the Dynamic Island and the home indicator), on black.
+#[cfg(target_os = "ios")]
+fn view_in_safe_area(app: &App) -> iced::Element<'_, app::Message> {
+    let [top, left, bottom, right] = platform::ios::safe_area();
+    // Lift everything above the on-screen keyboard while it is up.
+    let bottom = bottom.max(platform::ios::keyboard_height());
+    let scale = app.scale_factor().max(0.1);
+    iced::widget::container(app.view())
+        .padding(iced::Padding {
+            top: top / scale,
+            right: right / scale,
+            bottom: bottom / scale,
+            left: left / scale,
+        })
+        .style(|_: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(iced::Color::BLACK)),
+            ..Default::default()
+        })
+        .into()
+}
+
 fn run_app() -> iced::Result {
+    #[cfg(not(target_os = "ios"))]
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    #[cfg(target_os = "ios")]
+    platform::ios::init_logging();
 
     // Catch native crashes (segfaults, SEH violations, Mach
     // EXC_BAD_ACCESS) from mgba / datachannel / wgpu C code. Connect to
@@ -185,12 +222,24 @@ fn run_app() -> iced::Result {
     // than in this process's fault handler. Also installs a panic hook
     // for Rust panics. Leak the handle so it stays installed for the
     // lifetime of the process.
+    #[cfg(not(target_os = "ios"))]
     std::mem::forget(platform::crash::client::install(platform::crash::client::connect()));
 
     // Re-parse the CLI in the child (the supervisor doesn't pass
     // it through). Bad args here would have failed in the
     // supervisor already, so unwrap is fine.
+    #[cfg(not(target_os = "ios"))]
     let args = <Args as clap::Parser>::parse();
+    // iOS launches with no arguments (and the simulator's own launcher
+    // passes ones clap does not know).
+    // TANGOAW2_JOIN=<link code> stands in for `join` (testing in the
+    // Simulator).
+    #[cfg(target_os = "ios")]
+    let args = Args {
+        command: std::env::var("TANGOAW2_JOIN")
+            .ok()
+            .map(|link_code| Command::Join { link_code }),
+    };
     let init_link_code = args.command.map(|c| match c {
         Command::Join { link_code } => link_code,
     });
@@ -205,6 +254,8 @@ fn run_app() -> iced::Result {
     // enforces "first thread to call init owns the pump", so this has to
     // happen on the iced/winit main thread.
     gamepad_facade::init("Tango");
+    #[cfg(target_os = "ios")]
+    platform::ios::init();
 
     // Windows-only auto-fallback to ANGLE for old Intel iGPUs.
     // We enumerate `Backends::PRIMARY` (DX12 + Vulkan) up front
@@ -287,7 +338,11 @@ fn run_app() -> iced::Result {
         _ => iced::window::Position::default(),
     };
 
-    iced::application(App::new, App::update, App::view)
+    #[cfg(not(target_os = "ios"))]
+    let view = App::view;
+    #[cfg(target_os = "ios")]
+    let view = view_in_safe_area;
+    iced::application(App::new, App::update, view)
         .settings(settings)
         .title(App::title)
         .theme(App::theme)

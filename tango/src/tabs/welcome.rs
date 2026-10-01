@@ -81,19 +81,31 @@ pub fn view<'a>(
             .align_y(Alignment::Center)
     };
 
-    // Step 1 — ROMs.
+    // Step 1 — ROMs. On iOS the folder is the app's own in the Files
+    // app (its path is a container's, meaningless to a player), and the
+    // button imports through the Files picker.
+    let ios = cfg!(target_os = "ios");
+    let (description, folder, open_label) = if ios {
+        (
+            t!(lang, "welcome-step-roms-description-ios"),
+            t!(lang, "welcome-roms-folder-ios"),
+            t!(lang, "welcome-import-roms"),
+        )
+    } else {
+        (
+            t!(lang, "welcome-step-roms-description"),
+            roms_path.display().to_string(),
+            t!(lang, "welcome-open-folder"),
+        )
+    };
     let mut roms_block = column![
         step_header(has_roms, t!(lang, "welcome-step-roms")),
-        text(t!(lang, "welcome-step-roms-description"))
-            .size(TEXT_CAPTION)
-            .style(widgets::muted_text_style),
-        text(roms_path.display().to_string())
-            .size(TEXT_CAPTION)
-            .font(iced::Font::MONOSPACE),
+        text(description).size(TEXT_CAPTION).style(widgets::muted_text_style),
+        text(folder).size(TEXT_CAPTION).font(iced::Font::MONOSPACE),
         row![
             widgets::labeled_icon_button(
-                Icon::Folder,
-                t!(lang, "welcome-open-folder"),
+                if ios { Icon::FileInput } else { Icon::Folder },
+                open_label,
                 Message::OpenRomsFolder,
                 STANDARD_PADDING,
                 widgets::neutral,

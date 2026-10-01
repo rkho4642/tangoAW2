@@ -84,22 +84,30 @@ pub(super) fn settings_graphics<'a>(lang: &'a LanguageIdentifier, config: &'a co
         .iter()
         .find(|c| (c.value - config.ui_scale).abs() < f32::EPSILON)
         .cloned();
+    // iOS: the app is the whole screen; only the UI scale applies.
+    let mut window_rows: Vec<Element<'a, Message>> = Vec::new();
+    if !cfg!(target_os = "ios") {
+        window_rows.push(option_row::<Message>(
+            t!(lang, "settings-window-size"),
+            window_size_picker,
+        ));
+        window_rows.push(option_row(
+            t!(lang, "settings-fullscreen"),
+            toggle(config.fullscreen, Message::ToggleFullscreen),
+        ));
+    }
     let mut groups: Vec<Element<'a, Message>> = vec![
         settings_group(
             t!(lang, "settings-group-window"),
-            vec![
-                option_row::<Message>(t!(lang, "settings-window-size"), window_size_picker),
-                option_row(
-                    t!(lang, "settings-fullscreen"),
-                    toggle(config.fullscreen, Message::ToggleFullscreen),
-                ),
-                option_row::<Message>(
+            window_rows
+                .into_iter()
+                .chain([option_row::<Message>(
                     t!(lang, "settings-ui-scale"),
                     widgets::picker(ui_scale_options, selected_ui_scale, |c: Choice<f32>| {
                         Message::UiScaleChanged(c.value)
                     }),
-                ),
-            ],
+                )])
+                .collect(),
         ),
         settings_group(
             t!(lang, "settings-group-emulator"),

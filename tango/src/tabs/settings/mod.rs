@@ -148,7 +148,8 @@ pub enum Message {
     /// back as `DataFolderPicked`.
     OpenDataFolderPicker,
     /// Folder picker resolved: `Some(path)` if the user chose one, `None` if
-    /// they dismissed it.
+    /// they dismissed it. (Never on iOS, whose data folder cannot move.)
+    #[cfg_attr(target_os = "ios", allow(dead_code))]
     DataFolderPicked(Option<std::path::PathBuf>),
     /// "Choose…" on the background image row: opens an image picker,
     /// answered as `BackgroundImagePicked`.

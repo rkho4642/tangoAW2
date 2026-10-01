@@ -5923,6 +5923,7 @@ dependencies = [
  "arboard",
  "arrayvec",
  "bytemuck",
+ "cc",
  "chrono",
  "clap",
  "cpal",

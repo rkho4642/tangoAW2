@@ -214,3 +214,45 @@ jobs:
           files: |
             ./dist/tangoaw2-x86_64-linux.AppImage
             ./dist/tangoaw2-x86_64-linux.debug
+
+  release-ios:
+    runs-on: macos-14
+    needs: create-release
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: git fetch --tags --force
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios
+
+      # See the note in release-win32-x64.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-ios
+          save-if: false
+
+      # Unsigned apart from an ad-hoc signature: AltStore / SideStore /
+      # Sideloadly sign it with the player's Apple ID (see ios/README.md).
+      - name: Build
+        run: |
+          python3 -m venv ./ios/venv
+          source ./ios/venv/bin/activate
+          python3 -m pip install pillow
+          ./ios/build.sh
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            ./dist/tangoaw2-ios.ipa

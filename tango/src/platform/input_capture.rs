@@ -178,6 +178,18 @@ where
                         shell.publish(message);
                     }
                 }
+                // iOS: GameController pads and a hardware keyboard, polled
+                // here in place of SDL's event pump.
+                #[cfg(target_os = "ios")]
+                for polled in crate::platform::ios::poll() {
+                    let message = match &polled {
+                        crate::platform::ios::Polled::Pad(ev) => (self.on_input)(Input::Gamepad(ev)),
+                        crate::platform::ios::Polled::Key(kb) => (self.on_input)(Input::Keyboard(kb)),
+                    };
+                    if let Some(message) = message {
+                        shell.publish(message);
+                    }
+                }
                 // No `shell.request_redraw()` — the session
                 // subscription's vblank-notify wake is what
                 // perpetuates the loop now. Pacing redraws here

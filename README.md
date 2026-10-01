@@ -23,7 +23,19 @@ Download the latest build from
 [Releases](https://github.com/rkoh46/tangoAW2/releases/latest): Windows
 (`.exe` installer), macOS on Apple Silicon (`.dmg`, not signed:
 right-click the app and choose Open the first time) or Linux
-(`.AppImage`). What changed in each version is in its release notes.
+(`.AppImage`), or iPhone and iPad (`.ipa`, see below). What changed in
+each version is in its release notes.
+
+## iPhone and iPad
+
+`tangoaw2-ios.ipa` (iOS 16 or later) is not on the App Store: install it
+with [AltStore](https://altstore.io), [SideStore](https://sidestore.io)
+or [Sideloadly](https://sideloadly.io), which sign it with your Apple ID.
+Import your ROM from the welcome screen, or copy it in the Files app to
+*On My iPhone › tangoAW2 › roms* (the Dual Strike .nds goes there too).
+Play with the on-screen buttons or a paired controller (they step aside
+while one is in use); netplay works with desktop players on the same
+version. Video export is desktop only.
 
 ## First run
 
@@ -155,6 +167,11 @@ then `/host` in one and `/connect 127.0.0.1` in the other:
 TANGOAW2_PROFILE=~/tangoaw2-p1 ./tango
 TANGOAW2_PROFILE=~/tangoaw2-p2 ./tango
 ```
+
+The iPhone/iPad build needs Xcode, the `aarch64-apple-ios` and
+`aarch64-apple-ios-sim` Rust targets and Pillow: `ios/build.sh` writes
+`dist/tangoaw2-ios.ipa`, `ios/build.sh --sim` a Simulator app. How the
+iOS port works is in [ios/README.md](ios/README.md).
 
 ## License
 

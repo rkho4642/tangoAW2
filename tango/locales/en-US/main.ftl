@@ -323,6 +323,8 @@ settings-group-emulator = Emulator
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-data-folder = Data folder
 settings-data-folder-change = Change…
+settings-data-folder-ios = On My iPhone or iPad › tangoAW2
+settings-data-folder-open-ios = Show in Files
 settings-enable-updater = Automatically check for app updates
 settings-allow-prerelease-upgrades = Include prereleases when checking for app updates
 settings-netplay-frame-delay = Frame delay
@@ -353,6 +355,11 @@ welcome-step-roms-detected = { $count } ROMs detected.
 welcome-step-nickname = Set your nickname
 welcome-step-nickname-description = You can change this at any time in Settings.
 welcome-open-folder = Open ROMs folder
+# iPhone / iPad: the ROMs come in through the Files picker, or by copying
+# them into the app's folder in the Files app.
+welcome-step-roms-description-ios = Import your Advance Wars 2: Black Hole Rising (USA) .gba file (and, for the Dual Strike features, your Advance Wars: Dual Strike (USA) .nds), or copy them in the Files app to:
+welcome-roms-folder-ios = On My iPhone or iPad › tangoAW2 › roms
+welcome-import-roms = Import ROMs…
 welcome-roms-needed = Add at least one ROM before continuing.
 
 # Common actions

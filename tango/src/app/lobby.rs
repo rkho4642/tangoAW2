@@ -90,7 +90,20 @@ impl App {
             iced::Task::none()
         };
         let followup = self.resend_settings_if_lobby();
-        iced::Task::batch([task, followup, attention])
+        // Test aid (`TANGOAW2_AUTOSTART=link:...`, see `app::library`):
+        // ready up once the lobby has settled.
+        let auto_ready = if became_lobby
+            && std::env::var("TANGOAW2_AUTOSTART")
+                .as_deref()
+                .is_ok_and(|s| s.starts_with("link:"))
+        {
+            iced::Task::perform(tokio::time::sleep(std::time::Duration::from_secs(3)), |_| {
+                Message::Play(crate::tabs::play::Message::Ready)
+            })
+        } else {
+            iced::Task::none()
+        };
+        iced::Task::batch([task, followup, attention, auto_ready])
     }
 
     pub(super) fn finish_pvp_handoff(

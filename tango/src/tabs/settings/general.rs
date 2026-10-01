@@ -136,13 +136,23 @@ pub(super) fn settings_general<'a>(lang: &'a LanguageIdentifier, config: &'a con
                     // The path is supporting detail next to its
                     // Change action, so it rides muted at caption
                     // size instead of competing with the row label.
-                    text(config.data_path.to_string_lossy().into_owned())
-                        .size(TEXT_CAPTION)
-                        .style(widgets::muted_text_style),
-                    button(text(t!(lang, "settings-data-folder-change")))
-                        .on_press(Message::OpenDataFolderPicker)
-                        .padding(STANDARD_PADDING)
-                        .style(widgets::neutral),
+                    // iOS: the app's own folder in Files, which cannot
+                    // move; the button shows it there.
+                    text(if cfg!(target_os = "ios") {
+                        t!(lang, "settings-data-folder-ios")
+                    } else {
+                        config.data_path.to_string_lossy().into_owned()
+                    })
+                    .size(TEXT_CAPTION)
+                    .style(widgets::muted_text_style),
+                    button(text(if cfg!(target_os = "ios") {
+                        t!(lang, "settings-data-folder-open-ios")
+                    } else {
+                        t!(lang, "settings-data-folder-change")
+                    }))
+                    .on_press(Message::OpenDataFolderPicker)
+                    .padding(STANDARD_PADDING)
+                    .style(widgets::neutral),
                 ]
                 .spacing(8)
                 .align_y(Alignment::Center),

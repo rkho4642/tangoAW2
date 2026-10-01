@@ -196,8 +196,19 @@ fn main_frame_alignment(view: crate::config::OpponentView) -> (iced::alignment::
 /// `slots` are the PvP setup-drawer slots (`[left, right]`), each
 /// `Some(width)` while that drawer holds the row open — see the
 /// comment on `drawer_slot` below; always `[None, None]` outside PvP.
-fn emulator_body<'a>(frame: Element<'a, Message>, slots: [Option<f32>; 2]) -> Element<'a, Message> {
+/// `touch` asks for the on-screen controller (iOS only; sessions the
+/// player drives, not replays).
+fn emulator_body<'a>(frame: Element<'a, Message>, slots: [Option<f32>; 2], touch: bool) -> Element<'a, Message> {
     let frame_container = container(frame).center(Fill);
+    // iOS: the game above the touch controls in portrait.
+    #[cfg(target_os = "ios")]
+    let frame_container: Element<'a, Message> = if touch {
+        crate::platform::ios::touch_pad::GameArea::new(frame_container).into()
+    } else {
+        frame_container.into()
+    };
+    #[cfg(not(target_os = "ios"))]
+    let _ = touch;
     let backdrop: Element<'a, Message> = container(iced::widget::Space::new().width(Fill).height(Fill))
         .style(|_: &iced::Theme| iced::widget::container::Style {
             background: Some(iced::Background::Color(iced::Color::BLACK)),
@@ -225,6 +236,15 @@ fn emulator_body<'a>(frame: Element<'a, Message>, slots: [Option<f32>; 2]) -> El
     if let Some(w) = slots[1] {
         content_row = content_row.push(drawer_slot(w));
     }
-    let body = stack![backdrop, Element::from(content_row)];
+    #[allow(unused_mut)]
+    let mut body = stack![backdrop, Element::from(content_row)];
+    // The on-screen controller, hidden while a game controller is
+    // connected.
+    #[cfg(target_os = "ios")]
+    if touch {
+        body = body.push(crate::platform::ios::touch_pad::TouchPad::new(|bits| {
+            Message::Input(crate::platform::input::Event::TouchPad(bits))
+        }));
+    }
     container(body).width(Fill).height(Fill).into()
 }
