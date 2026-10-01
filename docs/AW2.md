@@ -229,8 +229,24 @@ original instruction against the ROM and writes `src/five_patches.rs`.
   (an unrolled 1..4 call gets a detour for 5), capture tiles (six owners per
   kind; Black Hole's property tiles `0x1B4..0x1B9`), owner bits, building
   sprites (army 5 on OBJ palette 13; fogged buildings use the neutral
-  palette), army 5's units on BG palette 11 (the game's neutral-unit palette; no
-  neutral units exist, and 1 is the pipes'), the Black Hole HQ art in the building sheet's lab slot.
+  palette), army 5's units on BG palette 11, the Black Hole HQ art in the building sheet's lab slot.
+- **Unit colours.** The map draws army n's units with BG palette 11 + n and
+  moved units with BG 11 (icon palette entry 0), where `sub_0801A57C`
+  loads the current army's grey (`0x0810E6E0 + (colour + 4) * 32`) at each
+  turn start and after a power's portrait or the battle scene. Every BG
+  palette is in use on the map (0-7 terrain and its fog shades, 8 the CO
+  panel, 9 the turn banner and power portrait, 10 windows), so with five
+  armies the grey goes to BG 9 (the banner shows before any unit has moved;
+  the power portrait covers the map, and the game reloads the grey after
+  it), Black Hole's colours go back in 11 after each grey load, and a moved
+  unit's draw puts the grey back in 9 if the banner left its colours there.
+  Before (0.3.4) Black Hole's units took the current army's grey: Green
+  Earth's tint on Green Earth's turn, red-brown at Orange Star's, and moved
+  units took Black Hole's colours. Colour 15 (the outline, pulsing while a
+  CO power is on) is set every frame by `sub_08024720` for armies 1..4;
+  army 5 is added (row 11). Left: a moved unit of the army firing a power
+  shows the portrait's colours for the second the wipe passes over the map
+  (`tests/test_five_unit_palettes.py`).
 - **Screens.** The Teams screen (five 48-px columns, `5P`, `E Team`), CO
   screen, Intel, results, capture-limit panel. The map menu hides Save (the
   suspend block holds four armies).

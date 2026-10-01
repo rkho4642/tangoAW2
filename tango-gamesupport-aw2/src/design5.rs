@@ -295,8 +295,8 @@ const COLOUR: u32 = 0x1A;
 const CO: u32 = 0x1D;
 const FLAK: u8 = 11;
 /// Black Hole's unit palette, and the BG palette army 5's units are drawn
-/// with (five's `ICON_PALETTES[5]`: BG 11, the game's unused neutral-unit
-/// palette).
+/// with (five's `ICON_PALETTES[5]`: BG 11, the battle map's moved-unit
+/// palette, whose grey five moves to BG 9).
 const UNIT_PALETTES: u32 = 0x0810_E6E0;
 /// Black Hole's HQ art (five's HQ sheet art, army 5), and where its sprite
 /// takes it from (OBJ tile 0x90, the building sheet's lab slot).
@@ -340,6 +340,10 @@ pub fn editor_tick(core: &mut Core) {
     // Army 5's units' BG palette.
     let mut pal = [0u8; 0x20];
     core.raw_read_range(UNIT_PALETTES + 4 * 0x20, -1, &mut pal);
+    // Colour 15 (the outline) black, as the battle map's per-frame outline
+    // animation (sub_08024720, which five extends to army 5) leaves it.
+    let black = core.raw_read_16(0x0809_139C, -1);
+    pal[30..32].copy_from_slice(&black.to_le_bytes());
     for base in [0x0300_20C0, 0x0500_0000] {
         let mut now = [0u8; 0x20];
         core.raw_read_range(base + UNIT_BANK * 0x20, -1, &mut now);

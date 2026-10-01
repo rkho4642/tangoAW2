@@ -51,10 +51,14 @@ const DATA_MAGIC: u32 = 0x3541_5754; // "TWA5"
 /// The breakpoint the trapper writes over a trapped instruction.
 const TRAP: u16 = 0xBEEF;
 
-/// Army 5's own unit palette goes to BG palette 11: the game's palette for
-/// neutral units, which never exist (1, used before, is the pipes').
+/// Army 5's own unit palette goes to BG palette 11, the game's moved-unit
+/// palette; the moved units' grey goes to BG 9 (see `five/patches.txt`).
 const UNIT_BANK: u16 = 11;
+const MOVED_BANK: u16 = 9;
+/// Unit palettes by colour (1..5), then their moved greys (colour + 5).
 const UNIT_PALETTES: u32 = 0x0810_E6E0;
+const PAL_BUFFER: u32 = 0x0300_20C0;
+const PAL_RAM: u32 = 0x0500_0000;
 const BLACK_HOLE: u8 = 5;
 /// Army 5's HQ sprite: the lab's 8 tiles in the building sheet (the map has
 /// no labs; every OBJ tile is used by some screen, and the sheet is
@@ -132,6 +136,8 @@ pub enum Routine {
     HqToCity,
     PropertyCensus,
     UnitPalette,
+    MovedPalette,
+    OutlineRow,
     SetupArmy5,
     TeamsInit,
     TeamsEmblem,
@@ -363,6 +369,9 @@ fn install_data(core: &mut Core) {
         let v = core.raw_read_16(0x0809_097C + 2 * i, -1);
         core.raw_write_16(ICON_PALETTES + 2 * i, -1, v);
     }
+    // Entry 0 is the moved units'.
+    let v = core.raw_read_16(ICON_PALETTES, -1);
+    core.raw_write_16(ICON_PALETTES, -1, (MOVED_BANK << 12) | (v & 0xFFF));
     core.raw_write_16(ICON_PALETTES + 10, -1, (UNIT_BANK << 12) | 0x235);
     // Building sprite definitions per owner (neutral, armies 1..5).
     for i in 0..5u32 {
@@ -468,6 +477,45 @@ fn player(army: u32) -> u32 {
     PLAYERS + PLAYER_SIZE * army
 }
 
+/// Colour 15 of an army's unit palette (the outline), as sub_08024720 sets
+/// it every frame: a pulse (`0x0809139C`, a step every 4 frames) while the
+/// army's CO power is on, else its first step (black).
+fn outline_colour(core: &Core, army: u32) -> u16 {
+    let p = player(army);
+    if core.raw_read_8(p + 0x1E, -1) != 0 {
+        let step = (core.raw_read_32(0x0300_4008, -1) >> 2) & 0xF;
+        core.raw_read_16(0x0809_139C + 2 * step, -1)
+    } else {
+        core.raw_read_16(0x0809_139C, -1)
+    }
+}
+
+/// Before a moved unit is drawn: BG palette 9 gets the current army's grey
+/// where it holds something else (the turn banner's colours, loaded after
+/// the turn start's grey). Palette RAM is written only where it shows the
+/// buffer, so a fade in progress is left to finish.
+fn moved_palette(core: &mut Core) {
+    let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
+    let colour = core.raw_read_8(player(army) + 0x1A, -1) as u32;
+    if !(1..=5).contains(&army) || !(1..=5).contains(&colour) {
+        return;
+    }
+    let mut grey = [0u8; 0x20];
+    core.raw_read_range(UNIT_PALETTES + (colour + 4) * 0x20, -1, &mut grey);
+    let at = MOVED_BANK as u32 * 0x20;
+    let mut buf = [0u8; 0x20];
+    core.raw_read_range(PAL_BUFFER + at, -1, &mut buf);
+    if buf == grey {
+        return;
+    }
+    let mut ram = [0u8; 0x20];
+    core.raw_read_range(PAL_RAM + at, -1, &mut ram);
+    core.raw_write_range(PAL_BUFFER + at, -1, &grey);
+    if ram == buf {
+        core.raw_write_range(PAL_RAM + at, -1, &grey);
+    }
+}
+
 fn team(core: &Core, army: u32) -> u8 {
     core.raw_read_8(player(army) + 0x2A, -1)
 }
@@ -497,10 +545,24 @@ fn routine(core: &mut Core, r: Routine) -> Option<u32> {
         Routine::UnitPalette => {
             let mut pal = [0u8; 0x20];
             core.raw_read_range(UNIT_PALETTES + (BLACK_HOLE as u32 - 1) * 0x20, -1, &mut pal);
+            // Colour 15 as sub_08024720 sets it every frame.
+            pal[30..32].copy_from_slice(&outline_colour(core, 5).to_le_bytes());
             // The game's palette buffer (copied to palette RAM each frame)
             // and palette RAM itself.
-            for base in [0x0300_20C0, 0x0500_0000] {
+            for base in [PAL_BUFFER, PAL_RAM] {
                 core.raw_write_range(base + UNIT_BANK as u32 * 0x20, -1, &pal);
+            }
+            None
+        }
+        Routine::MovedPalette => {
+            moved_palette(core);
+            None
+        }
+        Routine::OutlineRow => {
+            // r1 = (army + 11) << 5: army 5's row is 11, not 16.
+            let cpu = core.gba_mut().cpu_mut();
+            if cpu.gpr(1) as u32 == (5 + 11) << 5 {
+                cpu.set_gpr(1, (UNIT_BANK as i32) << 5);
             }
             None
         }

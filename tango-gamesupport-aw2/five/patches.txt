@@ -326,12 +326,30 @@ pre 0803F8CE unit_anim_count | lsls r0, r0, #0x18
 # the capture-limit / turn-limit panel lists armies 4..1; list 5..1
 imm 0802B50C 5 | movs r1, #4
 imm 0802B614 5 | movs r1, #4
-# Black Hole's unit palette on BG palette 11 (the game's "neutral units"
-# palette: there are none; 1 is the pipes'), after each of the game's
-# palette loads
+# Black Hole's unit palette on BG palette 11, after each of the game's
+# palette loads. BG 11 is the game's moved-unit palette (icon palette entry
+# 0): sub_0801A57C(army) loads the current army's grey there at each turn
+# start and after anything that drew over it (a power's portrait, the battle
+# scene). With five armies the grey goes to BG 9 instead (the turn banner's
+# and the power portrait's: the banner shows before any unit has moved, and
+# the game follows a power with sub_0801A57C), and Black Hole's colours go
+# back in 11 after each of those loads. Before, Black Hole's units took the
+# current army's grey (darker; red-brown from Orange Star's turn start) and
+# moved units Black Hole's colours.
 pre 080234B8 unit_palette | pop {r4, r5, r6}
 pre 080248C8 unit_palette | pop {r4, r5}
 pre 08035042 unit_palette | pop {r4}
+imm 0801A598 0x90 | movs r1, #0xb0
+pre 0801A5A2 unit_palette | pop {r0}
+# a moved unit is about to be drawn: BG 9 must hold the current army's grey
+# (the turn banner loads its colours there after the turn start's grey)
+pre 080224BC moved_palette | movs r0, #0x80
+# every frame sub_08024720 sets colour 15 of each army's unit palette (row
+# 11 + army): black, or a pulse while the army's CO power is on. Armies
+# 1..4; army 5 too, on row 11
+imm 08024796 5 | cmp r4, #4
+pre 08024760 outline_row | adds r1, #0x1e
+pre 08024782 outline_row | adds r1, #0x1e
 
 # ---- turn order ----
 imm 08026710 6 | cmp r4, #5
