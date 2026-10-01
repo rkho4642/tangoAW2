@@ -97,15 +97,63 @@ pub const IS_FLAG: u32 = 0x0803_CBD8;
 /// Return to the Select Mode menu.
 const RETURN_TO_MENU: u32 = 0x0803_B83D;
 
-/// The proc script that starts a mission: [`START_PROC`] in the blob.
-fn start_proc_script() -> [u8; 24] {
-    let mut s = [0u8; 24];
-    // CALL ResetRulesAfterCampaignMap; GOTO_SCR mission title + battle; END
-    s[0..2].copy_from_slice(&2u16.to_le_bytes());
-    s[4..8].copy_from_slice(&RESET_RULES.to_le_bytes());
-    s[8..10].copy_from_slice(&0x0Du16.to_le_bytes());
-    s[12..16].copy_from_slice(&MISSION_PROC.to_le_bytes());
-    s
+/// AW2's save slot writer `sub_0801A7D8(slot, buffer, size)`.
+const SLOT_WRITER: u32 = 0x0801_A7D8;
+/// The CO select screen (War Room's, also the campaign's).
+const CO_SELECT_PROC: u32 = 0x0861_65C0;
+/// Its lists: CO ids (u8, by group), each group's count and country (u8),
+/// the group count (u32), and each group's "may switch" flag (u32 x 5).
+const CO_LIST: u32 = 0x0300_58E0;
+const CO_GROUP_COUNTS: u32 = 0x0300_5948;
+const CO_GROUP_COUNTRY: u32 = 0x0300_5958;
+const CO_GROUPS: u32 = 0x0300_5944;
+const CO_GROUP_SWITCH: u32 = 0x0300_59C0;
+
+/// Magic flow ids ([`data::Magic::Flow`]).
+pub const FLOW_CO_SETUP: u8 = 1;
+
+/// Thumb: `sub_0801A7D8(SAVE_SLOT, PROGRESS, SAVE_SIZE)`, a proc CALL.
+fn save_stub() -> Vec<u8> {
+    let h: [u16; 10] = [
+        0xB500,                   // push {lr}
+        0x2000 | SAVE_SLOT as u16, // movs r0, #slot
+        0x4903,                   // ldr r1, [pc, #12] (PROGRESS)
+        0x2200 | SAVE_SIZE as u16, // movs r2, #size
+        0x4B03,                   // ldr r3, [pc, #12] (writer)
+        0xF000,                   // bl +2 (the bx below)
+        0xF801,
+        0xBD00, // pop {pc}
+        0x4718, // bx r3
+        0x46C0, // nop
+    ];
+    let mut b: Vec<u8> = h.iter().flat_map(|v| v.to_le_bytes()).collect();
+    b.extend_from_slice(&PROGRESS.to_le_bytes());
+    b.extend_from_slice(&(SLOT_WRITER | 1).to_le_bytes());
+    b
+}
+
+fn proc_cmd(op: u16, arg: i16, ptr: u32) -> [u8; 8] {
+    let mut c = [0u8; 8];
+    c[0..2].copy_from_slice(&op.to_le_bytes());
+    c[2..4].copy_from_slice(&arg.to_le_bytes());
+    c[4..8].copy_from_slice(&ptr.to_le_bytes());
+    c
+}
+
+/// The proc that starts a mission: save the progress, the CO select when
+/// the player picks COs, then AW2's own mission start
+/// (`ResetRulesAfterCampaignMap`, the mission title, the battle).
+fn start_proc_script(save: u32, co_setup: u32) -> Vec<u8> {
+    [
+        proc_cmd(0x02, 0, save | 1),
+        proc_cmd(0x28, 1, co_setup),
+        proc_cmd(0x06, 1, CO_SELECT_PROC),
+        proc_cmd(0x0B, 1, 0),
+        proc_cmd(0x02, 0, RESET_RULES),
+        proc_cmd(0x0D, 0, MISSION_PROC),
+        proc_cmd(0x00, 0, 0),
+    ]
+    .concat()
 }
 
 pub struct Campaign {
@@ -124,12 +172,9 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let mut widths = vec![0u8; 256];
             core.raw_read_range(FONT_WIDTHS, -1, &mut widths);
             let mut built = data::build(&ds, DATA + 0x100, &widths)?;
-            let start_proc = built.base + built.blob.len() as u32;
-            let start_proc = (start_proc + 3) & !3;
-            while (built.base + built.blob.len() as u32) < start_proc {
-                built.blob.push(0);
-            }
-            built.blob.extend_from_slice(&start_proc_script());
+            let save = built.add(&save_stub());
+            let co_setup = built.add_magic(data::Magic::Flow(FLOW_CO_SETUP));
+            let start_proc = built.add(&start_proc_script(save, co_setup));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
             Some(Campaign { built, start_proc })
         })
@@ -190,9 +235,13 @@ pub fn tick(core: &mut Core, ds: bool) {
         }
     }
     if session {
-        // Back on the Select Mode menu: the session is over.
-        if crate::campaign_menu::on_select_mode(core) {
-            core.raw_write_8(ACTIVE, -1, 0);
+        // ACTIVE is 1 from the start (the menu is still closing), 2 once the
+        // menu has gone; back on the Select Mode menu, the session is over.
+        let menu = crate::campaign_menu::on_select_mode(core);
+        match core.raw_read_8(ACTIVE, -1) {
+            1 if !menu => core.raw_write_8(ACTIVE, -1, 2),
+            2 if menu => core.raw_write_8(ACTIVE, -1, 0),
+            _ => {}
         }
         let n = core.raw_read_32(COUNTDOWN, -1);
         if n > 1 && in_battle(core) {
@@ -224,12 +273,60 @@ fn new_progress(core: &mut Core) {
     core.raw_write_8(P_NEXT, -1, 0);
 }
 
-/// The next mission to play from the progress record.
-pub fn next_mission(core: &Core) -> u8 {
+/// The campaign's order: Dual Strike's 25 story missions, with its three
+/// research-lab side missions (records 25..27, which Dual Strike offers on
+/// its world map once their COs are available) played where their CO pool
+/// first opens: The Long March after Black Boats Ahoy!, Lash's Test after
+/// Verdant Hills, Spiral Garden after Snow Hunters.
+pub const ORDER: [u8; data::MISSIONS] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 12, 26, 13, 27, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+];
+
+/// The next mission to play from the progress record (its place in
+/// [`ORDER`]).
+pub fn next_step(core: &Core) -> u8 {
     if progress_valid(core) {
         core.raw_read_8(P_NEXT, -1).min(data::MISSIONS as u8 - 1)
     } else {
         0
+    }
+}
+
+/// Whether there is a DS Campaign to continue (read from Flash once).
+pub fn has_save(core: &mut Core) -> bool {
+    if !progress_valid(core) {
+        load_from_flash(core);
+    }
+    progress_valid(core)
+}
+
+/// AW2's Flash sectors: "2ars", ..., +0x08 generation, +0x0D slot id,
+/// +0x0E offset, +0x50 length, +0x52 payload.
+const FLASH: u32 = 0x0E00_0000;
+const SECTOR: u32 = 0x1000;
+const SECTOR_MAGIC: u32 = 0x7372_6132;
+
+/// Reads the progress record from the newest sector of [`SAVE_SLOT`].
+fn load_from_flash(core: &mut Core) {
+    let mut best: Option<(u32, u32)> = None;
+    for s in 0..16 {
+        let at = FLASH + SECTOR * s;
+        if core.raw_read_32(at, -1) != SECTOR_MAGIC || core.raw_read_8(at + 0x0D, -1) != SAVE_SLOT {
+            continue;
+        }
+        let generation = core.raw_read_32(at + 8, -1);
+        if best.is_none_or(|(g, _)| generation >= g) {
+            best = Some((generation, at));
+        }
+    }
+    let Some((_, at)) = best else { return };
+    let len = (core.raw_read_16(at + 0x50, -1) as u32).min(SAVE_SIZE);
+    let mut b = vec![0u8; len as usize];
+    for (k, v) in b.iter_mut().enumerate() {
+        *v = core.raw_read_8(at + 0x52 + k as u32, -1);
+    }
+    if b.len() >= 4 && u32::from_le_bytes(b[0..4].try_into().unwrap()) == PROGRESS_MAGIC {
+        core.raw_write_range(PROGRESS, -1, &b);
     }
 }
 
@@ -247,6 +344,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (CAMPAIGN_END, Box::new(end_of_battle)),
         (SET_FLAG, Box::new(set_flag)),
         (IS_FLAG, Box::new(is_flag)),
+        (crate::campaign_menu::SAVE_FLAG, Box::new(crate::campaign_menu::save_flag)),
     ]
 }
 
@@ -303,37 +401,78 @@ fn start(core: &mut Core, new: bool) {
         let v = core.raw_read_8(P_FLAGS + k, -1);
         core.raw_write_8(FLAGS + k, -1, v);
     }
-    let index = next_mission(core);
-    begin_mission(core, index);
+    let step = next_step(core);
+    begin_mission(core, ORDER[step as usize]);
 }
 
 /// The campaign's end of battle: record a win and go on to the next
-/// mission; after a loss, play the mission again.
+/// mission; after a loss, play the mission again. After the last mission,
+/// back to the Select Mode menu (the campaign stays won).
 fn end_of_battle(core: &mut Core) {
     if !active(core) {
         return;
     }
     let index = core.raw_read_8(MISSION, -1);
-    let won = battle_won(core);
-    if won {
+    if battle_won(core) {
         let w = core.raw_read_32(P_WON, -1) | (1 << index);
         core.raw_write_32(P_WON, -1, w);
-        let next = (index + 1).min(data::MISSIONS as u8);
-        core.raw_write_8(P_NEXT, -1, next);
+        let step = ORDER.iter().position(|&m| m == index).unwrap_or(0) as u8;
+        let next = step + 1;
+        core.raw_write_8(P_NEXT, -1, next.min(data::MISSIONS as u8 - 1));
         for k in 0..16 {
             let v = core.raw_read_8(FLAGS + k, -1);
             core.raw_write_8(P_FLAGS + k, -1, v);
         }
         if next as usize >= data::MISSIONS {
+            // The campaign is over: P_NEXT stays on the last mission.
+            core.raw_write_8(P_NEXT + 1, -1, 1);
             core.raw_write_8(ACTIVE, -1, 0);
-            let cpu = core.gba_mut().cpu_mut();
-            cpu.set_thumb_pc(RETURN_TO_MENU & !1);
+            core.gba_mut().cpu_mut().set_thumb_pc(RETURN_TO_MENU & !1);
             return;
         }
-        begin_mission(core, next);
+        begin_mission(core, ORDER[next as usize]);
     } else {
         begin_mission(core, index);
     }
+}
+
+/// The mission's armies the player picks a CO for (Dual Strike's 0x1C), and
+/// the COs to pick from; fills the CO select screen's lists. 1 if there is
+/// a pick to make.
+fn co_setup(core: &mut Core) -> u32 {
+    let Some(c) = campaign(core) else { return 0 };
+    let index = core.raw_read_8(MISSION, -1) as usize;
+    let Some(m) = c.built.missions.get(index) else { return 0 };
+    if !m.cos.iter().take(m.armies as usize).any(|&(co, _)| co == 0x1C) {
+        return 0;
+    }
+    // Dual Strike's pool, by country (AW2's tabs: Orange Star, Blue Moon,
+    // Green Earth, Yellow Comet, then Black Hole).
+    let mut groups: Vec<(u8, Vec<u8>)> = Vec::new();
+    let pool: Vec<u8> = if m.pool.is_empty() { vec![0x14, 0x15, 0x03] } else { m.pool.clone() };
+    for &ds in &pool {
+        let Some(co) = data::aw2_co(ds) else { continue };
+        let country = crate::ds_campaign_rules::country(ds);
+        match groups.iter_mut().find(|g| g.0 == country) {
+            Some(g) => g.1.push(co),
+            None => groups.push((country, vec![co])),
+        }
+    }
+    groups.sort_by_key(|g| g.0);
+    let mut k = 0;
+    for (g, (country, cos)) in groups.iter().enumerate() {
+        core.raw_write_8(CO_GROUP_COUNTRY + g as u32, -1, *country);
+        core.raw_write_8(CO_GROUP_COUNTS + g as u32, -1, cos.len() as u8);
+        for &co in cos {
+            core.raw_write_8(CO_LIST + k, -1, co);
+            k += 1;
+        }
+    }
+    core.raw_write_32(CO_GROUPS, -1, groups.len() as u32);
+    for g in 0..5 {
+        core.raw_write_32(CO_GROUP_SWITCH + 4 * g, -1, 1);
+    }
+    1
 }
 
 /// The game's own test (`sub_0803861C`): an army of army 1's team is still
@@ -380,6 +519,7 @@ fn is_flag(core: &mut Core) {
 fn landing(core: &mut Core) {
     let id = core.gba().cpu().gpr(3) as u32;
     let r = match campaign(core).and_then(|c| c.built.magic.get(id as usize)).cloned() {
+        Some(data::Magic::Flow(FLOW_CO_SETUP)) => co_setup(core),
         Some(m) => crate::ds_campaign_rules::run(core, &m),
         None => 0,
     };

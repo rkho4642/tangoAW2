@@ -16,6 +16,18 @@ fn players(core: &Core) -> u32 {
     core.raw_read_32(PLAYERS_PTR, -1)
 }
 
+/// A Dual Strike CO's country, as the CO select screen's tabs number them
+/// (0 Orange Star, 1 Blue Moon, 2 Green Earth, 3 Yellow Comet, 4 Black Hole).
+pub fn country(ds_co: u8) -> u8 {
+    match ds_co {
+        1 | 2 | 3 | 5 | 20 | 21 => 0,
+        4 | 6 | 17 | 22 => 1,
+        9 | 10 | 18 | 23 => 2,
+        7 | 8 | 19 | 24 => 3,
+        _ => 4,
+    }
+}
+
 /// Runs a magic function; returns r0.
 pub fn run(core: &mut Core, m: &Magic) -> u32 {
     match *m {
@@ -31,7 +43,7 @@ pub fn run(core: &mut Core, m: &Magic) -> u32 {
             call(core, f, arg);
             0
         }
-        Magic::Countdown(_) | Magic::ArmyFlag { .. } | Magic::Unhandled(_) => 0,
+        Magic::Countdown(_) | Magic::ArmyFlag { .. } | Magic::Unhandled(_) | Magic::Flow(_) => 0,
     }
 }
 

@@ -274,6 +274,7 @@ pub fn flush(core: &mut Core) {
     crate::mode_menu::remap(core, start, at);
     at = crate::design::flush_sprites(core, at, end);
     at = crate::survival::flush_sprites(core, at, end);
+    at = crate::campaign_menu::flush(core, start, at, end);
     if let Some(l) = active(core) {
         for s in 0..l.sprites {
             if at + 8 > end {

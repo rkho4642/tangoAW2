@@ -408,6 +408,8 @@ pub enum Magic {
     ArmyFlag { op: u8, army: u8 },
     /// A Dual Strike op AW2 has nothing for (kept for the documentation).
     Unhandled(u8),
+    /// The DS Campaign's own flow (crate::ds_campaign): its id.
+    Flow(u8),
 }
 
 pub struct Built {
@@ -425,6 +427,31 @@ pub struct Built {
     pub missions: Vec<MissionInfo>,
     /// Dual Strike script ops seen and not converted, with counts.
     pub unhandled: BTreeMap<u8, u32>,
+}
+
+impl Built {
+    /// Appends a magic function's stub to the blob; its Thumb address.
+    pub fn add_magic(&mut self, m: Magic) -> u32 {
+        while self.blob.len() % 4 != 0 {
+            self.blob.push(0);
+        }
+        let id = self.magic.len() as u32;
+        self.magic.push(m);
+        let at = self.base + self.blob.len() as u32;
+        self.blob.extend_from_slice(&stub(id));
+        self.stubs.push(at);
+        at | 1
+    }
+
+    /// Appends bytes (word-aligned); their address.
+    pub fn add(&mut self, b: &[u8]) -> u32 {
+        while self.blob.len() % 4 != 0 {
+            self.blob.push(0);
+        }
+        let at = self.base + self.blob.len() as u32;
+        self.blob.extend_from_slice(b);
+        at
+    }
 }
 
 #[derive(Clone, Debug)]

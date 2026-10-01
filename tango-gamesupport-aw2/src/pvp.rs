@@ -496,6 +496,10 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         let claimed = core.raw_read_16(CLAIMED_KEYS, -1) as u32 & held;
         let mut keys = keys;
 
+        // The Select Mode menu's Campaign sub-menu (AW2 / DS Campaign).
+        keys = crate::campaign_menu::tick(core, ds, keys, prev);
+        crate::campaign_menu::draw(core);
+
         // The Design Room's Black Hole colour and inventions: offline only.
         if mode.is_none() && crate::design::in_editor(core) {
             keys = crate::design::editor_tick(core, keys, prev);
