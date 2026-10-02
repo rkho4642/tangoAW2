@@ -784,12 +784,16 @@ PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"ru
          # The Long March, Omens and Signs, Into the Woods, Crystal Calamity,
          # Surrounded!, For the Future!: the test player's style (seed) and CO
          # found to win them (a seed search over styles and COs).
-         25: {"seed": 2, "cos": _V2},
+         25: {"seed": 1, "cos": _V1},
          14: {"seed": 5, "cos": _V1},
          15: {"rush": True, "seed": 2, "cos": _V2},
          18: {"seed": 0},
          22: {"player": "cpu", "cos": _V1},
-         23: {"seed": 1, "cos": _V1},
+         23: {"seed": 0},
+         # Victory or Death!, Pincer Strike: the test player's style found
+         # to win them with the Black Arc and the final bot.
+         8: {"seed": 0},
+         20: {"seed": 0},
          # Means to an End: bombers and B copters from its airports fly over
          # the Oozium to the crystals and the Grand Bolt's weak points.
          24: {"build": {0xA: [17, 19, 16]}, "seed": 0},
