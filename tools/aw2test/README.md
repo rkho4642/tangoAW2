@@ -34,6 +34,12 @@ never written, and the pinned copy keeps runs alike while they play. The map goe
 design slot 1 of a copy. Each test runs once per mode: `aw2` (no pack) and `ds`
 (the pack from the .nds). A test takes 1 to 5 seconds; they run in parallel.
 
+Save integrity (`tests/test_save_integrity*.py`, `run.py -k save_`): every
+mode's data saved, rebooted from the written save and checked, and each step's
+Flash diffed slot by slot with AW2's own rules (`aw2test/saveimg.py`; driving
+the saves and Continues: `aw2test/saves.py`, `aw2test/campaigns.py`; see
+docs/AW2.md "Saves").
+
 `AW2TEST_COMPARE_RUNNER=<older aw2_script>` turns on `compat_aw2_byte_identical`,
 which replays a whole battle on this build and the older one and compares all of
 EWRAM and IWRAM (see `tests/test_compat.py` for building an older commit).

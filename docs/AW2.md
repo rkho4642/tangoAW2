@@ -1350,6 +1350,56 @@ Com Towers are counted on the map. Without the pack nothing is written.
 Tests: `save_versus_suspend_keeps_ex_machina_stun`,
 `save_versus_suspend_in_rain_keeps_fog_rule`.
 
+## Saves
+
+AW2's 64 KiB Flash is 16 sectors of 0x1000 bytes. A sector is one part of a
+slot (save tag): "2ars", 0x55/0xAA at +4 and its opposite at +0xFFF, 0x0F
+at +5, the sector's 8-bit sum at +6 and its complement at +7 (AW2's check,
+`sub_0801B09C`), the generation at +8, the part at +0xC, the slot at +0xD,
+the payload's place at +0xE and length at +0x50, the payload from +0x52.
+The newest profile's +0xFEF lists every sector's slot (the directory,
+`sub_0801B2FC`). The writer (`sub_0801A7D8`) puts a slot's new copy in free
+sectors, then a new profile serialized from RAM (`sub_08016B2C`), whose
+directory drops the old copy; a delete (`sub_0801ABF8`) only drops the slot
+from the directory.
+
+| Slot | What | Written by |
+| --- | --- | --- |
+| 0 | profile, 0x5CC: unlocks and campaign flags (`0x02028030`), War Room scores (`0x0200C078`, 30 maps), campaign scores (`0x0200C2D0`), options (`0x0200C420`: points, save count, suspend marks +9..+B, options, results; tangoAW2's Survival records +0x15..+0x1E), AW2's world map (`0x0202FDFC`) | every write |
+| 2 / 3 / 4 | Campaign / War Room / Versus game saved halfway, 0xE28 (tangoAW2's tail: `suspend.rs`) | map menu Save |
+| 5..7 | design maps 1..3, 0x724 (tangoAW2: +0x4C4 the five-army mark, +0x723 the look) | Design Room Save |
+| 8 | the design map a saved Versus game is on (its current terrain and units) | map menu Save on a design map |
+| 14 | a DS Campaign mission saved halfway (tangoAW2) | map menu Save in a DS mission |
+| 15 | the DS Campaign's record, 0x20 (tangoAW2) | DS Campaign New, mission start, after a win |
+
+Ten slots at most; a write needs two free sectors. The Design Room has no
+delete for one map: saving over a slot replaces it. The Battle Maps points
+(options +0x00, +0x04) grow with every map won, a DS mission's and a
+Survival map's too (as the War Room's). A netplay match runs
+on player 1's save on both consoles and never writes either player's file
+(only single-player sessions persist their save: `tango/src/session/launch.rs`).
+
+**Tests** (`tools/aw2test/tests/test_save_integrity*.py`, `-k save_`; the
+Flash read with `aw2test/saveimg.py`, AW2's own rules): every step exports
+the Flash before and after and checks that every sector the directory lists
+passes AW2's check and that only the expected slots and profile bytes
+changed (AW2's save counter aside), then reboots a fresh console from the
+written save: Versus saved and continued on 2P, 4P and design maps,
+tangoAW2's maps (Wasteland in a sandstorm, Com Towers, Obelisk maps),
+a Wasteland design with Dual Strike's units and COs, after Ex Machina, in
+rain; Save hidden and nothing written on five-army maps; the Design Room's
+three slots (normal and Wasteland, five armies, Black Hole's inventions,
+towers of every owner, Dual Strike's units, a full design of 250 units),
+every record byte for byte through save, load and reboot, played and saved
+in Versus; AW2's campaign (a win, a mission saved and continued, the pack's
+profile byte for byte AW2's own); the DS Campaign over an AW2 campaign in
+progress (wins, a lab flag, the prologue flag, a mission saved halfway and
+continued, a loss, New), AW2's data untouched; the War Room (a score, a
+map saved and continued; its list only AW2's maps); Survival (each kind's
+record, nothing of the War Room's, a War Room game saved halfway kept);
+AW2's completion flags; every mode in one boot; every slot in use at once;
+a game saved over netplay the same on both peers.
+
 ## Known limits
 
 - Black Hole's unique buildings (Black Cannons and so on) are map

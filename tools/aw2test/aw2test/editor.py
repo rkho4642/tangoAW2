@@ -27,6 +27,7 @@ TOWER = 0x14                 # a Lab: the Com Tower with the Dual Strike pack
 WASTELAND = 0x103            # tangoAW2's Wasteland switch entry
 HQ = 0x08
 BIOME = 0x03004493           # crate::sandstorm::STATE: bits 4..6 the biome (crate::wasteland)
+SLOT_CURSOR = 0x03001610     # the Save / Load screen's slot cursor, 0..2 (probed)
 
 
 class Editor:
@@ -233,6 +234,19 @@ class Editor:
         e.press("A", 8)       # File: Load Save NameEntry, on Load
         e.wait(60)
 
+    def _slot_to(self, slot):
+        """On the Save / Load screen's three slots: the cursor (it starts on
+        the slot last loaded or saved, and wraps) to `slot`."""
+        e = self.e
+        for _ in range(4):
+            cur = e.u8(SLOT_CURSOR)
+            if cur == slot - 1:
+                return
+            e.press("DOWN" if (slot - 1 - cur) % 3 == 1 else "UP", 6)
+            e.wait(30)
+        if e.u8(SLOT_CURSOR) != slot - 1:
+            raise NavError(f"design slot cursor at {e.u8(SLOT_CURSOR)}, wanted {slot - 1}")
+
     def save(self, slot=1):
         """File > Save > design slot `slot` > Yes."""
         e = self.e
@@ -241,9 +255,7 @@ class Editor:
         e.wait(30)
         e.press("A", 8)
         e.wait(90)
-        for _ in range(slot - 1):
-            e.press("DOWN", 6)
-            e.wait(20)
+        self._slot_to(slot)
         e.press("A", 8)       # Save? Yes / No (on No)
         e.wait(90)
         e.press("LEFT", 6)
@@ -259,9 +271,7 @@ class Editor:
         self._file_menu()
         e.press("A", 8)
         e.wait(90)
-        for _ in range(slot - 1):
-            e.press("DOWN", 6)
-            e.wait(20)
+        self._slot_to(slot)
         e.press("A", 8)
         if not e.wait_until(lambda: e.u8(STATE) == 1, 900, step=10):
             raise NavError("loading did not return to the map")
