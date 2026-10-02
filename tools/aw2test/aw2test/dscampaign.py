@@ -775,7 +775,11 @@ CO_PREFS = [6, 14, 2, 76, 17, 1, 79, 80, 18, 0, 77, 4, 78, 73, 74, 72]
 # Test players' CO preferences tried (the first that the mission's pool has).
 _V1 = [14, 6, 17, 18] + CO_PREFS
 _V2 = [18, 17, 14, 6] + CO_PREFS
-PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"rush": True},
+_V3 = [76, 2, 6, 14] + CO_PREFS
+PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]},
+         # Verdant Hills (15 days): the HQ the capturers' only goal, every
+         # hit counting from day 9.
+         12: {"rush": True, "finish": 9, "seed": 7, "cos": _V3},
          # Muck Amok!: army 3's HQ (14, 1) taken (Dual Strike's way: its
          # Ooziums vanish), the units that capture keeping clear of them.
          16: {"goals": [(14, 1)], "ooze": True, "seed": 2, "cos": _V2},
@@ -786,7 +790,8 @@ PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"ru
          # found to win them (a seed search over styles and COs).
          25: {"seed": 1, "cos": _V1},
          14: {"seed": 5, "cos": _V1},
-         15: {"rush": True, "seed": 2, "cos": _V2},
+         # Into the Woods: the enemy HQ rushed, ours held.
+         15: {"rush": True, "garrison": True, "seed": 1, "cos": _V1},
          18: {"seed": 0},
          22: {"player": "cpu", "cos": _V1},
          23: {"seed": 0},
