@@ -252,6 +252,11 @@ const NEXT_AFTER_SHOT: u32 = 0x0803_EE9C;
 const NEXT_ENTRY: u32 = 0x0803_EEAC;
 fn no_fire(core: &mut Core) {
     let entry = core.gba().cpu().gpr(2) as u32;
+    // (a DS Campaign Volcano its mission's rule stilled: no eruption)
+    if crate::ds_campaign_rules::volcano_still(core, entry) {
+        core.gba_mut().cpu_mut().set_thumb_pc(NEXT_ENTRY);
+        return;
+    }
     let Some(kind) = structure(core, entry) else { return };
     let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
     let players = crate::five::players(core);

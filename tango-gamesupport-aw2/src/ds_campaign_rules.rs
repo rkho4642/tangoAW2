@@ -98,8 +98,8 @@ fn action_cell(core: &Core) -> (u32, u32) {
 /// Dual Strike's structure kinds as AW2's inventions: 4 minicannons, 9 the
 /// Black Crystals (tangoAW2's Crystal: a minicannon on tile 0x192), 0xA
 /// the Black Obelisks (tangoAW2's Obelisk: a Black Cannon with tile 0x193
-/// in its middle; also what the mega missile silos and the Grand Bolt's
-/// weak points become, crate::ds_campaign_data::convert_map).
+/// in its middle; also what the Grand Bolt's weak points become,
+/// crate::ds_campaign_data::convert_map).
 fn inventions(core: &Core, ds_kind: u8) -> Vec<(u8, u8)> {
     let mut out = Vec::new();
     for k in 0..16 {
@@ -282,6 +282,10 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
             let d = core.raw_read_16(DAY, -1);
             d != 0 && d % 6 == 0
         }
+        // Crystal Calamity: the Black Onyx's laser charged to 90% or more,
+        // a real-time charge on Dual Strike's top screen (its 50 minutes,
+        // op 0x5A, are left out): never (docs/AW2.md).
+        0x0235_172C => false,
         _ => false,
     }
 }
@@ -289,7 +293,7 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
 /// The predicates and calls [`predicate`] and [`call`] know (the rest are
 /// false / do nothing); a test lists the campaign's others.
 #[cfg(test)]
-pub const KNOWN: &[u32] = &[crate::ds_campaign_data::HARD_CAMPAIGN, 0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_07A8, 0x0201_99A4, 0x0235_0560, 0x0235_21A4, 0x0235_20F8, 0x0235_204C, 0x0235_1F34, 0x0235_1EB8, 0x0235_1E3C, 0x0235_2018, 0x0235_1FE4, 0x0235_1FB0, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4];
+pub const KNOWN: &[u32] = &[crate::ds_campaign_data::HARD_CAMPAIGN, 0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_07A8, 0x0201_99A4, 0x0235_0560, 0x0235_21A4, 0x0235_20F8, 0x0235_204C, 0x0235_1F34, 0x0235_1EB8, 0x0235_1E3C, 0x0235_2018, 0x0235_1FE4, 0x0235_1FB0, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4, 0x0235_172C, 0x0235_0D44, 0x0235_1988, 0x0235_18CC, 0x0235_1D28, 0x0235_1D3C, 0x0235_16A4, 0x0235_1334, 0x0235_1538, 0x0235_17D4, 0x0235_17E4, 0x0235_1A4C, 0x0235_1AF0, 0x0235_1D50, 0x0235_1D74, 0x0235_1D9C, 0x0235_1DC8, 0x0235_1DD8, 0x0235_1DE8, 0x0235_1E04, 0x0235_1E20, 0x0200_3F8C, 0x0201_993C, 0x0201_9950];
 
 /// The Obelisk standing on weak point `k` ([`GRAND_BOLT_WEAK_POINTS`]: its
 /// bottom row's middle; the inventions list keeps its top-left cell).
@@ -314,6 +318,12 @@ fn unit_id_at(core: &Core, x: u32, y: u32) -> u8 {
 /// point's hit points while its crystal stands.
 const MTE_TOLD: u32 = 0x0203_F700;
 const MTE_HP: u32 = 0x0203_F701;
+/// Ring of Fire: its Volcano stilled (Dual Strike's rule: Black Hole's
+/// unit hiding in the city found).
+const VOLCANO_STILL: u32 = 0x0203_F704;
+/// The mission's state above, cleared when a mission starts (0x0203F710..
+/// holds the Volcano's eruption cells: [`eruption`]).
+const MISSION_STATE: (u32, u32) = (0x0203_F700, 0x10);
 
 /// Crystal `k` of Means to an End still stands.
 pub fn crystal_alive(core: &Core, k: usize) -> bool {
@@ -360,10 +370,82 @@ pub fn mte_tick(core: &mut Core) {
     }
 }
 
-/// A mission's start: Means to an End's state cleared.
+/// A mission's start: the mission's state (Means to an End's, Ring of
+/// Fire's) cleared.
 pub fn mte_start(core: &mut Core) {
-    for k in 0..4 {
-        core.raw_write_8(MTE_TOLD + k, -1, 0);
+    for k in 0..MISSION_STATE.1 {
+        core.raw_write_8(MISSION_STATE.0 + k, -1, 0);
+    }
+}
+
+/// AW2's invention kind of the Volcano (the inventions list).
+const KIND_VOLCANO: u16 = 2;
+
+/// The invention-list entry `entry` is a Volcano that Dual Strike's rule
+/// stilled (crate::obelisk's turn-start trap then skips it): only in a DS
+/// Campaign battle.
+pub fn volcano_still(core: &Core, entry: u32) -> bool {
+    crate::ds_campaign::active(core)
+        && crate::ds_campaign::in_battle(core)
+        && core.raw_read_8(VOLCANO_STILL, -1) != 0
+        && (core.raw_read_16(entry + 2, -1) >> 6) & 0xF == KIND_VOLCANO
+}
+
+/// The Volcano's eruption (`sub_0803E764(targets, damage)`, called from
+/// the turn-start loop with AW2's own mission's cells, `[0x0849F728 +
+/// 4 * (day & 1)]`): in a DS Campaign battle its cells are Dual Strike's
+/// for the Volcano (the ARM9 image's lists by the volcano's owner,
+/// `0x02167E98`; the main map's is list 1, twelve cells round the map's
+/// edge), written as AW2's list (x, y halfwords, 0xFFFF ends) to
+/// [`ERUPTION_CELLS`].
+pub const ERUPTION_CALL: u32 = 0x0803_EE3C;
+const DS_ERUPTION_LISTS: u32 = 0x0216_7E98;
+const ERUPTION_CELLS: u32 = 0x0203_F710;
+pub fn eruption(core: &mut Core) {
+    if !(crate::ds_campaign::active(core) && crate::ds_campaign::in_battle(core)) {
+        return;
+    }
+    let Some(pack) = crate::ds_pack::pack() else { return };
+    let Some(list) = pack.arm9_at(DS_ERUPTION_LISTS + 4, 4).map(|b| u32::from_le_bytes(b.try_into().unwrap())) else { return };
+    let mut at = ERUPTION_CELLS;
+    for k in 0..12u32 {
+        let Some(c) = pack.arm9_at(list + 4 * k, 4) else { break };
+        let (x, y) = (u16::from_le_bytes([c[0], c[1]]), u16::from_le_bytes([c[2], c[3]]));
+        if x == 0xFFFF {
+            break;
+        }
+        core.raw_write_16(at, -1, x);
+        core.raw_write_16(at + 2, -1, y);
+        at += 4;
+    }
+    core.raw_write_16(at, -1, 0xFFFF);
+    core.raw_write_16(at + 2, -1, 0);
+    core.gba_mut().cpu_mut().set_gpr(0, ERUPTION_CELLS as i32);
+}
+
+/// Victory or Death!'s Black Arc bomb (Dual Strike's `0x020EEE1C(13, 5,
+/// 100, 0)`, each of Black Hole's turns while its rule holds): every unit
+/// within 2 spaces of (13, 5), but those of army 2's team, Ooziums and
+/// loaded units, is left with 1 HP (100 damage, never destroying).
+const BLACK_ARC: (i32, i32) = (13, 5);
+fn black_arc(core: &mut Core) {
+    let p = players(core);
+    let bh_team = core.raw_read_8(p + PLAYER * 2 + 0x2A, -1);
+    for army in 1..=4u32 {
+        if core.raw_read_8(p + PLAYER * army + 0x2A, -1) == bh_team {
+            continue;
+        }
+        for u in units(core, army) {
+            if u.1 == crate::roster::OOZIUM || u.2 & 0x08 != 0 {
+                continue;
+            }
+            if (u.3 as i32 - BLACK_ARC.0).abs() + (u.4 as i32 - BLACK_ARC.1).abs() > 2 {
+                continue;
+            }
+            let hp = core.raw_read_8(u.0 + 4, -1);
+            let left = (hp & 0x7F).saturating_sub(100).max(1);
+            core.raw_write_8(u.0 + 4, -1, (hp & 0x80) | left);
+        }
     }
 }
 
@@ -455,6 +537,20 @@ fn call(core: &mut Core, f: u32, arg: u32) -> bool {
         0x0235_0FA8 => set_weather(core, 1),
         0x0235_16B8 | 0x0235_17C4 => set_weather(core, 0),
         0x0235_17F4 => set_weather(core, 2),
+        // Victory or Death!: the Black Arc's bomb.
+        0x0235_0D44 => black_arc(core),
+        // Ring of Fire: the volcano's controller found in the city (all four
+        // of Black Hole's cities taken), or the second front's won: the
+        // Volcano erupts no more.
+        0x0235_1988 | 0x0235_18CC => core.raw_write_8(VOLCANO_STILL, -1, 1),
+        // Means to an End's choice (Dual Strike's `0x021017F4(0x3C, v)`):
+        // campaign flag 0x3C cleared or set.
+        0x0235_1D28 => crate::ds_campaign::clear_campaign_flag(core, 0x3C),
+        0x0235_1D3C => crate::ds_campaign::set_campaign_flag(core, 0x3C),
+        // Presentation only (camera pans, sounds, flashes, fades, the
+        // eruption's opening scene, the skip handler): nothing on the
+        // map's state. Muck Amok!'s rout of army 3 on its HQ's capture
+        // (0x023516A4) is AW2's own HQ capture.
         _ => {}
     }
     false

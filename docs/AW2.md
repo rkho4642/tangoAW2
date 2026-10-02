@@ -1018,8 +1018,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   end it as Dual Strike's labs do.
 - **Maps**: Dual Strike's tiles are AW2's but for Com Towers (the Lab
   tiles), Black Crystals (0x192), its Black Obelisks (drawn on AW2's Black
-  Cannon tiles, which would fire: tangoAW2's Obelisk), mega missile silos
-  (an Obelisk), and the Grand Bolt (below).
+  Cannon tiles, which would fire: tangoAW2's Obelisk), Ring of Fire's
+  Volcano (below) and the Grand Bolt (below).
 - **Rules per mission**: the header names AW2's picture of a 4x4
   structure (+0x10, the same bytes as Dual Strike's) and the fog; at each
   mission start (`crate::sandstorm`'s map-start trap `0x08035490`) the fog,
@@ -1218,10 +1218,41 @@ overlay 1, the campaign's code, at `0x02350560`).
 - Results are AW2's results screen (AW2's scoring and ranks).
 - Dual Strike's sound effects, screen effects and top-screen displays in
   scripts (ops 0x20, 0x21, 0x2D, 0x2E, 0x46, 0x4B, 0x59) are left out, as
-  are a few of its functions: camera visits to a stealth or an Oozium,
-  sound calls, second-front ones, Crystal Calamity's real-time count (op
-  0x5A). `the_campaign_converts` (an ignored test) lists them.
-- Mega missile silos are Obelisks: destructible, healing, never fired.
+  are its waits on a scene's proc script (ops 0x55, 0x57: `0x0201D298` /
+  `0x0201D158` with the script as operand) and its presentation-only
+  functions: camera pans (`0x02351334`, `0x02351538`), sounds, flashes and
+  fades (`0x023517D4`, `0x023517E4`, `0x02351D50`..`0x02351E20`,
+  `0x02003F8C`), the second front's eruption scene (`0x02351A4C`,
+  `0x02351AF0`), the scene-skip handler (`0x0201993C`, `0x02019950`).
+  `the_campaign_converts` (an ignored test) lists any function not
+  handled; `ds_campaign_rules::KNOWN` names those handled or left out.
+- **Rule functions with an effect** (`ds_campaign_rules::call`):
+  - Victory or Death!'s Black Arc (`0x02350D44`, Dual Strike's
+    `0x020EEE1C(13, 5, 100, 0)`, on each of Black Hole's turns while its
+    trigger holds): every unit within 2 spaces of (13, 5), but Black
+    Hole's team's, Ooziums and loaded units, is left with 1 HP (no
+    explosion drawn). (Dual Strike's skill 0x2A, 90 damage, comes with CO
+    skills.)
+  - Ring of Fire's Volcano: Dual Strike's structure kind 2 (4x4, anchor
+    0x1A2 on its third row, at (8, 8)) becomes AW2's own Volcano (anchor
+    0x1A7, rim 0x1A5; invention kind 2). It erupts as AW2's does (the
+    turn-start loop, once a day from day 3, `sub_0803E764(cells, 50)`),
+    but on Dual Strike's cells: the trap `ds_campaign_rules::eruption` at
+    `0x0803EE3C` hands it Dual Strike's list for the main map (ARM9
+    `0x02167E98`, lists by the volcano's owner; list 1, twelve cells round
+    the map's edge), copied to `0x0203F710` in AW2's format. Taking Black
+    Hole's four cities round it (`0x02351804`, cities, not Com Towers)
+    runs `0x02351988`, which clears the volcano's owner in Dual Strike
+    (`0x020DA938`): here `0x0203F704` is set and `crate::obelisk`'s
+    turn-start trap skips the Volcano. The second front's win
+    (`0x023518CC`) does the same; the second front is not played.
+  - Means to an End's choice: `0x02351D3C` / `0x02351D28` set / clear
+    campaign flag 0x3C (Dual Strike's `0x021017F4(0x3C, 1 / 0)`).
+  - Muck Amok!'s (14, 1) (`0x02351640`) is army 3's HQ; its capture
+    routing army 3 (`0x023516A4`) is AW2's own HQ capture.
+  - Crystal Calamity's `0x0235172C` is the Black Onyx's real-time laser
+    charge (90% or more on Dual Strike's top screen); with the 50-minute
+    count left out it never holds.
 
 Tests: `tools/aw2test/tests/test_ds_campaign.py` (the sub-menu with and
 without the pack, AW2's campaign unchanged to its first mission card,

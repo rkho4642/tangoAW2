@@ -322,32 +322,41 @@ pub fn convert_map(ds: &Ds, at: u32) -> Option<(u8, u8, Vec<u16>)> {
     let (w, h) = (raw[0], raw[1]);
     let n = w as usize * h as usize;
     let mut tiles: Vec<u16> = (0..n).map(|i| u16::from_le_bytes([raw[2 + 2 * i], raw[3 + 2 * i]])).collect();
-    // Mega missile silos (a 4x4 structure, anchor 0x1A2/0x1A3 on its third
-    // row): a Black Obelisk on the anchor's 3x3 (destructible, no firing).
-    for y in 0..h as usize {
-        for x in 0..w as usize {
-            let t = tiles[y * w as usize + x];
-            if t == 0x1A2 || t == 0x1A3 {
-                for dy in 0..3 {
-                    for dx in 0..3 {
-                        let (xx, yy) = (x + dx, y - 1 + dy);
-                        if xx >= 1 && xx - 1 < w as usize && yy < h as usize {
-                            tiles[yy * w as usize + xx - 1] = if dx == 1 && dy == 1 { OBELISK } else { UNDERLAY };
-                        }
-                    }
-                }
-            }
-        }
-    }
+    volcanoes(&mut tiles, w as usize, h as usize);
     black_obelisks(&mut tiles, w as usize, h as usize);
     grand_bolt(&mut tiles, w as usize, h as usize);
     for t in tiles.iter_mut() {
         *t = remap_tile(*t);
-        if matches!(*t, 0x1A6 | 0x1A8 | 0x1A9) {
-            *t = UNDERLAY;
-        }
     }
     Some((w, h, tiles))
+}
+
+/// Dual Strike's Volcano (Ring of Fire; structure kind 2): a 4x4 of
+/// underlay with its crater row 0x1A6, anchor 0x1A2 (or 0x1A3), 0x1A8,
+/// 0x1A9 third. It becomes AW2's own Volcano (anchor 0x1A7, rim 0x1A5 on
+/// the top two rows' edge: crate::design's shape), which erupts as in AW2
+/// until Dual Strike's rule stills it (crate::ds_campaign_rules).
+fn volcanoes(tiles: &mut [u16], w: usize, h: usize) {
+    const RIM: u16 = 0x1A5;
+    for y in 2..h.saturating_sub(1) {
+        for x in 1..w.saturating_sub(2) {
+            let t = tiles[y * w + x];
+            if t != 0x1A2 && t != 0x1A3 {
+                continue;
+            }
+            let rows: [[u16; 4]; 4] = [
+                [RIM; 4],
+                [RIM, UNDERLAY, UNDERLAY, RIM],
+                [0x1A6, 0x1A7, 0x1A8, 0x1A9],
+                [UNDERLAY; 4],
+            ];
+            for (dy, row) in rows.iter().enumerate() {
+                for (dx, &v) in row.iter().enumerate() {
+                    tiles[(y + dy - 2) * w + x + dx - 1] = v;
+                }
+            }
+        }
+    }
 }
 
 /// Dual Strike's Black Obelisk is drawn on AW2's Black Cannon tiles (a 3x3:
@@ -919,7 +928,11 @@ fn convert_command(cx: &mut Ctx, at: u32, c: &[u8]) -> ([u8; 16], Option<(usize,
         // 0x020B9C68) and the tutorial's flag reset (0x02019B94) mean
         // nothing in AW2.
         0x00 | 0x52 | 0x55 | 0x57 if cx.story => nop,
-        0x00 | 0x52 | 0x55 | 0x57 => match w1 {
+        // Waits on a scene's proc script (0x0201D298 / 0x0201D158 with the
+        // script in the operand): Dual Strike's camera pans and
+        // animations, nothing on the map's state.
+        0x55 | 0x57 => nop,
+        0x00 | 0x52 => match w1 {
             0x020B_9C9C | 0x020B_9C68 | 0x0201_9B94 => nop,
             f => {
                 let s = cx.magic(Magic::Call(f, wc));

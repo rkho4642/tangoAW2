@@ -594,6 +594,13 @@ pub fn set_campaign_flag(core: &mut Core, id: u32) {
     }
 }
 
+pub fn clear_campaign_flag(core: &mut Core, id: u32) {
+    if let Some((at, bit)) = flag_bit(id) {
+        let v = core.raw_read_8(at, -1);
+        core.raw_write_8(at, -1, v & !bit);
+    }
+}
+
 /// The next mission to play from the progress record (its place in the
 /// model's order).
 pub fn next_step(core: &Core) -> u8 {
@@ -670,6 +677,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (MAP_CURSOR_LOOP, Box::new(cursor_loop)),
         (SELECT_MODE_START, Box::new(select_mode_start)),
         (crate::ds_campaign_rules::GET_INVENTION_AT, Box::new(crate::ds_campaign_rules::invention_at)),
+        (crate::ds_campaign_rules::ERUPTION_CALL, Box::new(crate::ds_campaign_rules::eruption)),
         (crate::ds_credits::ROLL_SONG_CALL, Box::new(|core: &mut Core| {
             let s = active(core);
             crate::ds_credits::roll_song(core, s)

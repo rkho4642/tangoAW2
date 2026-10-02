@@ -656,6 +656,124 @@ def ds_campaign_map_exit(ctx):
 
 
 
+def _cells(e):
+    rows = lambda y: e.u16(dc.MAP + 0x417A + 2 * y)
+    return (lambda x, y: e.u16(dc.MAP + 0xA22 + 2 * (rows(y) + x)),
+            lambda x, y: e.u8(dc.MAP + 0x1432 + rows(y) + x),
+            lambda x, y: e.u8(dc.MAP + 0x12 + rows(y) + x))
+
+
+def _until_army(e, d, army, frames=18000, each=None):
+    """Answers dialogue with A until `army` moves (a frame budget); `each`
+    is called every 20 frames. The texts shown on the way."""
+    told = []
+    for _ in range(frames // 20):
+        t = d.text_shown()
+        if t and (not told or told[-1] != t):
+            told.append(t)
+        if each:
+            each()
+        if d.scripts_running() or not d.in_battle():
+            e.press("A", 4)
+        e.wait(20)
+        if e.u8(0x030033EC) == army and not d.scripts_running() and d.in_battle() and not told[-1:] == [d.text_shown()]:
+            break
+    return told
+
+
+RING_OF_FIRE_CELLS = [(0, 6), (1, 3), (2, 1), (5, 0), (8, 0), (12, 0), (19, 12), (18, 14), (17, 18), (14, 19), (10, 19), (6, 19)]
+RING_OF_FIRE_CITIES = [(7, 7), (7, 12), (12, 7), (12, 12)]
+
+
+@test(modes=("ds",))
+def ds_campaign_ring_of_fire_volcano(ctx):
+    """Ring of Fire's Volcano (docs/AW2.md): Dual Strike's structure kind 2
+    becomes AW2's own Volcano (anchor 0x1A7, the game's invention kind 2),
+    not a Black Obelisk; it erupts once a day (from day 3, the game's
+    countdown) on Dual Strike's twelve cells
+    round the map's edge (its ARM9 list for the main map), and Dual Strike's
+    rule stills it once Black Hole's four cities round it are the player's
+    ("we found a Black Hole unit hiding out in the city!"). (A unit is put on
+    an eruption cell and the cities' owner is set here as test aids.)"""
+    e, g, d = boot(ctx)
+    d.start(step=24)
+    d.wait_map()
+    ctx.eq(d.mission(), 21, "Ring of Fire")
+    tile, cls, unit_at = _cells(e)
+    ctx.eq(tile(9, 10), 0x1A7, "the Volcano's anchor at Dual Strike's (9, 10)")
+    ctx.eq([tile(x, 8) for x in range(8, 12)], [0x1A5] * 4, "its rim")
+    inv = [(e.u8(0x02028360 + 8 * k), e.u8(0x02028361 + 8 * k), (e.u16(0x02028362 + 8 * k) >> 6) & 15) for k in range(16)]
+    ctx.check((8, 8, 2) in inv, f"the game's Volcano invention (kind 2) at (8, 8): {[i for i in inv if i[2]]}")
+    ctx.check(not any(k == 3 for _, _, k in inv), "no Black Obelisk")
+    shot(ctx, e, "ring_of_fire_volcano.png")
+    ground = lambda: [u for u in g.units(army=1) if u["type"] not in (12, 13, 16, 17, 19, 20)]
+    hp = lambda u: e.u8(g.unit_addr(u["id"]) + 4) & 0x7F
+
+    def day(watch):
+        """The player's turn ended, the others played, the player's next
+        turn begun (its start's eruption and rules seen): the lowest HP
+        `watch` had on the way, and the texts shown."""
+        seen = []
+        d.wait_control()
+        d.end_turn()
+        told = _until_army(e, d, 1, each=lambda: seen.append(hp(watch)))
+        d.wait_control()
+        seen.append(hp(watch))
+        return min(h for h in seen if h), told
+
+    def probe_on_cell(k):
+        free = [c for c in RING_OF_FIRE_CELLS if unit_at(*c) == 0]
+        u = ground()[k]
+        d.place_unit(u, *free[0])
+        e.wait(4)
+        return u, free[0]
+
+    u, at = probe_on_cell(0)
+    hp0 = hp(u)
+    # (it first erupts as day 3 begins: the game's countdown, byte 6)
+    low = min(day(u)[0], day(u)[0])
+    ctx.check(low < hp0, f"the unit on {at} hit by the eruption (HP {hp0} -> {low})")
+    shot(ctx, e, "ring_of_fire_erupted.png")
+    # Black Hole's four cities the player's: Dual Strike's rule stills it.
+    for x, y in RING_OF_FIRE_CITIES:
+        row = e.u16(dc.MAP + 0x417A + 2 * y)
+        e.w8(dc.MAP + 0x1432 + row + x, (1 << 5) | 6)
+    _, told = day(u)
+    ctx.check(any("hiding out in the city" in norm(t) for t in told), f"Dual Strike's dialogue: {[norm(t)[:40] for t in told][:4]}")
+    ctx.check(e.u8(0x0203F704) == 1, "the Volcano stilled")
+    u2, at2 = probe_on_cell(1)
+    hp1 = hp(u2)
+    low, _ = day(u2)
+    ctx.eq(low, hp1, f"no eruption on {at2} any more")
+
+
+@test(modes=("ds",))
+def ds_campaign_victory_or_death_bomb(ctx):
+    """Victory or Death!'s Black Arc (Dual Strike's 0x02350D44: its bomb at
+    (13, 5) on Black Hole's turns while its rule holds): every unit within 2
+    spaces of (13, 5) but Black Hole's (and Ooziums, loaded units) is left
+    with 1 HP; one further away is not touched by it. (Two units are put
+    there as test aids.)"""
+    e, g, d = boot(ctx)
+    d.start(step=8)
+    d.wait_map()
+    ctx.eq(d.mission(), 8, "Victory or Death!")
+    tile, cls, unit_at = _cells(e)
+    land = lambda c: cls(*c) & 0x1F in (1, 2, 3, 4, 6, 8, 0xE)
+    near = [c for c in [(13, 6), (12, 5), (14, 5), (13, 7), (12, 6), (14, 6), (11, 5), (15, 5)] if unit_at(*c) == 0 and land(c)]
+    mine = [u for u in g.units(army=1) if u["type"] in (3, 4, 5, 8)] or g.units(army=1)
+    probe = mine[0]
+    d.place_unit(probe, *near[0])
+    e.wait(4)
+    hp0 = e.u8(g.unit_addr(probe["id"]) + 4) & 0x7F
+    seen = []
+    d.wait_control()
+    d.end_turn()
+    _until_army(e, d, 1, each=lambda: seen.append(e.u8(g.unit_addr(probe["id"]) + 4) & 0x7F))
+    shot(ctx, e, "victory_or_death_bomb.png")
+    ctx.check(1 in seen, f"the unit at {near[0]} left with 1 HP by the Black Arc ({hp0} -> {sorted(set(seen))[:4]})")
+
+
 # Every mission won as a player wins it: picked on the world map, COs picked
 # on the CO screen, the battle played through the pad only (aw2test.bot with
 # the mission's plan in dscampaign.PLANS; no unit, funds or flag is written),

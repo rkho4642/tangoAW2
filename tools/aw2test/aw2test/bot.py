@@ -796,7 +796,8 @@ class Bot:
             m = g.move_to(*cell)
             self.d.dialogue()
             m = g.menu() or m
-        except NavError:
+        except NavError as ex:
+            self.log(f"    move to {cell}: {ex}")
             self.cancel()
             return
         names = [n.lower() for n in m["names"]]
@@ -817,6 +818,7 @@ class Bot:
         elif any(n.startswith("wait") for n in names):
             g.choose("Wait", g.ACTION_MENU)
         else:
+            self.log(f"    no {kind} in the menu {names}")
             self.cancel()
             return
         e.wait(30)
