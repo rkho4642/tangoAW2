@@ -162,6 +162,35 @@ pub fn cell_at(core: &Core, x: u32, y: u32) -> Option<(usize, bool, bool)> {
     bolt()?.cell(crate::ds_campaign::hard(core), x, y)
 }
 
+/// The terrain panel's picture for a Grand Bolt cell, as Dual Strike's
+/// panel shows it: a 16x32 picture, its top half clear, its bottom half the
+/// cell's own texture, in the colours of OBJ palette `palette` (the
+/// panel's) closest to its own.
+pub fn panel_picture(core: &Core, x: u32, y: u32, palette: u32) -> Option<[u8; 256]> {
+    let obj: Vec<u16> = (0..16).map(|k| core.raw_read_16(PAL_BUFFER + 0x200 + 32 * palette + 2 * k, -1)).collect();
+    let nearest = |c: u16| (1..16).min_by_key(|&j| crate::ds_look::dist(c, obj[j])).unwrap_or(1) as u8;
+    let b = bolt()?;
+    let c = cell_at(core, x, y)?;
+    let mut px = [[0u8; 16]; 32];
+    for (q, (ox, oy)) in [(0, 0), (8, 0), (0, 8), (8, 8)].into_iter().enumerate() {
+        let (tile, flips) = b.tile(c, q);
+        for ty in 0..8 {
+            for tx in 0..8 {
+                let (sx, sy) = (if flips & 0x400 != 0 { 7 - tx } else { tx }, if flips & 0x800 != 0 { 7 - ty } else { ty });
+                let v = (tile[4 * sy + sx / 2] >> (4 * (sx & 1))) & 15;
+                px[16 + oy + ty][ox + tx] = nearest(b.colours[v as usize]);
+            }
+        }
+    }
+    let mut bmp = vec![0u8; 16 * 32 / 2];
+    for (y, row) in px.iter().enumerate() {
+        for (x, &v) in row.iter().enumerate() {
+            bmp[y * 8 + x / 2] |= v << (4 * (x & 1));
+        }
+    }
+    crate::ds_art::tiles(&bmp, 16, &[(0, 0, 16, 32)]).try_into().ok()
+}
+
 // --- Weak points ----------------------------------------------------------------
 
 const INVENTIONS: u32 = 0x0202_8360;
