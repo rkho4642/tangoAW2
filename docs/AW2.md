@@ -585,6 +585,8 @@ powers' code, heal wait), 0x087C0000..0x087C0FFF (power animations),
 0x087C1000..0x087C3FFF (map animations), 0x087D0000..0x087DFFFF (unit pictures),
 0x087F0000..0x087F4FFF (CO screen grid: the map sheet per country, the page lists),
 0x08800000..0x08D2FFFF (music, past the 8 MB cartridge: mGBA grows the image when it is written),
+0x09000000.. (the DS Campaign's story songs, their own range so the music above never runs into the
+Survival and campaign data),
 0x0862D000..0x0862D0FF (Survival's text ids 0x7172..), 0x08E00000..0x08E4FFFF (Survival: the map
 table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
 0x0862DA38..0x08630A37 (the DS Campaign's text ids 0x7400..0x7FFF),
@@ -609,9 +611,11 @@ Strike theme, converted at run time for AW2's sound engine (MP2K, "Sappy").
   sequences (SSEQ), their banks (SBNK) and sample archives (SWAR) as
   `sound/seq/<id>`, `sound/bank/<id>`, `sound/wave/<id>` (about 4 MB;
   with the Crystal's and Obelisk's heal sounds, 175 and 176, nothing else
-  of the 18 MB archive). The pack's version is 3 (3: the heal sounds): a
-  saved older pack is rebuilt from the .nds on the next scan (or ignored
-  without it), so both netplay peers with the pack have the same sounds. Power music stays AW2's
+  of the 18 MB archive), and the DS Campaign's 15 story songs
+  (`STORY_SONGS`). The pack's version is 4 (3: the heal sounds, 4: the
+  story songs): a saved pack older than 3 is rebuilt from the .nds on the
+  next scan (or ignored without it); a version 3 pack still loads, its
+  story songs stood in for by AW2's like ones, so both netplay peers with the pack have the same sounds. Power music stays AW2's
   (Dual Strike's is shared too).
 - **Sequence.** Each SSEQ track is walked (calls inlined, loops and jumps
   followed; the jump back is the loop) into timed notes and controls, and
@@ -1080,9 +1084,15 @@ overlay 1, the campaign's code, at `0x02350560`).
   the map stays up with every mission cleared. The mission card's number (`GetCampaignResultCountPlusOne`
   `0x0803840C`, trapped) counts DS missions won.
 - **Music**: the maps play their COs' themes as AW2 does (the new COs'
-  Dual Strike themes, `ds_music.rs`); Dual Strike's event songs play AW2's
-  like ones (allies' scenes and crises 413, Black Hole's scenes 411, Von
-  Bolt's 220) and fade out as AW2's do.
+  Dual Strike themes, `ds_music.rs`). Dual Strike's event songs (SDAT
+  sequences 0x16, 0x17, 0x19, 0x1A, 0x23, 0x2C, 0x2D, 0x3D, 0x3E), its
+  opening (`BGM_OPENING1` 0x29, the prologue), world map (GMAP1 0x06) and
+  ending (`NML_ENDING1` 0x36) are converted as the CO themes are
+  (`STORY_SONGS`, written from `0x09000000`) and played by the session's
+  scripts; with a version 3 pack AW2's like songs stand in (allies' scenes
+  and crises 413, Black Hole's 411, Von Bolt's 220). The songs sit
+  after AW2's 505 in the song table but only the converted DS scripts name
+  them (`aw2_song`), so AW2's own scripts never play one. Test: `ds_campaign_story_music`.
 - **Save**: the progress (`0x0203FD30`, 0x20 bytes: "AWDC", next step,
   campaign over, missions won (bits), flags 0x20..0x9F) is written at each
   mission start through AW2's own save writer (`sub_0801A7D8`) into Flash
@@ -1131,6 +1141,24 @@ after the win, saved to Flash and continued after a reboot), the Com Tower
 capture, the lab flags and the score slot fixes, the Grand Bolt's spawns, the computer playing
 three days on four missions with no army dropping out);
 `aw2test/dscampaign.py` drives it and reads Dual Strike's missions directly.
+
+AW2's own campaign stays AW2's (`tools/aw2test/tests/test_aw2_campaign_vanilla.py`):
+its opening (New, the story, the world map, Mission 1's card, the first
+battle) and its ending (`specialProperty` 0x10 put on its first mission so
+its win starts AW2's ending proc `0x084A0A3C`; the scenes and staff roll
+until Select Mode is back) are traced every 20 frames (the text shown, the
+song, the screen, the game's frame count) without the pack, with it, and
+after a DS Campaign session in the same boot. The runs press New at the
+same frame from the boot (a session's reference is an AW2 campaign
+session left the same way) and write nothing to RAM. With the pack every
+sample matches (500 and 683). After a DS session the ending matches in
+full and the opening in everything but 9 samples of the world map's
+zoom and spinning Mission Start stamp (a pixel here and there; texts,
+songs and frame counts equal, Mission 1 and its battle the same after).
+That state is not in RAM, VRAM, palettes, OAM or AW2's code bytes (copying
+the reference's over at the New press leaves it), so it is console state
+outside memory after the session's songs; the test allows that one window
+and nothing else.
 
 ## Known limits
 
