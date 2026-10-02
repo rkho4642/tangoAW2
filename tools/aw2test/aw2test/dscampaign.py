@@ -295,7 +295,7 @@ class DsCampaign:
         n = 0
         while n < max_frames and not self.in_battle():
             if self.on_co_select():
-                self.e.press("A", 6)
+                self.co_screen_a()
             self.e.wait(20)
             n += 20
         if not self.in_battle():
@@ -305,6 +305,46 @@ class DsCampaign:
 
     def on_co_select(self):
         return any(self.e.u32(p) == CO_SELECT for p in range(0x0200D610, 0x0200E418, 0x6C))
+
+    def picked(self):
+        """The COs picked so far on the CO screen (gUnknown_030058D4, as many
+        as its proc's pick index +0x64)."""
+        e = self.e
+        p = next((p for p in range(0x0200D610, 0x0200E418, 0x6C) if e.u32(p) == CO_SCREEN), None)
+        if p is None:
+            return []
+        n = min(e.u16(p + 0x64), 8)
+        return list(e.read(PICKS, n)) if n else []
+
+    def total_picks(self):
+        """The picks the CO screen asks for in the mission being started: the
+        armies the player picks for, then (crate::tag) the partners of the
+        first ones whose record has the player pick both (room for four
+        picks), none in a mission with a second front."""
+        if not hasattr(self, "_data"):
+            self._data = DsData()
+        m = self._data.mission(self.mission())
+        armies = min(m["armies"], 4)
+        n = 0
+        while n < armies and m["cos"][n] == 0x1C:
+            n += 1
+        k = 0
+        while k < n and m["tags"][k] == 0x1C:
+            k += 1
+        two_front = self.mission() in (8, 10, 14, 21, 24)
+        return n + (0 if two_front else min(k, 4 - n))
+
+    def co_screen_a(self):
+        """On the CO screen: A, or RIGHT when the CO under the cursor is
+        already picked and picks remain (the screen refuses it; a tag pair's
+        partners are picked on it after the armies' COs, crate::tag)."""
+        c = self.co_cursor()
+        picked = self.picked()
+        if c and c["co"] in picked and len(picked) < self.total_picks():
+            self.e.press("RIGHT", 6)
+            self.e.wait(20)
+        else:
+            self.e.press("A", 6)
 
     def co_cursor(self):
         """On the CO screen: the CO under the cursor and the screen's
@@ -381,7 +421,9 @@ class DsCampaign:
                 picks.append(self.choose_co([c for c in prefs if c not in picks]))
                 e.wait(60)
                 n += 60
-            elif self.on_co_select() or self.scripts_running():
+            elif self.on_co_select():
+                self.co_screen_a()
+            elif self.scripts_running():
                 e.press("A", 6)
             e.wait(10)
             n += 16
@@ -761,6 +803,7 @@ ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 26, 12, 13, 27, 14, 15, 16, 1
 # of CO, best first: Kanbei, Hawke, Max, Grimm, Jess, Andy, Jake, Rachel,
 # Sensei, Nell, Javier, Sami, Sasha, Koal, Kindle, Jugger (tangoAW2 ids).
 CO_SCREEN = 0x08616638
+PICKS = 0x030058D4
 CO_LIST = 0x030058E0
 CO_GROUPS = 0x03005944
 CO_GROUP_COUNTS = 0x03005948

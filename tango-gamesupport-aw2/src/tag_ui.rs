@@ -141,15 +141,18 @@ fn army_main(core: &Core, army: u32) -> Option<u8> {
 
 /// Every frame, before the game reads the pad: the partner picks.
 pub fn teams_tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
+    if !ds {
+        return keys;
+    }
     if !teams_on(core, ds) || crate::skills_panel::is_open(core) {
         if !teams_on(core, ds) {
-            core.raw_write_8(EDITING, -1, NONE);
+            stop_editing(core);
             restore(core);
         }
         return keys;
     }
     if core.raw_read_8(tag::RULE, -1) != 1 {
-        core.raw_write_8(EDITING, -1, NONE);
+        stop_editing(core);
         restore(core);
         return keys;
     }
@@ -236,6 +239,12 @@ fn find(core: &Core, start: u32, at: u32, tile: u16, wide: bool) -> Option<(u32,
         e += 8;
     }
     None
+}
+
+fn stop_editing(core: &mut Core) {
+    if core.raw_read_8(EDITING, -1) != NONE {
+        core.raw_write_8(EDITING, -1, NONE);
+    }
 }
 
 /// The "None" plate: "None" in AW2's font, white on the dark blue of the
