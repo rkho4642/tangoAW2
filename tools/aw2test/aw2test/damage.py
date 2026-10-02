@@ -136,6 +136,10 @@ class Side:
     # weather (0 clear, 1 snow, 2 rain, 3 sandstorm) for the weather skills.
     skills: frozenset = frozenset()
     weather: int = 0
+    # A CO tag pair's Tag Power under way (tangoAW2's crate::tag): the pair's
+    # Dual Strike compatibility - 100, as firepower (Dual Strike's
+    # 0x020E5C40 -> 0x020E5508; with CO abilities on).
+    tag_firepower: int = 0
 
 
 # Dual Strike's skill effects (its code: attack 0x020E646C / 0x020E68D0 /
@@ -262,6 +266,8 @@ def strike(rules, a: Side, b: Side, dist, is_attacker, a_hp_now):
     if a.co_abilities:
         acc += rules.terrain_firepower(a.co, a.co_mode, a.terrain)
     acc += skill_attack(a)
+    if a.co_abilities:
+        acc += a.tag_firepower
     luck = (m["luck"], m["neg_luck"]) if a.co_abilities else (10, 0)
     dmg0 = div(acc * base, 100)
     cut = rules.enemy_terrain_cut(a.co, a.co_mode) if a.co_abilities else 0

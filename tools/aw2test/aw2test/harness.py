@@ -124,7 +124,21 @@ class Ctx:
             dived=bool(u["flags"] & 0x20), co_abilities=bool(st["co_abilities"]),
             skills=frozenset(self.skills.get(u["army"], ())),
             weather=3 if self.sandstorm else st["weather"],
+            tag_firepower=self.tag_firepower(g, u["army"], p["co"]),
         )
+
+    def tag_firepower(self, g, army, co):
+        """A Tag Power under way (crate::tag): the pair's compatibility - 100,
+        read from the .nds (CO record +0x84)."""
+        if not self.ds:
+            return 0
+        from . import tag
+        t = tag.partner(g.e, army)
+        if not t or t["phase"] == 0:
+            return 0
+        if not hasattr(self, "_ds"):
+            self._ds = romlib.DualStrike()
+        return tag.compatibility(self._ds, co, t["co"]) - 100
 
     def properties(self, g, army):
         """Properties (city, HQ, airport, port, base, Lab/tower) army owns."""
@@ -155,6 +169,8 @@ class Ctx:
         d_side = self.side(g, dfd0)
         pa0 = g.player(att0["army"])
         pd0 = g.player(dfd0["army"])
+        from . import tag
+        ta0, td0 = (tag.partner(g.e, att0["army"]), tag.partner(g.e, dfd0["army"])) if self.ds else (None, None)
         (_, att1), (_, dfd1) = g.attack(src, dst, target)
         ra, rd = self.battle_records(g)
         first, counter = damage.battle(self.rules, a_side, d_side, dist, dfd_hp_after=dfd1["hp"])
@@ -208,6 +224,14 @@ class Ctx:
                 gain = damage.div(gain * 110, 100)  # Star Power (crate::co_skills)
             cap = power_star_cost(p0["powers_used"]) * g.co_stars(p0["co"])[1]
             self.eq(p1["charge"], min(cap, p0["charge"] + gain), f"{label}: {who}'s power meter")
+            # A tag pair's partner: half the active CO's (before Star Power),
+            # its own Star Power, up to its Super Power's cost (crate::tag).
+            t0 = ta0 if army == att0["army"] else td0
+            if t0 is not None:
+                t1 = tag.partner(g.e, army)
+                half = damage.div(x1 + damage.div(x2, 2) if who == "attacker" else x2 + damage.div(x1, 2), 2)
+                pcap = power_star_cost(t0["uses"]) * g.co_stars(t0["co"])[1]
+                self.eq(t1["charge"], min(pcap, t0["charge"] + half), f"{label}: {who}'s partner's power meter (half)")
         return {"first": first, "counter": counter, "before": (att0, dfd0), "after": (att1, dfd1),
                 "records": (ra, rd)}
 

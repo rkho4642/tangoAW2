@@ -948,6 +948,7 @@ class DsData:
         return {
             "name": self.text(0xC0000000 | h(0x14)).decode("latin-1"),
             "w": width, "h": height, "tiles": tiles, "units": units,
-            "armies": h(0x24), "cos": [r[0x56 + 2 * k] for k in range(4)], "look": r[0x1A], "weather": r[0x1B], "fog": r[0x1C],
+            "armies": h(0x24), "cos": [r[0x56 + 2 * k] for k in range(4)],
+            "tags": [r[0x57 + 2 * k] for k in range(4)], "look": r[0x1A], "weather": r[0x1B], "fog": r[0x1C],
             "structure": structure,
         }
