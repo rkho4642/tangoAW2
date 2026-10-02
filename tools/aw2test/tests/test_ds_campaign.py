@@ -608,9 +608,14 @@ def ds_campaign_map_exit(ctx):
     ends the session: the Campaign box comes back on DS CAMPAIGN, and AW2
     CAMPAIGN's Continue shows AW2's own map with
     AW2's own progress (before the fix the session stayed on and AW2's
-    Continue showed the DS map)."""
-    e, g, d = boot(ctx)
-    aw2_flags = e.read(dc.WM_STATE + 0x12, 0x2A)
+    Continue showed the DS map). (A save with an AW2 campaign to continue:
+    the pinned one has none.)"""
+    e, g, d = boot(ctx, dc.aw2_campaign_save(ctx.out))
+    # AW2's map flags as its profile keeps them (the world map state is the
+    # profile's last part, +0x4D0; its newest slot-0 sector in Flash).
+    newest = max((e.u32(0x0E000000 + 0x1000 * k + 8), k) for k in range(16)
+                 if e.read(0x0E000000 + 0x1000 * k, 4) == b"2ars" and e.u8(0x0E000000 + 0x1000 * k + 0x0D) == 0)[1]
+    aw2_flags = e.read(0x0E000000 + 0x1000 * newest + 0x52 + 0x4D0 + 0x12, 0x2A)
     d.start(step=3, pick=False)
     d.wait_world_map()
     e.wait(30)
@@ -785,3 +790,123 @@ def ds_campaign_story_music(ctx):
     e.wait(120)
     after = e.u32(BGM)
     ctx.check(0x08800000 <= after < 0x0A000000 and after != during, f"the world map plays another converted song (header {after:#x})")
+
+
+# -- The staff credits (crate::ds_credits) -----------------------------------------
+DS_CREDIT_SECTIONS = 0x0236A418   # overlay 5: Dual Strike's staff roll sections
+OV5 = 0x02350560
+AW2_PAGES = 0x0858265C            # AW2's staff roll page list
+PAGE_POOLS = (0x0806BFEC, 0x0806C0B0, 0x0806C108, 0x0806C134)
+CREDITS = 0x0203FD17
+ROLL_FNS = (0x0806C075, 0x0806C0E5)  # the roll's page procs (typing, page time)
+
+
+def ds_credit_lines():
+    """Every line of Dual Strike's staff roll, read from the .nds (overlay 5),
+    in order: (kind, text), 1 a name, 2/3 headings."""
+    import struct
+    rom = open(paths.ds_rom(), "rb").read()
+    ovt = struct.unpack_from("<I", rom, 0x50)[0]
+    fat = struct.unpack_from("<I", rom, 0x48)[0]
+    fid = struct.unpack_from("<I", rom, ovt + 32 * 5 + 0x18)[0]
+    a, b = struct.unpack_from("<II", rom, fat + 8 * fid)
+    ov5 = rom[a:b]
+    u32 = lambda x: struct.unpack_from("<I", ov5, x - OV5)[0]
+    text = lambda x: ov5[x - OV5:ov5.index(b"\0", x - OV5)].decode("latin-1")
+    out, at = [], DS_CREDIT_SECTIONS
+    while u32(at):
+        p = u32(at)
+        while True:
+            k = u32(p)
+            if k == 0:
+                p += 4
+            elif k in (1, 2, 3):
+                out.append((k, text(u32(p + 4))))
+                p += 8
+            else:
+                break
+        at += 4
+    return out
+
+
+def roll_lines(e, pages):
+    """The lines of the page list the roll reads: (kind, text), 1 a heading, 2
+    a name."""
+    out, k = [], 0
+    while True:
+        page = e.u32(pages + 4 * k)
+        if not page:
+            return out
+        for s in range(6):
+            kind, ptr = e.u32(page + 8 * s), e.u32(page + 8 * s + 4)
+            if kind:
+                t = e.read(ptr, 40)
+                out.append((kind, t[:t.index(0)].decode("latin-1")))
+        k += 1
+
+
+@test(modes=("ds",))
+def ds_campaign_credits(ctx):
+    """Means to an End won (a test aid ends it: the battle routed), its
+    ending scenes, then Dual Strike's staff credits in AW2's staff roll: every
+    line of Dual Strike's roll (read from the .nds) in its order, headings
+    between stars and split when wide, Dual Strike's staff roll music (a
+    converted song, not AW2's), the copyright screen, then Select Mode with
+    the session over and AW2's own pages back."""
+    e, g, d = boot(ctx)
+    data = dc.DsData()
+    d.start(step=27)
+    d.choose_cos(dc.co_picks(data, dc.ORDER[27]), dc.CO_PREFS)
+    d.autoplay(max_days=2)
+    e.w8(d.players() + 0x3C + 0x1B, 1)
+    for _ in range(600):
+        if d.in_battle() and e.u8(0x030033EC) == 1 and not d.scripts_running() and g.idle():
+            break
+        e.wait(10)
+    ctx.require(d.force_win(), "Means to an End won (test aid)")
+    for f in range(80000):
+        if e.u8(CREDITS) >= 3:
+            break
+        if f % 20 == 0 and (e.u8(CREDITS) == 0 or not d.world_map_up()):
+            e.press("A", 4)
+        e.wait(1)
+    ctx.require(e.u8(CREDITS) == 3, "the map left for the credits after the ending")
+    pages = e.u32(PAGE_POOLS[0])
+    ctx.check(pages != AW2_PAGES and all(e.u32(a) == pages for a in PAGE_POOLS), f"the roll reads Dual Strike's pages ({pages:#x})")
+    got = roll_lines(e, pages)
+    want = ds_credit_lines()
+    # Names: AW2 names (an apostrophe is AW2's '~'), every one in order.
+    names_want = [t.replace("'", "~") for k, t in want if k == 1]
+    ctx.eq([t for k, t in got if k == 2], names_want, f"every name of Dual Strike's roll, in order ({len(names_want)})")
+    # Headings: between stars, a wide one in two lines (the heading lines
+    # of a page joined back here); a section over two pages repeats them.
+    heads, run = [], []
+    for k, t in got + [(0, "")]:
+        if k == 1:
+            run.append(t.strip("*"))
+        elif run:
+            heads.append(" ".join(run))
+            run = []
+    heads_want = [t for k, t in want if k != 1]
+    joined = " / ".join(heads)
+    ctx.check(all(h in joined for h in heads_want) and all(t.startswith("*") and t.endswith("*") for k, t in got if k == 1),
+              f"every heading, between stars ({len(set(heads_want))})")
+    ctx.check(all(len(t) <= 21 for k, t in got), "every line fits the page")
+    music = set()
+    rolled = False
+    for k in range(200):
+        e.wait(60)
+        fns = {e.u32(0x0200D610 + 0x6C * j + 0x10) for j in range(32)}
+        if fns & set(ROLL_FNS):
+            rolled = True
+            music.add(e.u32(0x03005AE0))
+        if k in (6, 40):
+            shot(ctx, e, f"credits_{k}.png")
+        if rolled and any(e.u32(0x0200D610 + 0x6C * j) in dc.WHEELS for j in range(32)):
+            break
+    ctx.check(rolled, "the roll ran")
+    ctx.check(music and all(m >= 0x09000000 for m in music), f"Dual Strike's staff roll music (headers {[hex(m) for m in music]})")
+    e.wait(60)
+    ctx.eq(e.u8(dc.ACTIVE), 0, "back on Select Mode: the session is over")
+    ctx.check(all(e.u32(a) == AW2_PAGES for a in PAGE_POOLS), "AW2's own pages back")
+    ctx.eq(e.u8(dc.P_NEXT + 1), 1, "the campaign recorded as over")

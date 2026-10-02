@@ -612,8 +612,8 @@ Strike theme, converted at run time for AW2's sound engine (MP2K, "Sappy").
   `sound/seq/<id>`, `sound/bank/<id>`, `sound/wave/<id>` (about 4 MB;
   with the Crystal's and Obelisk's heal sounds, 175 and 176, nothing else
   of the 18 MB archive), and the DS Campaign's 15 story songs
-  (`STORY_SONGS`). The pack's version is 4 (3: the heal sounds, 4: the
-  story songs): a saved pack older than 3 is rebuilt from the .nds on the
+  (`STORY_SONGS`) and the staff roll's stream (`sound/strm/0`). The pack's
+  version is 5 (3: the heal sounds, 4: the story songs, 5: the stream): a saved pack older than 3 is rebuilt from the .nds on the
   next scan (or ignored without it); a version 3 pack still loads, its
   story songs stood in for by AW2's like ones, so both netplay peers with the pack have the same sounds. Power music stays AW2's
   (Dual Strike's is shared too).
@@ -1093,6 +1093,27 @@ overlay 1, the campaign's code, at `0x02350560`).
   and crises 413, Black Hole's 411, Von Bolt's 220). The songs sit
   after AW2's 505 in the song table but only the converted DS scripts name
   them (`aw2_song`), so AW2's own scripts never play one. Test: `ds_campaign_story_music`.
+- **Credits** (`ds_credits.rs`): after Means to an End's ending scenes the
+  map is left as its "Return to Select Mode" leaves it (the cursor loop,
+  trapped at `0x0807703C`, calls `Proc_Goto(map, 6)` with the answer
+  `0x030030F2` = 0, Yes; the menu's start `0x0803B83C`, trapped, starts the
+  session's ending proc instead, which runs the roll and then starts the
+  menu). The roll is AW2's staff roll (proc script `0x08581AC8`) from a
+  session copy without AW2's epilogue (its "War is over" paper, its last
+  mission's recap) and without its "Campaign Clear" and campaign rank,
+  reading Dual Strike's pages: Dual Strike's 28 sections (overlay 5,
+  `0x0236A418`: words 0 blank, 1 name, 2/3 heading, then the time) as AW2
+  pages (six (kind, text) slots and the time; AW2's list `0x0858265C`, its
+  four pool words switched during a session), headings between stars and in
+  two lines when wide, a section with more lines than a page over two. The
+  music is Dual Strike's `STRM_STAFF_ROLL1`, a stream (IMA-ADPCM, stereo,
+  22767 Hz, 106 s) kept in the pack (version 5) and converted as one
+  sample at the mixing rate, mono, played as one held note
+  (`ds_music::staff_roll_song`; the roll's `PlaySong(416)` at `0x0806BC84`
+  gets it in a session). Dual Strike's top-screen pictures during its roll
+  are not shown. Test: `ds_campaign_credits` (every name of Dual Strike's
+  roll, read from the .nds, in order; every heading; the music; Select
+  Mode after with the session over and AW2's pages back).
 - **Save**: the progress (`0x0203FD30`, 0x20 bytes: "AWDC", next step,
   campaign over, missions won (bits), flags 0x20..0x9F) is written at each
   mission start through AW2's own save writer (`sub_0801A7D8`) into Flash
@@ -1102,7 +1123,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   `0x0849AB64` points at a stub): a suspended mission would come back as an
   AW2 one.
 - **Hook points** (for merging other work): traps `0x08016BA0` (the profile
-  serializer's end), `0x0803BA4C`,
+  serializer's end), `0x0807703C`, `0x0803B83C`, `0x0806BC84` (the credits),
+  `0x0803BA4C`,
   `0x0803BA88`, `0x08038484`, `0x0803CBA0`, `0x0803CBD8`, `0x0803BC7C`
   (`GetCampaignSaveFlag`: the DS box's Continue), `0x0803840C`, `0x0803CC5E`
   (the stubs' landing); `SetMapPlayed` (`0x0803CA28`, Survival's trap) also

@@ -577,22 +577,34 @@ class Game:
         self.wait_for_input()
         return ids
 
-    def empty_cell(self):
+    def empty_cells(self):
+        """The map's cells without a unit, nearest the cursor first (inside
+        the map: gMap's size)."""
         occupied = {(u["x"], u["y"]) for u in self.units()}
+        w, h = self.e.u16(0x0201E450), self.e.u16(0x0201E452)
+        if not (0 < w <= 30 and 0 < h <= 30):
+            w, h = 30, 20
         cx, cy = self.cursor()
-        best = None
-        for y in range(20):
-            for x in range(30):
-                if (x, y) not in occupied:
-                    d = abs(x - cx) + abs(y - cy)
-                    if best is None or d < best[0]:
-                        best = (d, x, y)
-        return best[1], best[2]
+        cells = [(abs(x - cx) + abs(y - cy), x, y) for y in range(h) for x in range(w) if (x, y) not in occupied]
+        return [(x, y) for _, x, y in sorted(cells)]
+
+    def empty_cell(self):
+        return self.empty_cells()[0]
 
     def open_map_menu(self):
+        """A on a cell without a unit opens the map menu, unless the cell is
+        a factory of the army (its build menu) or a structure: then B and
+        the next cell."""
         self.wait_idle()
-        self.goto(*self.empty_cell())
-        self.e.press("A", 4)
+        for x, y in self.empty_cells()[:8]:
+            self.goto(x, y)
+            self.e.press("A", 4)
+            try:
+                return self.wait_menu(self.MAP_MENU, max_frames=90)
+            except NavError:
+                self.e.press("B", 4)
+                self.e.wait(20)
+                self.wait_idle()
         return self.wait_menu(self.MAP_MENU)
 
     def map_menu_names(self):

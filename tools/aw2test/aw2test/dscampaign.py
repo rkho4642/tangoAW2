@@ -1,8 +1,10 @@
 """Driving the DS Campaign (crate::ds_campaign): starting it from the menu,
 reading its state, getting through dialogue, and forcing a mission's end."""
 
+import os
 import struct
 
+from . import paths
 from .game import Game, NavError
 
 # tangoAW2's DS Campaign RAM (crate::ds_campaign).
@@ -684,6 +686,49 @@ class DsCampaign:
         r["progress"] = self.progress()
         return r
 
+
+
+_AW2_SAVES = {}
+
+
+def aw2_campaign_save(out_dir):
+    """A cartridge save with an AW2 campaign to continue, made once per
+    process from the pinned save, pack off: AW2 CAMPAIGN, New, its story,
+    Mission 1 won (a test aid routs it), AW2's world map, back to Select
+    Mode. (The pinned save has no AW2 campaign in progress.) Its path."""
+    if out_dir in _AW2_SAVES:
+        return _AW2_SAVES[out_dir]
+    from .emu import Emu
+    from .game import Game
+    e = Emu(save=paths.base_save(), ds=False)
+    d = DsCampaign(Game(e))
+    d.open_campaign_box()
+    d.box_row(1)
+    e.wait(30)
+    e.press("A", 8)
+    for _ in range(4000):
+        if d.in_battle() and e.u8(0x030033EC) == 1 and not d.scripts_running():
+            break
+        e.press("A", 4)
+        e.wait(10)
+    if not d.force_win():
+        raise NavError("AW2's Mission 1 not won")
+    for _ in range(3000):
+        if d.world_map_up() and not d.scripts_running():
+            break
+        e.press("A", 4)
+        e.wait(10)
+    e.wait(30)
+    e.press("B", 6)
+    e.wait(90)
+    e.press("LEFT", 6)
+    e.wait(10)
+    e.press("A", 6)
+    e.wait(300)
+    path = e.save(os.path.join(out_dir, "aw2_campaign"))
+    e.close()
+    _AW2_SAVES[out_dir] = path
+    return path
 
 # -- Dual Strike's campaign, read from the .nds (independent of the Rust) -------
 DS_OV0 = 0x022AD560

@@ -116,6 +116,9 @@ pub const STORY_SONGS: [(u16, &str); 15] = [
 pub const OPENING: u16 = 0x29;
 pub const WORLD_MAP: u16 = 0x06;
 pub const ENDING: u16 = 0x36;
+/// The staff roll's music (`STRM_STAFF_ROLL1`, the archive's only stream:
+/// IMA-ADPCM, stereo, 22767 Hz, 106 s), as a pack file.
+pub const STAFF_ROLL_STREAM: &str = "sound/strm/0";
 
 // --- The sound archive (SDAT) ------------------------------------------------
 
@@ -193,6 +196,10 @@ pub fn keep(sdat: &[u8], arm9: &[u8]) -> Option<Vec<(String, Vec<u8>)>> {
                 out.push((format!("sound/wave/{w}"), file(u16_at(record(3, w)?, 0)?)?));
             }
         }
+    }
+    // The staff roll's stream (INFO kind 7, record 0).
+    if let Some(f) = record(7, 0).and_then(|r| u16_at(r, 0)).and_then(file) {
+        out.push((STAFF_ROLL_STREAM.to_string(), f));
     }
     Some(out)
 }
@@ -521,6 +528,62 @@ const ADPCM_STEP: [i32; 89] = [
 ];
 const ADPCM_INDEX: [i32; 8] = [-1, -1, -1, -1, 2, 4, 6, 8];
 
+/// IMA-ADPCM as the DS plays it: a header (first sample, step index), then
+/// two samples a byte, low nibble first.
+fn adpcm(d: &[u8]) -> Option<Vec<i16>> {
+    let (mut s, mut idx) = (i16::from_le_bytes([*d.first()?, *d.get(1)?]) as i32, (*d.get(2)? as i32).min(88));
+    let mut out = Vec::with_capacity(d.len().saturating_sub(4) * 2);
+    for &b in d.get(4..)? {
+        for n in [b & 15, b >> 4] {
+            let st = ADPCM_STEP[idx as usize];
+            let mut diff = st >> 3;
+            if n & 1 != 0 {
+                diff += st >> 2;
+            }
+            if n & 2 != 0 {
+                diff += st >> 1;
+            }
+            if n & 4 != 0 {
+                diff += st;
+            }
+            s = if n & 8 != 0 { s - diff } else { s + diff }.clamp(-0x7FFF, 0x7FFF);
+            idx = (idx + ADPCM_INDEX[(n & 7) as usize]).clamp(0, 88);
+            out.push(s as i16);
+        }
+    }
+    Some(out)
+}
+
+/// A stream (STRM) as one sample: its IMA-ADPCM blocks (each channel's
+/// block in turn, the last block shorter), the channels mixed to mono.
+fn stream(strm: &[u8]) -> Option<Sample> {
+    if strm.get(0..4)? != b"STRM" || strm.get(0x10..0x14)? != b"HEAD" {
+        return None;
+    }
+    let h = 0x10;
+    let (kind, looped, chans) = (*strm.get(h + 8)?, *strm.get(h + 9)? != 0, *strm.get(h + 10)? as usize);
+    if kind != 2 || !(1..=2).contains(&chans) {
+        return None;
+    }
+    let rate = u16_at(strm, h + 0x0C)? as u32;
+    let loop_at = u32_at(strm, h + 0x10)? as usize;
+    let total = u32_at(strm, h + 0x14)? as usize;
+    let (data, blocks) = (u32_at(strm, h + 0x18)? as usize, u32_at(strm, h + 0x1C)? as usize);
+    let (size, last) = (u32_at(strm, h + 0x20)? as usize, u32_at(strm, h + 0x28)? as usize);
+    let mut ch: Vec<Vec<i16>> = vec![Vec::with_capacity(total); chans];
+    let mut o = data;
+    for b in 0..blocks {
+        let len = if b + 1 == blocks { last } else { size };
+        for c in ch.iter_mut() {
+            c.extend(adpcm(strm.get(o..o + len)?)?);
+            o += len;
+        }
+    }
+    let n = ch.iter().map(|c| c.len()).min()?.min(total);
+    let pcm = (0..n).map(|i| (ch.iter().map(|c| c[i] as i32).sum::<i32>() / chans as i32) as i16).collect();
+    Some(Sample { pcm, rate: rate.max(1), loop_start: (looped && loop_at < n).then_some(loop_at) })
+}
+
 /// Sample `i` of a SWAR.
 fn sample(swar: &[u8], i: u16) -> Option<Sample> {
     if i as u32 >= u32_at(swar, 0x38)? {
@@ -533,29 +596,7 @@ fn sample(swar: &[u8], i: u16) -> Option<Sample> {
     let (pcm, loop_start) = match kind {
         0 => (d.iter().map(|&b| (b as i8 as i16) << 8).collect(), ls),
         1 => (d.chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])).collect(), ls / 2),
-        2 => {
-            let (mut s, mut idx) = (i16::from_le_bytes([d[0], d[1]]) as i32, (d[2] as i32).min(88));
-            let mut out = Vec::with_capacity((d.len() - 4) * 2);
-            for &b in &d[4..] {
-                for n in [b & 15, b >> 4] {
-                    let st = ADPCM_STEP[idx as usize];
-                    let mut diff = st >> 3;
-                    if n & 1 != 0 {
-                        diff += st >> 2;
-                    }
-                    if n & 2 != 0 {
-                        diff += st >> 1;
-                    }
-                    if n & 4 != 0 {
-                        diff += st;
-                    }
-                    s = if n & 8 != 0 { s - diff } else { s + diff }.clamp(-0x7FFF, 0x7FFF);
-                    idx = (idx + ADPCM_INDEX[(n & 7) as usize]).clamp(0, 88);
-                    out.push(s as i16);
-                }
-            }
-            (out, ls.saturating_sub(4) * 2)
-        }
+        2 => (adpcm(d)?, ls.saturating_sub(4) * 2),
         _ => return None,
     };
     let loop_start = (looped && loop_start < pcm.len()).then_some(loop_start);
@@ -1130,6 +1171,9 @@ pub struct Music {
     /// id, song id). (A pack saved by 0.4.x has none: AW2's like songs
     /// stand in.)
     pub story: Vec<(u16, u16)>,
+    /// The staff roll's song (the stream as one held note), when the pack
+    /// has the stream.
+    pub staff_roll: Option<u16>,
 }
 
 struct Blob {
@@ -1188,7 +1232,9 @@ fn build() -> Option<Music> {
     }
     let mut story_blob = Blob { bytes: Vec::new(), base: STORY_BASE };
     let table_at = TABLE;
-    blob.bytes.resize((TABLE - BASE) as usize + 8 * (AW2_SONGS as usize + distinct.len()), 0);
+    // The staff roll's stream, a song after the others.
+    let roll = pack.file(STAFF_ROLL_STREAM).and_then(stream);
+    blob.bytes.resize((TABLE - BASE) as usize + 8 * (AW2_SONGS as usize + distinct.len() + roll.is_some() as usize), 0);
     let mut headers = Vec::new();
     let mut waves: HashMap<(u16, u16), u32> = HashMap::new();
     let silent = {
@@ -1365,12 +1411,44 @@ fn build() -> Option<Music> {
         blob.bytes[e + 4..e + 6].copy_from_slice(&player.to_le_bytes());
         blob.bytes[e + 6..e + 8].copy_from_slice(&player.to_le_bytes());
     }
+    // The staff roll: its sample (resampled to the mixing rate, looping
+    // where the stream loops) played as one note held for good: a voice
+    // group of one DirectSound voice (key 60 plays the sample at its own
+    // rate), a track VOICE 0, VOL, PAN, TIE C4, then a wait looped.
+    let mut staff_roll = None;
+    if let Some(s) = roll {
+        let w = convert_sample(&s);
+        let wave = story_blob.put(&wave_bytes(&w));
+        let mut v = [0u8; 12];
+        v[1] = 60;
+        v[4..8].copy_from_slice(&wave.to_le_bytes());
+        v[8..12].copy_from_slice(&[255, 0, 255, 0]);
+        let group_at = story_blob.put(&v);
+        let mut t = vec![VOICE, 0, VOL, 100, PAN, 0x40, TIE, 60, 127];
+        let label = t.len();
+        waits(&mut t, 96);
+        t.push(GOTO);
+        story_blob.align();
+        let track_at = story_blob.at();
+        t.extend_from_slice(&(track_at + label as u32).to_le_bytes());
+        story_blob.put(&t);
+        let mut header = vec![1u8, 0, 0, 0];
+        header.extend_from_slice(&group_at.to_le_bytes());
+        header.extend_from_slice(&track_at.to_le_bytes());
+        let header_at = story_blob.put(&header);
+        let n = distinct.len();
+        let e = (table_at - BASE) as usize + 8 * (AW2_SONGS as usize + n);
+        blob.bytes[e..e + 4].copy_from_slice(&header_at.to_le_bytes());
+        blob.bytes[e + 4..e + 6].copy_from_slice(&PLAYER.to_le_bytes());
+        blob.bytes[e + 6..e + 8].copy_from_slice(&PLAYER.to_le_bytes());
+        staff_roll = Some(FIRST_SONG + n as u16);
+    }
     blob.bytes[0..4].copy_from_slice(&MAGIC.to_le_bytes());
     let song_of = |id: u16, from: usize| FIRST_SONG + (from + distinct[from..].iter().position(|&d| d == id).unwrap()) as u16;
     let songs = ids.iter().map(|&id| song_of(id, 0)).collect();
     let heal_se = se_ids.map(|id| song_of(id, themes));
     let story = story_ids.iter().map(|&id| (id, song_of(id, effects))).collect();
-    Some(Music { blob: blob.bytes, story_blob: story_blob.bytes, songs, headers, heal_se, story })
+    Some(Music { blob: blob.bytes, story_blob: story_blob.bytes, songs, headers, heal_se, story, staff_roll })
 }
 
 static BUILT: OnceLock<Option<Music>> = OnceLock::new();
@@ -1384,6 +1462,11 @@ pub fn music() -> Option<&'static Music> {
 /// ([`STORY_SONGS`]), when the pack has it.
 pub fn story_song(seq: u16) -> Option<u16> {
     music()?.story.iter().find(|s| s.0 == seq).map(|s| s.1)
+}
+
+/// The staff roll's song (Dual Strike's stream), when the pack has it.
+pub fn staff_roll_song() -> Option<u16> {
+    music()?.staff_roll
 }
 
 /// The song a new CO's turn plays, with the pack.

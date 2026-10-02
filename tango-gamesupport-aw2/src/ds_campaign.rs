@@ -62,6 +62,11 @@ pub const MENU_LEVEL: u32 = 0x0203_FD13;
 pub const MENU_CHOICE: u32 = 0x0203_FD14;
 /// Real-time countdown (frames), Dual Strike's op 0x5A; 0 off.
 const COUNTDOWN: u32 = 0x0203_FD18;
+/// The staff credits after Means to an End: 0 none; 1 due (its ending
+/// scenes play on the map); 2 the map is left for them; 3 they run.
+const CREDITS: u32 = 0x0203_FD17;
+/// Means to an End (the campaign's last mission).
+const FINAL_MISSION: u8 = 24;
 /// 1 once [`MISSION`]'s header is in the map table (the world map's sync).
 const MISSION_SET: u32 = 0x0203_FD15;
 /// The last mission's outcome (1 won, 2 lost), its index and day (u16).
@@ -139,6 +144,9 @@ pub const FLOW_CLEAR: u8 = 4;
 pub const FLOW_PROLOGUE: u8 = 5;
 /// The map back on its layer after a narration picture.
 pub const FLOW_MAP_BACK: u8 = 6;
+/// The staff credits: start the roll (`Proc_Start`), is it running.
+pub const FLOW_CREDITS_START: u8 = 7;
+pub const FLOW_CREDITS_RUNNING: u8 = 8;
 /// Narration picture n (crate::ds_story_art::NARRATION) on the map's layer.
 pub const FLOW_PICTURE: u8 = 16;
 
@@ -259,6 +267,72 @@ pub struct Campaign {
     pub hide_stub: u32,
     /// The CO screen's setup (a mission's `coSelect` on the world map).
     pub co_setup: u32,
+    /// Dual Strike's staff roll ([`crate::ds_credits`]) and the proc that
+    /// runs it after the ending ([`ending_script`]).
+    pub credits: Option<crate::ds_credits::Credits>,
+    pub ending: u32,
+}
+
+/// `Proc_Goto(proc, label)` and the start of the Select Mode menu (what
+/// the world map's "Return to Select Mode" path ends with).
+const PROC_GOTO: u32 = 0x0801_CBC8;
+const SELECT_MODE_START: u32 = 0x0803_B83C;
+/// `WorldMapCursor_Loop` (the map waiting for the pad), its first
+/// instruction; label 6 of the map's main loop (`0x08614614`) is its
+/// return to Select Mode.
+const MAP_CURSOR_LOOP: u32 = 0x0807_703C;
+const MAP_LEAVE_LABEL: u32 = 6;
+const LEAVE_ANSWER: u32 = 0x0300_30F2;
+
+/// The proc after the ending: the staff roll, waited for, then the Select
+/// Mode menu (as the world map's return to it).
+fn ending_script(start: u32, running: u32) -> Vec<u8> {
+    [
+        proc_cmd(0x02, 0, start),
+        proc_cmd(0x14, 0, running),
+        proc_cmd(0x02, 0, SELECT_MODE_START | 1),
+        proc_cmd(0x00, 0, 0),
+    ]
+    .concat()
+}
+
+/// On the map after Means to an End's ending scenes, the map is left as
+/// "Return to Select Mode" leaves it (`Proc_Goto(map, 6)`), for the credits.
+fn cursor_loop(core: &mut Core) {
+    if active(core) && core.raw_read_8(CREDITS, -1) == 1 && campaign(core).is_some_and(|c| c.credits.is_some()) {
+        core.raw_write_8(CREDITS, -1, 2);
+        // (the "Return to Select Mode?" answer: Yes, 0, which the
+        // campaign proc reads when the map ends, `0x0803BD6C`: 1 goes on
+        // to a mission)
+        core.raw_write_8(LEAVE_ANSWER, -1, 0);
+        let cpu = core.gba_mut().cpu_mut();
+        cpu.set_gpr(1, MAP_LEAVE_LABEL as i32);
+        cpu.set_thumb_pc(PROC_GOTO);
+    }
+}
+
+/// The Select Mode menu's start: when the map was left for the credits,
+/// the ending proc instead (which starts the menu after the roll).
+fn select_mode_start(core: &mut Core) {
+    if !active(core) {
+        return;
+    }
+    match core.raw_read_8(CREDITS, -1) {
+        2 => {
+            core.raw_write_8(CREDITS, -1, 3);
+            if let Some(c) = campaign(core) {
+                let ending = c.ending;
+                proc_start_instead(core, ending);
+            }
+        }
+        3 => core.raw_write_8(CREDITS, -1, 0),
+        _ => {}
+    }
+}
+
+/// Whether a proc runs `script` (the pool's +0 words).
+fn proc_running(core: &Core, script: u32) -> bool {
+    (0..32).any(|k| core.raw_read_32(0x0200_D610 + 0x6C * k, -1) == script)
 }
 
 static BUILT: OnceLock<Option<Campaign>> = OnceLock::new();
@@ -280,9 +354,13 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let prologue = built.add_magic(data::Magic::Flow(FLOW_PROLOGUE));
             let start_proc = built.add(&start_proc_script(save));
             let map_script = built.add(&map_script(prologue, save));
+            let credits_start = built.add_magic(data::Magic::Flow(FLOW_CREDITS_START));
+            let credits_running = built.add_magic(data::Magic::Flow(FLOW_CREDITS_RUNNING));
+            let credits = crate::ds_credits::build(core, &ds, &mut built);
+            let ending = built.add(&ending_script(credits_start, credits_running));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
             let pictures = crate::ds_story_art::narration_pictures();
-            Some(Campaign { built, start_proc, map_script, pictures, hide_stub, co_setup })
+            Some(Campaign { built, start_proc, map_script, pictures, hide_stub, co_setup, credits, ending })
         })
         .as_ref()
 }
@@ -374,6 +452,10 @@ pub fn tick(core: &mut Core, ds: bool) {
     if !on && core.raw_read_8(ACTIVE, -1) != 0 {
         core.raw_write_8(ACTIVE, -1, 0);
     }
+    if !session && core.raw_read_8(CREDITS, -1) != 0 {
+        core.raw_write_8(CREDITS, -1, 0);
+    }
+    crate::ds_credits::tick(core, session, campaign(core).and_then(|c| c.credits.as_ref()));
     {
         // The map menu's Save item, hidden during a session.
         if let Some(c) = campaign(core) {
@@ -528,6 +610,12 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (crate::ds_worldmap::SAVE_PROMPT, Box::new(save_prompt)),
         (BEST_SCORE, Box::new(best_score)),
         (SCRIPT_END_MATCH, Box::new(script_end_match)),
+        (MAP_CURSOR_LOOP, Box::new(cursor_loop)),
+        (SELECT_MODE_START, Box::new(select_mode_start)),
+        (crate::ds_credits::ROLL_SONG_CALL, Box::new(|core: &mut Core| {
+            let s = active(core);
+            crate::ds_credits::roll_song(core, s)
+        })),
     ]
 }
 
@@ -651,6 +739,10 @@ fn end_of_battle(core: &mut Core) {
     }
     core.raw_write_32(crate::ds_worldmap::S_MISSION, -1, index as u32);
     core.raw_write_8(crate::ds_worldmap::S_WON, -1, won as u8);
+    // Means to an End won: its ending scenes on the map, then the credits.
+    if won && index == FINAL_MISSION {
+        core.raw_write_8(CREDITS, -1, 1);
+    }
     let cpu = core.gba_mut().cpu_mut();
     cpu.set_gpr(4, 0);
     cpu.set_thumb_pc(CAMPAIGN_END_RESET);
@@ -835,6 +927,16 @@ fn landing(core: &mut Core) {
         Some(data::Magic::Flow(FLOW_HIDE)) => 1,
         Some(data::Magic::Flow(FLOW_CLEAR)) => return clear_bg0(core),
         Some(data::Magic::Flow(FLOW_PROLOGUE)) => return prologue(core),
+        Some(data::Magic::Flow(FLOW_CREDITS_START)) => {
+            if let Some(script) = campaign(core).and_then(|c| c.credits.as_ref()).map(|c| c.staff_roll) {
+                return proc_start_instead(core, script);
+            }
+            0
+        }
+        Some(data::Magic::Flow(FLOW_CREDITS_RUNNING)) => {
+            let script = campaign(core).and_then(|c| c.credits.as_ref()).map(|c| c.staff_roll);
+            script.is_some_and(|s| proc_running(core, s)) as u32
+        }
         Some(data::Magic::Flow(FLOW_MAP_BACK)) => {
             crate::ds_worldmap::restore_map(core);
             0

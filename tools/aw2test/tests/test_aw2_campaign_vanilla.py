@@ -177,35 +177,9 @@ def aw2_session_first(e, d, cont):
     leave_map(e, d, LEAVE_AT)
 
 
-_SAVE = {}
-
-
 def campaign_save(ctx):
-    """A save with an AW2 campaign to continue (pack off, from the pinned
-    save: New, the story, Mission 1 won, AW2's world map, back to Select
-    Mode), made once per test run in the test's output."""
-    if "path" not in _SAVE:
-        e = Emu(save=paths.base_save(), ds=False)
-        d = dc.DsCampaign(Game(e))
-        d.open_campaign_box()
-        d.box_row(1)
-        e.wait(30)
-        e.press("A", 8)
-        for _ in range(4000):
-            if d.in_battle() and e.u8(0x030033EC) == 1 and not d.scripts_running():
-                break
-            e.press("A", 4)
-            e.wait(10)
-        assert d.force_win(), "AW2's Mission 1 not won"
-        for _ in range(3000):
-            if d.world_map_up() and not d.scripts_running():
-                break
-            e.press("A", 4)
-            e.wait(10)
-        leave_map(e, d, e.frame + 200)
-        _SAVE["path"] = e.save(os.path.join(ctx.out, "aw2_campaign"))
-        e.close()
-    return _SAVE["path"]
+    """A save with an AW2 campaign to continue (dscampaign.aw2_campaign_save)."""
+    return dc.aw2_campaign_save(ctx.out)
 
 
 def profile(e):
