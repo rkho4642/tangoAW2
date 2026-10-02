@@ -1176,10 +1176,10 @@ overlay 1, the campaign's code, at `0x02350560`).
   (`0x0203F600`, AW2's layout of `gUnknown_0200C2D0`: per mission a Normal
   and a Hard word of CO, days << 8, score << 20; `InsertBestScoreRecord`
   `0x08017720`, trapped, writes it in a session), which the map panel's
-  results word (`0x0807758C`) points at in a session; on the map a cleared
-  mission's flag has its best rank beside it (S/A/B/C by AW2's thresholds,
-  `0x08037D80`; 8x16 sprites in OBJ tiles 904..911). Saved with the
-  progress. Test: `ds_campaign_records`.
+  results word (`0x0807758C`) points at in a session. No rank is drawn on
+  the map: Dual Strike's map shows none (its map graphics, `res_gmap` and
+  `res_gmap_lang_E`, have no rank letters; its ranks are on the results
+  screen). Saved with the progress. Test: `ds_campaign_records`.
 - **Save**: the progress (`0x0203FD30`, 0x20 bytes: "AWDC", next step,
   campaign over, difficulty, campaigns cleared, missions won (bits), flags
   0x20..0x9F) and the records (0xE0 bytes) are written at each
@@ -1256,8 +1256,7 @@ overlay 1, the campaign's code, at `0x02350560`).
   are tangoAW2's (below); the computer's Hard skill lists of Dual Strike's
   records (+0x60) are empty in the missions read and are not used.
 - The world map is Dual Strike's bottom screen only (no top-screen
-  displays); a won mission is not played again (its rank shows beside its
-  flag).
+  displays); a won mission is not played again (its flag stays, starred).
 - The player's CO is picked on AW2's CO screen from Dual Strike's pool for
   the mission.
 - Results are AW2's results screen (AW2's scoring and ranks).

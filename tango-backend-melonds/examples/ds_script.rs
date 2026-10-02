@@ -1,0 +1,165 @@
+//! A scripted DS, for looking at what a cart shows (reference screenshots,
+//! memory). Reads commands from stdin, one per line; prints `@ok FRAME`
+//! after each.
+//!
+//!   ds_script ROM [SAVE]
+//!   wait N               run N frames, nothing held
+//!   press KEYS N         hold KEYS (A+B+SELECT+START+RIGHT+LEFT+UP+DOWN+R+L+X+Y) N
+//!                        frames, then 6 frames released
+//!   hold KEYS N          hold KEYS N frames
+//!   touch X Y N          touch the bottom screen at (X, Y) N frames, then 6 released
+//!   shot NAME            write NAME.bmp (256x384: the top screen over the bottom)
+//!   peek ADDR LEN        print LEN bytes at ADDR (hex) on the ARM9's bus
+//!   poke8 ADDR VAL / poke16 / poke32
+//!   dumprange ADDR LEN FILE   write LEN bytes at ADDR to FILE
+//!   state NAME / load NAME    save / restore the console's state
+//!   save NAME            write the cart save to NAME
+//!   quit
+
+use std::io::{BufRead, Write};
+
+fn key_bits(s: &str) -> u32 {
+    s.split('+')
+        .map(|k| match k {
+            "A" => 1 << 0,
+            "B" => 1 << 1,
+            "SELECT" => 1 << 2,
+            "START" => 1 << 3,
+            "RIGHT" => 1 << 4,
+            "LEFT" => 1 << 5,
+            "UP" => 1 << 6,
+            "DOWN" => 1 << 7,
+            "R" => 1 << 8,
+            "L" => 1 << 9,
+            "X" => 1 << 10,
+            "Y" => 1 << 11,
+            _ => 0,
+        })
+        .fold(0, |a, b| a | b)
+}
+
+fn hex(s: &str) -> u32 {
+    u32::from_str_radix(s.trim_start_matches("0x"), 16).unwrap_or(0)
+}
+
+fn write_bmp(path: &str, w: usize, h: usize, rgb: &[[u8; 3]]) {
+    let row = (w * 3 + 3) & !3;
+    let size = 54 + row * h;
+    let mut b = Vec::with_capacity(size);
+    b.extend_from_slice(b"BM");
+    b.extend_from_slice(&(size as u32).to_le_bytes());
+    b.extend_from_slice(&[0; 4]);
+    b.extend_from_slice(&54u32.to_le_bytes());
+    b.extend_from_slice(&40u32.to_le_bytes());
+    b.extend_from_slice(&(w as i32).to_le_bytes());
+    b.extend_from_slice(&(h as i32).to_le_bytes());
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&24u16.to_le_bytes());
+    b.extend_from_slice(&[0; 24]);
+    for y in (0..h).rev() {
+        for x in 0..w {
+            let p = rgb[y * w + x];
+            b.extend_from_slice(&[p[2], p[1], p[0]]);
+        }
+        b.extend(std::iter::repeat(0).take(row - w * 3));
+    }
+    std::fs::write(path, b).unwrap();
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let rom = std::fs::read(&args[1]).expect("rom");
+    let save = args.get(2).and_then(|p| std::fs::read(p).ok());
+    let mut solo = melonds_rollback::Solo::new(&rom, save.as_deref(), (2026, 1, 1, 12, 0, 0)).expect("boot");
+    let mut frame: u64 = 0;
+    let mut states: std::collections::HashMap<String, Vec<u8>> = Default::default();
+    let stdin = std::io::stdin();
+    let mut out = std::io::stdout();
+    let mut run = |solo: &mut melonds_rollback::Solo, frame: &mut u64, keys: u32, touch: Option<(u16, u16)>, n: u32| {
+        for _ in 0..n {
+            solo.tick(melonds_rollback::Input { keys, touch, mic: false });
+            *frame += 1;
+        }
+    };
+    for line in stdin.lock().lines() {
+        let Ok(line) = line else { break };
+        let p: Vec<&str> = line.split_whitespace().collect();
+        match p.first().copied().unwrap_or("") {
+            "wait" => run(&mut solo, &mut frame, 0, None, p[1].parse().unwrap_or(1)),
+            "press" => {
+                run(&mut solo, &mut frame, key_bits(p[1]), None, p.get(2).and_then(|n| n.parse().ok()).unwrap_or(2));
+                run(&mut solo, &mut frame, 0, None, 6);
+            }
+            "hold" => run(&mut solo, &mut frame, key_bits(p[1]), None, p[2].parse().unwrap_or(1)),
+            "touch" => {
+                let (x, y) = (p[1].parse().unwrap_or(0), p[2].parse().unwrap_or(0));
+                run(&mut solo, &mut frame, 0, Some((x, y)), p.get(3).and_then(|n| n.parse().ok()).unwrap_or(4));
+                run(&mut solo, &mut frame, 0, None, 6);
+            }
+            "shot" => {
+                let mut side = solo.side();
+                let nds = side.console();
+                if let Some((top, bottom)) = nds.framebuffers() {
+                    let mut rgb = Vec::with_capacity(256 * 384);
+                    for px in top.iter().chain(bottom.iter()) {
+                        let c = tango_backend_melonds::unpacked_bgr666_to_rgba8(*px);
+                        rgb.push([c[0], c[1], c[2]]);
+                    }
+                    write_bmp(&format!("{}.bmp", p[1]), 256, 384, &rgb);
+                }
+            }
+            "peek" => {
+                let (a, n) = (hex(p[1]), p[2].parse::<u32>().unwrap_or(1));
+                let mut side = solo.side();
+                let nds = side.console();
+                let bytes: Vec<String> = (0..n).map(|k| format!("{:02x}", nds.read8(a + k))).collect();
+                writeln!(out, "{:08x}: {}", a, bytes.join(" ")).ok();
+            }
+            "poke8" | "poke16" | "poke32" => {
+                let (a, v) = (hex(p[1]), hex(p[2]));
+                let mut side = solo.side();
+                let nds = side.console();
+                match p[0] {
+                    "poke8" => nds.write8(a, v as u8),
+                    "poke16" => nds.write16(a, v as u16),
+                    _ => nds.write32(a, v),
+                }
+            }
+            "dumprange" => {
+                let (a, n) = (hex(p[1]), p[2].parse::<u32>().unwrap_or(0));
+                let mut side = solo.side();
+                let nds = side.console();
+                let bytes: Vec<u8> = (0..n).map(|k| nds.read8(a + k)).collect();
+                std::fs::write(p[3], bytes).ok();
+            }
+            "state" => {
+                let mut buf = Vec::new();
+                solo.side().console().save_state(&mut buf).ok();
+                states.insert(p[1].to_string(), buf);
+            }
+            "load" => {
+                if let Some(buf) = states.get(p[1]) {
+                    solo.side().console().load_state(buf).ok();
+                }
+            }
+            "statefile" => {
+                let mut buf = Vec::new();
+                solo.side().console().save_state(&mut buf).ok();
+                std::fs::write(p[1], buf).ok();
+            }
+            "loadfile" => {
+                if let Ok(buf) = std::fs::read(p[1]) {
+                    solo.side().console().load_state(&buf).ok();
+                }
+            }
+            "save" => {
+                let m = solo.side().console().save_memory();
+                std::fs::write(p[1], m).ok();
+            }
+            "quit" => break,
+            _ => {}
+        }
+        writeln!(out, "@ok {frame}").ok();
+        out.flush().ok();
+    }
+}

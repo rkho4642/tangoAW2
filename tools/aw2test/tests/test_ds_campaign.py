@@ -1362,9 +1362,11 @@ def ds_campaign_records(ctx):
     ctx.check(rec >> 20 > 0 and (rec >> 8) & 0xFFF > 0, f"Jake's Trial's record: score {rec >> 20}, days {(rec >> 8) & 0xFFF}")
     ctx.eq(e.u32(dc.RECORDS + 4), 0, "(the Hard word untouched)")
     ctx.eq(e.u32(RANK_POOL), dc.RECORDS, "the panel reads the DS records")
+    # Dual Strike shows no rank on its map (its map graphics have none; the
+    # rank is on the results screen and the mission's panel): no letter.
     ranks = [t for t in oam_tiles(e) if 904 <= t < 912]
-    ctx.check(len(ranks) == 1, f"the cleared mission's rank letter on the map (OBJ tiles {ranks})")
-    shot(ctx, e, "rank_on_map.png")
+    ctx.eq(ranks, [], "no rank letter on the map")
+    shot(ctx, e, "map_after_win.png")
     ctx.eq(e.read(0x0200C2D0, 0x150), aw2_results, "AW2's results untouched")
     save = e.save(os.path.join(ctx.out, "records"))
     e2, g2, d2 = boot(ctx, save)
