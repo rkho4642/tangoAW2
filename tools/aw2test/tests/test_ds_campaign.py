@@ -729,3 +729,25 @@ def ds_campaign_prologue(ctx):
             break
         e.wait(15)
     ctx.check(not shown, "Continue: no prologue")
+
+
+
+@test(modes=("ds",))
+def ds_campaign_world_map_picture(ctx):
+    """The world map's layer as the game shows it against Dual Strike's own
+    picture: the fit (768 tiles with flips, nine palettes, shade-weighted
+    folding, refined) keeps it within 31 dB with no 8x8 patches to speak of
+    (0.4.1's first fit: 29.3 dB, colour jumps across tile edges +3.2 over
+    Dual Strike's; this one 31.4 dB, +1.6), and the tiles past AW2's 704 are
+    the map's (BG1's tilemap is written over them by the screen's setup)."""
+    from aw2test import worldmap
+    e, g, d = boot(ctx)
+    d.start(step=3, pick=False)
+    d.wait_world_map()
+    e.wait(30)
+    shown = worldmap.from_vram(e.read(0x06000000, 0x10000), e.read(0x05000000, 0x200))
+    psnr, de, seam = worldmap.compare(worldmap.ds_picture(), shown)
+    ctx.log(f"PSNR {psnr:.2f} dB, mean colour distance {de:.2f}, tile-edge jump {seam:+.2f}")
+    ctx.check(psnr >= 31.0, f"PSNR {psnr:.2f} dB")
+    ctx.check(seam <= 2.0, f"colour jumps across tile edges {seam:+.2f} over Dual Strike's")
+    shot(ctx, e, "world_map")

@@ -7,10 +7,16 @@
 //!   and `_map2`: each LZ77 4bpp tiles then an LZ77 32x32 tilemap, the left
 //!   and right halves of a 480x240 picture; ten palettes at `res_gmap`
 //!   +0x3B08). AW2's map layer is the same shape (two 32x32 screens of a
-//!   64x32 layer), with room for 704 tiles and nine palettes (BG 6..14):
-//!   the least used palette's tiles are drawn with the closest other one,
-//!   and the most alike tiles of a palette are folded together until 703
-//!   are left beside a blank one ([`fit`]).
+//!   64x32 layer), with room for 768 tiles (AW2's 704 and the block of
+//!   BG1's tilemap, BG1 being off on the DS map) and nine palettes (BG
+//!   6..14): the least used palette's tiles are drawn with the closest other
+//!   one, a tile and its flips are one, the most alike tiles of a palette
+//!   are folded together (shade weighted over detail: a shade change across
+//!   a tile is what shows as an 8x8 patch) until 767 are left beside a
+//!   blank one, and the kept tiles are refined to draw what was folded into
+//!   them best ([`fit`]). Against Dual Strike's picture: 31.4 dB, colour
+//!   jumps across tile edges +1.6 over its own (0.4.1's first fit, without
+//!   flips, refining or the shade weighting: 29.3 dB, +3.2).
 //! - **Mission points.** Dual Strike's table of them (ARM9 `0x0215BA04`, 12
 //!   bytes: map record id, x, y, data) gives each mission's place on the
 //!   map; AW2's mission table (`gUnknown_08615194`, 0x30 bytes a mission:
@@ -67,9 +73,11 @@ const S_MARKERS: u32 = STATE + 0x3C;
 pub const SHOWN: u8 = 1;
 pub const CLEARED: u8 = 2;
 
-/// The map layer's graphics fit where AW2's 704 tiles go (0x06008000 up
-/// to BG1's tilemap at 0x0600D800); tile 0 is blank.
-const MAX_TILES: usize = 704;
+/// The map layer's graphics: AW2's 704 tiles (0x06008000 up to BG1's
+/// tilemap at 0x0600D800) and 64 more where BG1's tilemap is (BG1, AW2's
+/// sea and grid, is off on the DS map: [`tick`]); tile 0 is blank. Past
+/// them (0x0600E000) are the mission panel's (BG2's) tiles.
+const MAX_TILES: usize = 768;
 const MISSION_RECORD: u32 = 0x30;
 const AW2_MISSIONS: u32 = 0x2A;
 const MAP_WIDTH: i32 = 512;
@@ -198,14 +206,63 @@ fn build() -> Option<WorldMap> {
     Some(WorldMap { tiles, tilemap, palette, points })
 }
 
+/// How much more a tile's shade (its four 4x4 means) counts than its detail
+/// when tiles are folded together: a shade change across a whole tile is
+/// what shows as an 8x8 patch (the seas' gradients), a detail change much
+/// less.
+const SHADE_WEIGHT: f64 = 4.0;
+/// Rounds of refining the kept tiles after folding.
+const REFINE: usize = 4;
+
+/// A tile flipped: 0 as is, 1 left-right, 2 top-bottom, 3 both.
+fn flipped(px: &Pixels, f: usize) -> Pixels {
+    let mut out = [0u8; 64];
+    for y in 0..8 {
+        for x in 0..8 {
+            let (sx, sy) = (if f & 1 != 0 { 7 - x } else { x }, if f & 2 != 0 { 7 - y } else { y });
+            out[8 * y + x] = px[8 * sy + sx];
+        }
+    }
+    out
+}
+
+/// A tile as the folding compares it: its colours' four 4x4 means
+/// (weighted) and what is left of each pixel.
+fn feature(rgb: &[[i32; 3]; 64]) -> Vec<f64> {
+    let mut means = [[0f64; 3]; 4];
+    for y in 0..8 {
+        for x in 0..8 {
+            for k in 0..3 {
+                means[(y / 4) * 2 + x / 4][k] += rgb[8 * y + x][k] as f64 / 16.0;
+            }
+        }
+    }
+    let w = SHADE_WEIGHT.sqrt();
+    let mut out = Vec::with_capacity(64 * 6);
+    for y in 0..8 {
+        for x in 0..8 {
+            let m = means[(y / 4) * 2 + x / 4];
+            for k in 0..3 {
+                out.push(w * m[k]);
+                out.push(rgb[8 * y + x][k] as f64 - m[k]);
+            }
+        }
+    }
+    out
+}
+
 /// Dual Strike's 2048 map cells (left screen then right, each 32x32, as
 /// pixels and a palette 0..9) as AW2's layer: at most `max_tiles` 4bpp
 /// tiles, nine palettes from BG palette `first_pal`, a 64x32 tilemap in
-/// two screens. Returns (tiles, tilemap bytes, palette bytes).
+/// two screens (with flips). Returns (tiles, tilemap bytes, palette bytes).
+///
+/// Dual Strike's least used palette goes (its cells take the palette that
+/// draws them best); tiles that are the same but for a flip are one; then,
+/// while there are too many, the tile whose nearest one of its palette
+/// costs least to stand in for it (the distance, shade weighted, times the
+/// cells that use it) is folded into that one.
 pub fn fit(cells: &[(Pixels, u8)], colours: &[u16], max_tiles: usize, first_pal: u16) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
     let col = |p: u8, i: u8| rgb(colours[16 * p as usize + i as usize]);
-    // Ten palettes into nine: the least used one's cells take, pixel by
-    // pixel, the closest colours of the kept palette that draws them best.
     let mut use_ = [0usize; 10];
     for c in cells {
         use_[c.1 as usize] += 1;
@@ -240,7 +297,7 @@ pub fn fit(cells: &[(Pixels, u8)], colours: &[u16], max_tiles: usize, first_pal:
                 let mut err = 0;
                 for (i, &v) in px.iter().enumerate() {
                     let c = col(p, v);
-                    let (j, e) = (0..16u8).map(|j| (j, near(c, col(q, j)))).min_by_key(|x| x.1).unwrap();
+                    let (j, e) = (1..16u8).map(|j| (j, near(c, col(q, j)))).min_by_key(|x| x.1).unwrap();
                     out[i] = j;
                     err += e;
                 }
@@ -252,31 +309,40 @@ pub fn fit(cells: &[(Pixels, u8)], colours: &[u16], max_tiles: usize, first_pal:
             (b.2, b.1)
         })
         .collect();
-    // Unique tiles and how often each is used.
+    // Unique tiles (a tile and its flips are one: the cell keeps its flip)
+    // and how many cells use each.
     let mut uniq: Vec<(Pixels, u8)> = Vec::new();
     let mut weight: Vec<f64> = Vec::new();
     let mut of_cell = Vec::with_capacity(cells.len());
     {
         let mut index = std::collections::HashMap::new();
-        for c in &cells {
-            let id = *index.entry(*c).or_insert_with(|| {
-                uniq.push(*c);
+        for &(px, p) in &cells {
+            let (f, canon) = (0..4).map(|f| (f, flipped(&px, f))).min_by_key(|x| x.1).unwrap();
+            let id = *index.entry((canon, p)).or_insert_with(|| {
+                uniq.push((canon, p));
                 weight.push(0.0);
                 uniq.len() - 1
             });
             weight[id] += 1.0;
-            of_cell.push(id);
+            of_cell.push((id, f));
         }
     }
-    // Fold the tile whose nearest neighbour (same palette) costs least
-    // (distance x uses) into it, until few enough are left.
     let n = uniq.len();
-    let pix: Vec<Vec<i32>> = uniq.iter().map(|(px, p)| px.iter().flat_map(|&v| col(*p, v)).collect()).collect();
+    let feat: Vec<Vec<f64>> = uniq
+        .iter()
+        .map(|(px, p)| {
+            let mut c = [[0i32; 3]; 64];
+            for (i, &v) in px.iter().enumerate() {
+                c[i] = col(*p, v);
+            }
+            feature(&c)
+        })
+        .collect();
     let dist = |a: usize, b: usize| -> f64 {
         if uniq[a].1 != uniq[b].1 {
             return f64::INFINITY;
         }
-        pix[a].iter().zip(&pix[b]).map(|(x, y)| ((x - y) * (x - y)) as f64).sum()
+        feat[a].iter().zip(&feat[b]).map(|(x, y)| (x - y) * (x - y)).sum()
     };
     let mut alive = vec![true; n];
     let mut rep: Vec<usize> = (0..n).collect();
@@ -316,26 +382,84 @@ pub fn fit(cells: &[(Pixels, u8)], colours: &[u16], max_tiles: usize, first_pal:
         }
         i
     };
+    // Then, a few times: each kept tile becomes the pattern (in its
+    // palette) that draws the tiles folded into it best, pixel by pixel
+    // (each weighted by its cells), and each tile goes to the kept tile of
+    // its palette nearest to it.
+    let mut assign: Vec<usize> = (0..n).map(root).collect();
+    let reps: Vec<usize> = (0..n).filter(|&i| alive[i]).collect();
+    let mut pats: Vec<Pixels> = uniq.iter().map(|u| u.0).collect();
+    let cells_of: Vec<f64> = {
+        let mut w = vec![0f64; n];
+        for &(id, _) in &of_cell {
+            w[id] += 1.0;
+        }
+        w
+    };
+    for _ in 0..REFINE {
+        let mut members: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for u in 0..n {
+            members[assign[u]].push(u);
+        }
+        for &r in &reps {
+            if members[r].is_empty() {
+                continue;
+            }
+            let p = uniq[r].1;
+            for i in 0..64 {
+                let best = (1..16u8)
+                    .min_by_key(|&k| {
+                        let c = col(p, k);
+                        members[r].iter().map(|&u| near(c, col(p, uniq[u].0[i])) as i64 * cells_of[u] as i64).sum::<i64>()
+                    })
+                    .unwrap();
+                pats[r][i] = best;
+            }
+        }
+        let rf: Vec<(usize, Vec<f64>)> = reps
+            .iter()
+            .map(|&r| {
+                let mut c = [[0i32; 3]; 64];
+                for (i, &v) in pats[r].iter().enumerate() {
+                    c[i] = col(uniq[r].1, v);
+                }
+                (r, feature(&c))
+            })
+            .collect();
+        for u in 0..n {
+            let mut best = (assign[u], f64::INFINITY);
+            for (r, f) in &rf {
+                if uniq[*r].1 != uniq[u].1 {
+                    continue;
+                }
+                let d: f64 = f.iter().zip(&feat[u]).map(|(x, y)| (x - y) * (x - y)).sum();
+                if d < best.1 {
+                    best = (*r, d);
+                }
+            }
+            assign[u] = best.0;
+        }
+    }
     // Number the kept tiles, write them out. Tile 0 stays blank: the map
     // screen's other layers on these graphics (BG2) are drawn with it.
     let mut number = vec![usize::MAX; n];
     let mut tiles = vec![0u8; 32];
-    for i in 0..n {
-        if alive[i] {
-            number[i] = tiles.len() / 32;
-            let px = &uniq[i].0;
-            for y in 0..8 {
-                for x in (0..8).step_by(2) {
-                    tiles.push(px[8 * y + x] | (px[8 * y + x + 1] << 4));
-                }
+    for &i in &reps {
+        number[i] = tiles.len() / 32;
+        let px = &pats[i];
+        for y in 0..8 {
+            for x in (0..8).step_by(2) {
+                tiles.push(px[8 * y + x] | (px[8 * y + x + 1] << 4));
             }
         }
     }
     let pal_of = |p: u8| first_pal + kept.iter().position(|&k| k == p).unwrap() as u16;
     let mut tilemap = Vec::with_capacity(4096);
-    for &id in &of_cell {
-        let r = root(id);
-        let e = (pal_of(uniq[r].1) << 12) | number[r] as u16;
+    for &(id, f) in &of_cell {
+        let r = assign[id];
+        // The cell is its tile's canonical form flipped back (flips undo
+        // themselves): 0x400 left-right, 0x800 top-bottom.
+        let e = (pal_of(uniq[r].1) << 12) | ((f as u16 & 1) << 10) | ((f as u16 >> 1) << 11) | number[r] as u16;
         tilemap.extend_from_slice(&e.to_le_bytes());
     }
     let mut palette = Vec::with_capacity(0x120);
@@ -449,6 +573,18 @@ pub fn tick(core: &mut Core, session: bool, aw2_map_script: u32, ds_map_script: 
             core.raw_write_16(DISP_CT, -1, d & !BG1_ON);
             core.raw_write_8(BG1_HIDDEN, -1, 1);
         }
+        // The map's tiles past AW2's 704 lie where BG1's tilemap is, which
+        // the screen's setup writes too: they are put back.
+        if let Some(w) = world_map() {
+            let ours = &w.tiles[(704 * 32).min(w.tiles.len())..];
+            if !ours.is_empty() {
+                let mut now = vec![0u8; ours.len()];
+                core.raw_read_range(BG1_TILEMAP, -1, &mut now);
+                if now != ours {
+                    core.raw_write_range(BG1_TILEMAP, -1, ours);
+                }
+            }
+        }
     } else if core.raw_read_8(BG1_HIDDEN, -1) == 1 {
         // Off the map, BG1 is the next screen's (the mission card's): on.
         core.raw_write_16(DISP_CT, -1, d | BG1_ON);
@@ -508,6 +644,8 @@ const BG1CNT: u32 = 0x0400_000A;
 /// 1 while BG1 is held off ([`crate::ds_campaign`]'s RAM block).
 const BG1_HIDDEN: u32 = 0x0203_FD16;
 const WORLD_MAP_BG1: u16 = 0x1B02;
+/// BG1's tilemap on the map screen (screen 27), tiles 704.. of BG3's.
+const BG1_TILEMAP: u32 = 0x0600_D800;
 
 /// AW2's map state is put aside when a DS session starts.
 pub fn backup_aw2_state(core: &mut Core) {

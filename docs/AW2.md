@@ -1015,8 +1015,14 @@ overlay 1, the campaign's code, at `0x02350560`).
   mission panel, reveal, music and sounds) on Dual Strike's Omega Land: its
   touch-screen map (`ohashi/res_gmap_map1`/`_map2`, LZ77 4bpp tiles and a
   32x32 tilemap each, ten palettes at `res_gmap` +0x3B08), fitted at the
-  first frame into AW2's 704 map tiles and nine palettes (BG 6..14; tile 0
-  blank), with Dual Strike's mission points (ARM9 `0x0215BA04`). AW2's
+  first DS session into 768 map tiles (AW2's 704 and the block of BG1's
+  tilemap, `0x0600D800`, put back each frame on the DS map since the
+  screen's setup writes BG1's tilemap there; BG1 is off on the DS map) and
+  nine palettes (BG 6..14; tile 0 blank): flips folded, the most alike
+  tiles of a palette folded together (shade weighted 4x over detail), the
+  kept tiles refined (4 rounds); 31.4 dB against Dual Strike's picture,
+  colour jumps across tile edges +1.6 over its own (the first fit: 29.3 dB,
+  +3.2; `ds_campaign_world_map_picture`), with Dual Strike's mission points (ARM9 `0x0215BA04`). AW2's
   mission table (`0x08615194`) and reveal table (`0x0861500C`) get DS copies
   (ROM `0x08FC0000..`), and while a session is on, the literal-pool words
   that point at AW2's art and tables point at the copies. Open missions have
