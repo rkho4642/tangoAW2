@@ -402,6 +402,28 @@ pub fn tick(core: &mut Core, on: bool) {
     }
 }
 
+/// The stun's bits (pending, then held), for a suspended game
+/// ([`crate::suspend`]).
+pub const STUN_STATE_LEN: usize = 2 * STUN_BYTES as usize;
+
+pub fn stun_state(core: &Core) -> Vec<u8> {
+    let mut b = vec![0u8; STUN_STATE_LEN];
+    core.raw_read_range(STUN_PENDING, -1, &mut b[..STUN_BYTES as usize]);
+    core.raw_read_range(STUN_ACTIVE, -1, &mut b[STUN_BYTES as usize..]);
+    b
+}
+
+/// A suspended game continued: its stun bits (none from a game saved
+/// without them), the army whose turn it is taken as the tick's last.
+pub fn set_stun_state(core: &mut Core, state: Option<&[u8]>, army: u8) {
+    clear_stuns(core);
+    if let Some(b) = state.filter(|b| b.len() == STUN_STATE_LEN) {
+        core.raw_write_range(STUN_PENDING, -1, &b[..STUN_BYTES as usize]);
+        core.raw_write_range(STUN_ACTIVE, -1, &b[STUN_BYTES as usize..]);
+    }
+    core.raw_write_8(STUN_PREV_ARMY, -1, army);
+}
+
 // --- Traps -----------------------------------------------------------------------
 
 /// `sub_08044F24`'s per-unit step of a mass damage (r4 the unit, just

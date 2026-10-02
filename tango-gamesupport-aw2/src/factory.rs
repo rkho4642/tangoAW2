@@ -113,6 +113,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     traps.extend(crate::co_new::traps());
     traps.extend(crate::co_grid::traps());
     traps.extend(crate::co_powers::traps());
+    traps.extend(crate::suspend::traps());
     traps.extend(crate::power_anim::traps());
     traps.extend(crate::map_anim::traps());
     traps.extend(crate::unit_actions::traps());

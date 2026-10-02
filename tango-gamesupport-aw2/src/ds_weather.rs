@@ -37,6 +37,18 @@ const RAIN: u8 = 2;
 /// forced).
 const RULE_FOG: u32 = 0x0203_FFA7;
 
+/// The Rules' fog flag kept while rain forces fog on (1 + flag; 0 when
+/// not forced), for a suspended game ([`crate::suspend`]): gPlaySt is
+/// saved with the forced fog, so without it a game continued in rain
+/// would keep fog on for good once the rain stops.
+pub fn rule_fog(core: &Core) -> u8 {
+    core.raw_read_8(RULE_FOG, -1)
+}
+
+pub fn set_rule_fog(core: &mut Core, v: u8) {
+    core.raw_write_8(RULE_FOG, -1, v);
+}
+
 pub fn is_on(core: &Core) -> bool {
     core.raw_read_8(DS_ON, -1) != 0
 }

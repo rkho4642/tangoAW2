@@ -1306,6 +1306,27 @@ Dual Strike's CO skills, as the player's decisions set them (found in the
   the damage calculator, the Versus rule on and off, netplay sync, AW2's
   campaign unchanged with no skills equipped.
 
+## Suspended games (`suspend.rs`)
+
+The map menu's Save (`sub_08016D30`) writes the 0xE28-byte block
+`CaptureBattleSaveState` (`sub_08016F38`) fills at `0x02000000`: day, army,
+gPlaySt, the weather block, players, units, the tiles changed from the
+map's own, the inventions; up to +0xDAC. The rest of the block goes to
+Flash but is never read back (`sub_08017208`). With the Dual Strike pack,
+tangoAW2's own battle state that lasts past a turn rides there: a mark
+("TAW2", version 1) at +0xDAC, the Rules' fog flag kept while rain forces
+fog on (`ds_weather`) at +0xDB1, Ex Machina's stun bits (`co_powers`,
+pending then held, 40 bytes each) from +0xDB4. Traps: `0x08016D88`
+(`sub_08016D30` after the capture, before the write) and `0x08016DD0`
+(Continue, `sub_08016DB8` after `sub_08017208`, before a design map's own
+slot is loaded over the buffer). Before this, a game continued after
+Ex Machina had every marked unit free, and one saved while rain was coming
+kept fog on for good once the rain stopped. The sandstorm and the map's
+look are in the weather block (`0x03004490` +3), which AW2 saves itself;
+Com Towers are counted on the map. Without the pack nothing is written.
+Tests: `save_versus_suspend_keeps_ex_machina_stun`,
+`save_versus_suspend_in_rain_keeps_fog_rule`.
+
 ## Known limits
 
 - Black Hole's unique buildings (Black Cannons and so on) are map
