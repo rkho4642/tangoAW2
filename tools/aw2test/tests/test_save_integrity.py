@@ -49,7 +49,7 @@ def suspend_and_resume(ctx, g, label, design=True, act=None, after_resume=None, 
     after = saves.flash(e, out(ctx, f"{label}_after"))
     want = [VERSUS_SUSPEND] + ([SUSPENDED_DESIGN] if design else [])
     saves.expect_slots(ctx, before, after, want, f"{label}: Save",
-                       profile_allow=[saves.c420(saveimg.C420_SUSPEND[4])] + list(saves.OPTIONS))
+                       profile_allow=[saves.c420(saveimg.C420_SUSPEND[4])] + list(saves.OPTIONS) + [saves.MODE_BYTE])
     ctx.eq(after.slot(0)[saveimg.P_C420 + saveimg.C420_SUSPEND[4]], 1, f"{label}: the profile marks a Versus game saved")
     if design:
         played = saves.DESIGN_SLOT.get(snap["map"])

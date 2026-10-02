@@ -239,7 +239,9 @@ def expect_slots(ctx, before, after, changed, label, profile_allow=()):
     # mode may write it, its progress and records untouched.
     if DS_RECORD in d and DS_RECORD not in changed:
         old, new = before.slot(DS_RECORD), after.slot(DS_RECORD)
-        head = lambda b: bytes(b[:DS_RECORD_HEAD]) if b else bytes(DS_RECORD_HEAD)
+        # A record saved before the skill data (shorter) reads as zeros past
+        # its end, as the game reads it.
+        head = lambda b: bytes(b[:DS_RECORD_HEAD]).ljust(DS_RECORD_HEAD, b"\0") if b else bytes(DS_RECORD_HEAD)
         if new is not None and head(old) == head(new):
             d = {t: v for t, v in d.items() if t != DS_RECORD}
     others = {t: v for t, v in d.items() if t != 0 and t not in changed}
@@ -261,5 +263,7 @@ def c420(off, n=1):
 # Rules' animation and music options (sub_08034780's pair, C420 +0x0E/+0x14).
 OPTIONS = (c420(0x0E), c420(0x14))
 # Set by Select Mode's choice of mode (sub_0803BBA8, C420 +0x0D; read by
-# nothing) and saved with the next profile.
+# nothing) and saved with the next profile: it changes whenever the base save
+# was last saved from another mode (the pinned base.sav is the player's own
+# save, whatever they did last), so every save made after Select Mode allows it.
 MODE_BYTE = c420(0x0D)
