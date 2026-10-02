@@ -426,6 +426,7 @@ fn sync_mission(core: &mut Core) {
     core.raw_write_8(MISSION, -1, m as u8);
     core.raw_write_8(MISSION_SET, -1, 1);
     core.raw_write_32(COUNTDOWN, -1, 0);
+    crate::ds_campaign_rules::mte_start(core);
 }
 
 /// The missions open on the world map: the first story mission not won
@@ -457,6 +458,11 @@ fn won_list(core: &Core) -> Vec<u8> {
 fn big_table(core: &Core) -> Option<u32> {
     let t = crate::five_map::table(core);
     (t == crate::survival::TABLE).then_some(t)
+}
+
+/// The mission being played (its index).
+pub fn mission(core: &Core) -> u8 {
+    core.raw_read_8(MISSION, -1)
 }
 
 pub fn active(core: &Core) -> bool {
@@ -497,6 +503,7 @@ pub fn tick(core: &mut Core, ds: bool) {
             2 if menu => core.raw_write_8(ACTIVE, -1, 0),
             _ => {}
         }
+        crate::ds_campaign_rules::mte_tick(core);
         let n = core.raw_read_32(COUNTDOWN, -1);
         if n > 1 && in_battle(core) {
             core.raw_write_32(COUNTDOWN, -1, n - 1);
@@ -509,7 +516,7 @@ pub fn tick(core: &mut Core, ds: bool) {
     crate::ds_worldmap::tick(core, on && active(core), AW2_MAP_SCRIPT, map_script);
 }
 
-fn in_battle(core: &Core) -> bool {
+pub fn in_battle(core: &Core) -> bool {
     core.raw_read_32(0x0300_0004, -1) != 0
 }
 
@@ -662,6 +669,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (SCRIPT_END_MATCH, Box::new(script_end_match)),
         (MAP_CURSOR_LOOP, Box::new(cursor_loop)),
         (SELECT_MODE_START, Box::new(select_mode_start)),
+        (crate::ds_campaign_rules::GET_INVENTION_AT, Box::new(crate::ds_campaign_rules::invention_at)),
         (crate::ds_credits::ROLL_SONG_CALL, Box::new(|core: &mut Core| {
             let s = active(core);
             crate::ds_credits::roll_song(core, s)

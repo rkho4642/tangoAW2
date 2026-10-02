@@ -127,7 +127,7 @@ impl<'a> Ds<'a> {
             p += 8;
         };
         let at = self.u32(group + 4 * (r & 0xFF_FFFF))?;
-        self.cstr(at)
+        self.cstr(at).map(|t| compromise_text(r, t))
     }
 
     /// A text of the general table (map names, ...), by its id.
@@ -281,6 +281,38 @@ pub fn remap_tile(t: u16) -> u16 {
     }
 }
 
+/// Means to an End's texts as its single front plays it (docs/AW2.md): its
+/// briefing (bank 0xC0 text 682: the crystals are on the map, no top or
+/// touch screen; 36 days), Von Bolt's boast (bank 0x26 text 70: 36 days,
+/// the 36th day) and Lash's report (text 69: the crystals to the north,
+/// not on a second front). Every other text is Dual Strike's own.
+pub fn compromise_text(r: u32, t: Vec<u8>) -> Vec<u8> {
+    let swap = |t: Vec<u8>, from: &[u8], to: &[u8]| -> Vec<u8> {
+        let mut out = Vec::with_capacity(t.len());
+        let mut i = 0;
+        while i < t.len() {
+            if t[i..].starts_with(from) {
+                out.extend_from_slice(to);
+                i += from.len();
+            } else {
+                out.push(t[i]);
+                i += 1;
+            }
+        }
+        out
+    };
+    match r {
+        0xC000_02AA => swap(
+            t,
+            b"shatter the three black crystals\ron the top screen and defeat Von Bolt\x0fon the Touch Screen within 24 days.",
+            b"shatter the three black crystals\rand defeat Von Bolt within 36 days.",
+        ),
+        0x2600_0046 => swap(swap(t, b"In 24 days", b"In 36 days"), b"On the 24th day", b"On the 36th day"),
+        0x2600_0045 => swap(t, b"near the crystals on the second front.", b"near the crystals to the north."),
+        _ => t,
+    }
+}
+
 /// A converted map: (width, height, tiles) and its LZ77 blob.
 pub fn convert_map(ds: &Ds, at: u32) -> Option<(u8, u8, Vec<u16>)> {
     let head = ds.u32(at)?;
@@ -349,6 +381,18 @@ fn black_obelisks(tiles: &mut [u16], w: usize, h: usize) {
 /// the weak point.
 pub const GRAND_BOLT_WEAK_POINTS: [(u32, u32); 3] = [(3, 9), (9, 11), (15, 9)];
 
+/// Means to an End (record index) and its single-front compromises
+/// (docs/AW2.md): Dual Strike's second front is not played, so its three
+/// Black Crystals stand on the main map, in the north, each in the column
+/// of the weak point it guards (crate::ds_campaign_rules: a weak point can
+/// be hit once its crystal is shattered; every crystal shattered wins, as
+/// on Dual Strike's second front); and its day limit is 36 days, not 24
+/// (the loss on the limit's day, the "Days Left" counter and its texts).
+pub const MEANS_TO_AN_END: usize = 24;
+pub const MTE_CRYSTALS: [(u32, u32); 3] = [(3, 3), (9, 5), (15, 3)];
+pub const MTE_DAY_LIMIT: u16 = 36;
+const DS_MTE_DAY_LIMIT: u16 = 24;
+
 /// Dual Strike's Grand Bolt is a picture drawn with tiles laid out as a
 /// sheet (tile = base + 0x20 * y + x over its whole shape), which AW2 has
 /// no art for: such a picture (40 cells or more) becomes plains, with a
@@ -374,10 +418,19 @@ fn grand_bolt(tiles: &mut [u16], w: usize, h: usize) {
     for (x, y) in cells {
         tiles[y * w + x] = PLAIN;
     }
+    let found = !centres.is_empty();
     for (cx, cy) in centres {
         for dy in 0..3 {
             for dx in 0..3 {
                 tiles[(cy + dy - 1) * w + cx + dx - 1] = if dx == 1 && dy == 1 { OBELISK } else { UNDERLAY };
+            }
+        }
+    }
+    // The second front's Black Crystals, on the plain north of the bolt.
+    if found {
+        for &(x, y) in &MTE_CRYSTALS {
+            if (x as usize) < w && (y as usize) < h {
+                tiles[y as usize * w + x as usize] = CRYSTAL;
             }
         }
     }
@@ -737,6 +790,8 @@ struct Ctx<'a> {
     unhandled: BTreeMap<u8, u32>,
     colours: [u8; 4],
     teams: [u8; 4],
+    /// The record index whose triggers are being converted.
+    mission: usize,
 }
 
 impl<'a> Ctx<'a> {
@@ -1044,7 +1099,9 @@ fn convert_triggers(cx: &mut Ctx, at: u32) -> Vec<u8> {
             continue;
         }
         let (kind, front) = (op / 3, op % 3);
-        if front == 1 {
+        // (Means to an End: its second front's records are the main
+        // map's, its crystals being there)
+        if front == 1 && cx.mission != MEANS_TO_AN_END {
             skip = true;
         }
         let rec = |o: u8, a: u8, b: u16, p: u32| {
@@ -1057,8 +1114,10 @@ fn convert_triggers(cx: &mut Ctx, at: u32) -> Vec<u8> {
         };
         match kind {
             0 => {
-                // Day 0xFFFF: any day (AW2's 0).
+                // Day 0xFFFF: any day (AW2's 0). Means to an End's limit
+                // day is its own (36).
                 let day = if half == 0xFFFF { 0 } else { half };
+                let day = if cx.mission == MEANS_TO_AN_END && day == DS_MTE_DAY_LIMIT { MTE_DAY_LIMIT } else { day };
                 record.push(rec(0, r[1], day, 0));
             }
             1 => record.push(rec(1, aw2_unit(r[1]).unwrap_or(r[1]), 0, 0)),
@@ -1167,6 +1226,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         unhandled: BTreeMap::new(),
         colours: [1, 2, 3, 4],
         teams: [1, 2, 3, 4],
+        mission: 0,
     };
     cx.blob.push(b"DSCAMPGN");
     let recs: Vec<Record> = (0..MISSIONS + SECOND_FRONTS).map(|i| record(ds, i)).collect::<Option<_>>()?;
@@ -1175,6 +1235,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
     for rec in &recs {
         cx.colours = rec.colours;
         cx.teams = rec.teams;
+        cx.mission = rec.index;
         // Scripts: every fire record's, and the objective.
         let lists: Vec<u32> = (0..6).map(|k| if rec.header != 0 { ds.u32(rec.header + 4 * k).unwrap_or(0) } else { 0 }).collect();
         let mut entries: Vec<u32> = lists.iter().filter(|&&l| l != 0).flat_map(|&l| trigger_scripts(ds, l)).collect();
@@ -1240,7 +1301,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         w16(&mut hd, 0x1E, 1);
         w16(&mut hd, 0x20, rec.rank_days.0);
         w16(&mut hd, 0x22, rec.rank_days.1);
-        w16(&mut hd, 0x24, rec.day_limit.0);
+        w16(&mut hd, 0x24, if rec.index == MEANS_TO_AN_END { MTE_DAY_LIMIT } else { rec.day_limit.0 });
         hd[0x26] = 0xFF;
         hd[0x27] = 0;
         hd[0x28] = 1;
@@ -1336,6 +1397,87 @@ mod tests {
         let s = stub(7);
         assert_eq!(u32::from_le_bytes(s[8..12].try_into().unwrap()), 7);
         assert_eq!(u32::from_le_bytes(s[12..16].try_into().unwrap()), LANDING | 1);
+    }
+
+    /// With `TANGOAW2_DS_ROM` (else nothing to check): every mission's day
+    /// limit (the header's "Days Left" counter), the days its triggers fire
+    /// on, and the days its texts state are Dual Strike's own, but Means to
+    /// an End's: 36 (docs/AW2.md), with no text left saying 24.
+    #[test]
+    fn day_limits_are_dual_strikes() {
+        let Some(path) = std::env::var_os("TANGOAW2_DS_ROM") else { return };
+        let Ok(rom) = std::fs::read(path) else { return };
+        crate::ds_art::offer(&rom);
+        let Some(pack) = crate::ds_pack::pack() else { return };
+        let ds = Ds::from_pack(pack).unwrap();
+        let b = build(&ds, 0x08E0_0000, &[6u8; 256]).unwrap();
+        let at = |a: u32, n: usize| &b.blob[(a - b.base) as usize..(a - b.base) as usize + n];
+        let u32_at = |a: u32| u32::from_le_bytes(at(a, 4).try_into().unwrap());
+        for i in 0..MISSIONS {
+            let rec = record(&ds, i).unwrap();
+            let want = if i == MEANS_TO_AN_END { MTE_DAY_LIMIT } else { rec.day_limit.0 };
+            let hd = &b.headers.iter().find(|h| h.0 as usize == i).unwrap().1;
+            assert_eq!(u16::from_le_bytes([hd[0x24], hd[0x25]]), want, "mission {i}: the day limit");
+            // The days the triggers fire on (kind 0, a day): Dual Strike's
+            // (Means to an End's limit day 36).
+            let ds_days: Vec<u16> = (0..6)
+                .filter_map(|k| ds.u32(rec.header + 4 * k).filter(|&l| l != 0))
+                .flat_map(|l| {
+                    let mut out = Vec::new();
+                    let mut p = l;
+                    while let Some(r) = ds.bytes(p, 8) {
+                        if r[0] == 0x1A {
+                            break;
+                        }
+                        let day = u16::from_le_bytes([r[2], r[3]]);
+                        if r[0] / 3 == 0 && day != 0xFFFF && day != 0 && (r[0] % 3 != 1 || i == MEANS_TO_AN_END) {
+                            out.push(if i == MEANS_TO_AN_END && day == DS_MTE_DAY_LIMIT { MTE_DAY_LIMIT } else { day });
+                        }
+                        p += 8;
+                    }
+                    out
+                })
+                .collect();
+            let events = u32::from_le_bytes(hd[4..8].try_into().unwrap());
+            let mut ours = Vec::new();
+            for k in 0..6 {
+                let mut p = u32_at(events + 4 * k);
+                if p == 0 {
+                    continue;
+                }
+                loop {
+                    let r = at(p, 8);
+                    if r[0] == 8 {
+                        break;
+                    }
+                    let day = u16::from_le_bytes([r[2], r[3]]);
+                    if r[0] == 0 && day != 0 {
+                        ours.push(day);
+                    }
+                    p += 8;
+                }
+            }
+            let (mut a, mut c) = (ds_days.clone(), ours.clone());
+            a.sort();
+            a.dedup();
+            c.sort();
+            c.dedup();
+            assert!(a.iter().all(|d| c.contains(d)) && c.iter().all(|d| a.contains(d)), "mission {i}: trigger days {c:?}, Dual Strike's {a:?}");
+        }
+        // Means to an End's texts: none says 24 days.
+        let bank = |key: u32| (0..212u32).filter_map(move |k| Some(key | k)).collect::<Vec<_>>();
+        for r in bank(0x2600_0000).into_iter().chain([0xC000_02AA]) {
+            if let Some(t) = ds.text(r) {
+                let t = String::from_utf8_lossy(&t).to_lowercase();
+                assert!(!t.contains("24 day") && !t.contains("24th") && !t.contains("twenty-four"), "text {r:#x}: {t}");
+            }
+        }
+        // Every other text is Dual Strike's own: the compromise touches the
+        // three it names only.
+        for (r, raw) in [(0xC000_029Eu32, "15 days"), (0xC000_02A7, "18 days"), (0xC000_02A8, "24 days")] {
+            let t = String::from_utf8_lossy(&ds.text(r).unwrap()).to_string();
+            assert!(t.contains(raw), "text {r:#x} keeps Dual Strike's {raw}: {t}");
+        }
     }
 
     /// With `TANGOAW2_DS_ROM`: the whole campaign converts.

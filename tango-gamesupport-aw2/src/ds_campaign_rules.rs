@@ -14,7 +14,7 @@
 
 use mgba::core::Core;
 
-use crate::ds_campaign_data::{Magic, GRAND_BOLT_WEAK_POINTS};
+use crate::ds_campaign_data::{Magic, GRAND_BOLT_WEAK_POINTS, MEANS_TO_AN_END, MTE_CRYSTALS};
 
 /// AW2's player table pointer (tangoAW2 moves the table in five-army games).
 const PLAYERS_PTR: u32 = 0x0849_9598;
@@ -228,6 +228,18 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
         // Structures: one gone (count changed), all gone, one damaged.
         0x0235_0CD4 => alive_inventions(core, 4) != 4,
         0x0235_10FC => inventions(core, 4).iter().filter(|(hp, _)| *hp >= 99).count() != 4,
+        // (Means to an End: once per crystal shattered, its dialogue each
+        // time, as Dual Strike's second front)
+        0x0235_1C58 if crate::ds_campaign::mission(core) == MEANS_TO_AN_END as u8 => {
+            let gone = (0..3).filter(|&k| !crystal_alive(core, k)).count() as u8;
+            let told = core.raw_read_8(MTE_TOLD, -1);
+            if gone > told {
+                core.raw_write_8(MTE_TOLD, -1, told + 1);
+                true
+            } else {
+                false
+            }
+        }
         0x0235_1C58 => alive_inventions(core, 9) != 3,
         0x0235_05C0 | 0x0235_1708 => alive_inventions(core, 0xA) == 0,
         0x0235_05E8 => alive_inventions(core, 9) == 0,
@@ -295,6 +307,89 @@ fn weak_point_alive(core: &Core, k: usize) -> bool {
 fn unit_id_at(core: &Core, x: u32, y: u32) -> u8 {
     let row = core.raw_read_16(MAP + 0x417A + 2 * y, -1) as u32;
     core.raw_read_8(MAP + 0x12 + row + x, -1)
+}
+
+/// Means to an End's state (EWRAM the game never writes, past the DS
+/// Campaign's records): the crystals shattered so far told, and each weak
+/// point's hit points while its crystal stands.
+const MTE_TOLD: u32 = 0x0203_F700;
+const MTE_HP: u32 = 0x0203_F701;
+
+/// Crystal `k` of Means to an End still stands.
+pub fn crystal_alive(core: &Core, k: usize) -> bool {
+    let (x, y) = MTE_CRYSTALS[k];
+    (0..16).map(|i| INVENTIONS + 8 * i).take_while(|&a| (core.raw_read_16(a + 2, -1) >> 6) & 0xF != 0).any(|a| {
+        (core.raw_read_16(a + 2, -1) >> 6) & 0xF == 4
+            && core.raw_read_8(a, -1) as u32 == x
+            && core.raw_read_8(a + 1, -1) as u32 == y
+            && core.raw_read_8(a + 4, -1) > 0
+    })
+}
+
+/// The invention entry of weak point `k` (its Obelisk: top-left cell).
+fn weak_point_entry(core: &Core, k: usize) -> Option<u32> {
+    let (x, y) = GRAND_BOLT_WEAK_POINTS[k];
+    (0..16).map(|i| INVENTIONS + 8 * i).take_while(|&a| (core.raw_read_16(a + 2, -1) >> 6) & 0xF != 0).find(|&a| {
+        (core.raw_read_16(a + 2, -1) >> 6) & 0xF == 3 && core.raw_read_8(a, -1) as u32 + 1 == x && core.raw_read_8(a + 1, -1) as u32 + 2 == y
+    })
+}
+
+/// Means to an End in a session.
+fn means_to_an_end(core: &Core) -> bool {
+    crate::ds_campaign::active(core) && crate::ds_campaign::mission(core) == MEANS_TO_AN_END as u8 && crate::ds_campaign::in_battle(core)
+}
+
+/// Every frame in Means to an End: a weak point whose crystal stands
+/// takes no damage (its force field: its hit points kept); once its
+/// crystal is shattered it is open.
+pub fn mte_tick(core: &mut Core) {
+    if !means_to_an_end(core) {
+        return;
+    }
+    for k in 0..3 {
+        let Some(e) = weak_point_entry(core, k) else { continue };
+        let hp = core.raw_read_8(e + 4, -1);
+        let kept = core.raw_read_8(MTE_HP + k as u32, -1);
+        if crystal_alive(core, k) {
+            if kept == 0 || hp > kept {
+                core.raw_write_8(MTE_HP + k as u32, -1, hp);
+            } else if hp < kept {
+                core.raw_write_8(e + 4, -1, kept);
+            }
+        }
+    }
+}
+
+/// A mission's start: Means to an End's state cleared.
+pub fn mte_start(core: &mut Core) {
+    for k in 0..4 {
+        core.raw_write_8(MTE_TOLD + k, -1, 0);
+    }
+}
+
+/// `GetInventionAt(x, y)` (0x0803DE94) asked where a unit picks a target
+/// (the cursor's cell, `0x0802B3DC`; the targets around a unit,
+/// `0x0802E2EA`): a weak point whose crystal stands is no target.
+pub const GET_INVENTION_AT: u32 = 0x0803_DE94;
+const TARGET_CALLERS: [u32; 2] = [0x0802_B3E1, 0x0802_E2EF];
+pub fn invention_at(core: &mut Core) {
+    if !means_to_an_end(core) {
+        return;
+    }
+    let cpu = core.gba().cpu();
+    let (x, y, lr) = (cpu.gpr(0) as u32 & 0xFFFF, cpu.gpr(1) as u32 & 0xFFFF, cpu.gpr(14) as u32);
+    if !TARGET_CALLERS.contains(&lr) {
+        return;
+    }
+    let closed = (0..3).any(|k| {
+        let (wx, wy) = GRAND_BOLT_WEAK_POINTS[k];
+        crystal_alive(core, k) && (wx - 1..=wx + 1).contains(&x) && (wy - 2..=wy).contains(&y)
+    });
+    if closed {
+        let cpu = core.gba_mut().cpu_mut();
+        cpu.set_gpr(0, 0);
+        cpu.set_thumb_pc(lr & !1);
+    }
 }
 
 fn weak_point_spawns(core: &Core, k: usize, army: u32) -> bool {

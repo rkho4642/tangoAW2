@@ -1031,7 +1031,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   of its three weak points ((3, 9), (9, 11), (15, 9), where Dual Strike's
   code tests its structure kinds 0xB..0xD). On Black Hole's turn of every
   sixth day each standing weak point destroys the unit below it and spawns
-  an Oozium there (AW2's `CreateUnitAt`); destroying all three wins.
+  an Oozium there (AW2's `CreateUnitAt`); destroying all three wins. Its
+  second front's three Black Crystals stand on the main map (below).
 - **Flags**: AW2 keeps its campaign progress in campaign flags 0x20..;
   during a session the game's flag get/set (`0x0803CBD8` / `0x0803CBA0`,
   trapped) use the DS Campaign's own (`0x0203FD20`, 16 bytes).
@@ -1179,9 +1180,33 @@ overlay 1, the campaign's code, at `0x02350560`).
 **Compromises.**
 
 - Second fronts are not played: the five two-front missions are their main
-  front, Dual Strike's second-front triggers dropped. In Means to an End the
-  Grand Bolt's weak points can be attacked from the start (Dual Strike opens
-  one for each Black Crystal destroyed on the second front).
+  front, Dual Strike's second-front triggers dropped, but in Means to an End.
+- **Means to an End on one front** (the user's choices). Dual Strike's
+  second front (record 0x100) holds three Black Crystals, each guarding one
+  of the Grand Bolt's weak points; destroying all three also wins. Here
+  they stand on the main map, on the plain north of the bolt, each in the
+  column of the weak point it guards: (3, 3), (9, 5), (15, 3)
+  (`ds_campaign_data::MTE_CRYSTALS`, tangoAW2's Crystals: they heal Black
+  Hole's units around them as on Crystal Calamity). The second front's
+  trigger records are kept as the main map's: a crystal shattered plays
+  Dual Strike's "Commander! We have shattered one of the black crystals!"
+  and "Well done! Now we can strike one of the Grand Bolt's weak points!"
+  (once per crystal: `0x02351C58` answers once for each crystal down, the
+  count at `0x0203F700`), and every crystal shattered wins (its op 0x44,
+  Black Hole loses). A weak point whose crystal stands takes no damage: it
+  is no target where a unit picks one (`GetInventionAt` `0x0803DE94`,
+  trapped for its two targeting callers, `0x0802B3DC` and `0x0802E2EA`) and
+  its hit points are kept each frame (`0x0203F701..`) whatever hits it.
+  The day limit is 36, not 24: the header's limit (the "Day(s) Left"
+  counter), the trigger on which Black Hole wins (day 24 becomes 36), and
+  the texts that state it (`ds_campaign_data::compromise_text`: the
+  briefing, bank 0xC0 text 682, now "shatter the three black crystals and
+  defeat Von Bolt within 36 days", no top or touch screen; Von Bolt's "In
+  36 days" and "On the 36th day", bank 0x26 text 70; Lash's crystals "to
+  the north", text 69). Every other mission keeps Dual Strike's limits and
+  texts (`day_limits_are_dual_strikes`, with the .nds: every mission's
+  limit, trigger days and day texts). The Grand Bolt's charge stays every
+  sixth day. Tests: `ds_campaign_means_to_an_end`, `ds_campaign_map_27`.
 - AW2 armies have one CO: a tag pair is its first CO, the "CO pair" tests
   check that CO only, and there are no tag or Dual Strike powers. CO skills
   are not converted.
