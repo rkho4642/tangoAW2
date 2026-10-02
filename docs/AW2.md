@@ -1050,7 +1050,14 @@ overlay 1, the campaign's code, at `0x02350560`).
   first map (bank 0x21 texts 0..2). Overlay 5's scripts are Dual Strike's
   event format and are converted as the battles' are (their calls are its
   picture screen's, left out), each one's end a jump to the next; the
-  narration is AW2's speaker-less text (`ShowTextOnBg0`, op 0x1A). AW2
+  narration is AW2's speaker-less text (`ShowTextOnBg0`, op 0x1A) over
+  the picture Dual Strike shows with it (`ds_story_art.rs`: its
+  `rikiishi/` files, LZ77 tiles at 4 or 8 bits a pixel, an LZ77 map, a
+  256-colour palette; 240x160 of the 256x192 picture with a light box
+  where the text goes, put into the map layer's form: nine palettes by
+  k-means over its cells, flips folded), put on the map's layer by a magic
+  call before the text (BG3's tiles, tilemap and palettes 6..14, its
+  scroll, the map's sprites off) and the map put back after. AW2
   plays a mission record's +0x18 on its map after the mission is won
   (`StartWorldMapAfterMissionScript`): the DS records of those three
   missions hold the scenes. The prologue: the session's copy of AW2's world

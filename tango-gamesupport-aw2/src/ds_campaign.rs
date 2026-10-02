@@ -137,6 +137,10 @@ pub const FLOW_SAVE: u8 = 2;
 pub const FLOW_HIDE: u8 = 3;
 pub const FLOW_CLEAR: u8 = 4;
 pub const FLOW_PROLOGUE: u8 = 5;
+/// The map back on its layer after a narration picture.
+pub const FLOW_MAP_BACK: u8 = 6;
+/// Narration picture n (crate::ds_story_art::NARRATION) on the map's layer.
+pub const FLOW_PICTURE: u8 = 16;
 
 /// AW2's world map entered from the menu (`gUnknown_0861485C`: fade,
 /// music, `SetupWorldMapForResume`, fade in, the cursor's procs, then the
@@ -248,6 +252,8 @@ pub struct Campaign {
     pub start_proc: u32,
     /// The DS session's copy of AW2's world map script ([`map_script`]).
     pub map_script: u32,
+    /// Dual Strike's narration pictures (crate::ds_story_art::NARRATION).
+    pub pictures: Vec<Option<crate::ds_story_art::Picture>>,
     pub hide_stub: u32,
     /// The CO screen's setup (a mission's `coSelect` on the world map).
     pub co_setup: u32,
@@ -273,7 +279,8 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let start_proc = built.add(&start_proc_script(save));
             let map_script = built.add(&map_script(prologue, save));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
-            Some(Campaign { built, start_proc, map_script, hide_stub, co_setup })
+            let pictures = crate::ds_story_art::narration_pictures();
+            Some(Campaign { built, start_proc, map_script, pictures, hide_stub, co_setup })
         })
         .as_ref()
 }
@@ -826,6 +833,16 @@ fn landing(core: &mut Core) {
         Some(data::Magic::Flow(FLOW_HIDE)) => 1,
         Some(data::Magic::Flow(FLOW_CLEAR)) => return clear_bg0(core),
         Some(data::Magic::Flow(FLOW_PROLOGUE)) => return prologue(core),
+        Some(data::Magic::Flow(FLOW_MAP_BACK)) => {
+            crate::ds_worldmap::restore_map(core);
+            0
+        }
+        Some(data::Magic::Flow(n)) if n >= FLOW_PICTURE => {
+            if let Some(Some(p)) = campaign(core).and_then(|c| c.pictures.get((n - FLOW_PICTURE) as usize)) {
+                crate::ds_worldmap::show_picture(core, p);
+            }
+            0
+        }
         Some(m) => match crate::ds_campaign_rules::run(core, &m) {
             crate::ds_campaign_rules::TAIL_CALLED => return,
             r => r,

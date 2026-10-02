@@ -692,9 +692,10 @@ for _s in range(len(dc.ORDER)):
 
 @test(modes=("ds",))
 def ds_campaign_prologue(ctx):
-    """New: Dual Strike's prologue (its three narration texts, bank 0x21)
-    on the world map before the player has the pad; Continue after a reboot
-    does not show it again."""
+    """New: Dual Strike's prologue (its three narration texts, bank 0x21,
+    each over its picture with a narration box) on the world map before the
+    player has the pad, then the map back; Continue after a reboot does not
+    show it again."""
     data = dc.DsData()
     want = [data.text(r) for r in dc.PROLOGUE]
     e, g, d = boot(ctx)
@@ -717,6 +718,10 @@ def ds_campaign_prologue(ctx):
         ctx.check(dc.same_text(s, w), f"text {k + 1}: Dual Strike's own words ({s[:40]!r})")
     ctx.require(d.world_map_up(), "then the world map")
     e.wait(30)
+    from aw2test import worldmap
+    psnr, _, _ = worldmap.compare(worldmap.ds_picture(), worldmap.from_vram(e.read(0x06000000, 0x10000), e.read(0x05000000, 0x200)))
+    ctx.check(psnr >= 31.0, f"the map back on its layer after the pictures ({psnr:.1f} dB)")
+    ctx.check(e.u16(0x030030CC) & 0x1000, "the map's sprites back on")
     save = e.save(os.path.join(ctx.out, "after_prologue"))
     e.close()
     e, g, d = boot(ctx, save)

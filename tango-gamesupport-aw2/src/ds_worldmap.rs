@@ -647,6 +647,54 @@ const WORLD_MAP_BG1: u16 = 0x1B02;
 /// BG1's tilemap on the map screen (screen 27), tiles 704.. of BG3's.
 const BG1_TILEMAP: u32 = 0x0600_D800;
 
+/// BG3's scroll shadows (`SetBgScrollShadow(3, ..)`), the palette buffer
+/// the game copies to palette RAM, OBJ's bit in the DISPCNT shadow.
+const BG3_SCROLL_X: u32 = 0x0300_200C;
+const BG3_SCROLL_Y: u32 = 0x0300_2000;
+const PAL_BUFFER: u32 = 0x0300_20C0;
+const OBJ_ON: u16 = 1 << 12;
+const BG3_CHARS: u32 = 0x0600_8000;
+const BG3_MAP: u32 = 0x0600_F000;
+
+fn write_palettes(core: &mut Core, at: u32, bytes: &[u8]) {
+    for base in [PAL_BUFFER, 0x0500_0000] {
+        core.raw_write_range(base + at, -1, bytes);
+    }
+}
+
+/// A narration picture on the map's layer (its tiles, its 30x20 tilemap
+/// in the top left of the first screen, its palettes 6..14), unscrolled,
+/// the map's sprites (flags, cursor) off.
+pub fn show_picture(core: &mut Core, p: &crate::ds_story_art::Picture) {
+    core.raw_write_range(BG3_CHARS, -1, &p.tiles);
+    let mut map = vec![0u8; 0x1000];
+    for (i, &e) in p.tilemap.iter().enumerate() {
+        let (x, y) = (i % 30, i / 30);
+        map[2 * (32 * y + x)..2 * (32 * y + x) + 2].copy_from_slice(&e.to_le_bytes());
+    }
+    core.raw_write_range(BG3_MAP, -1, &map);
+    let pal: Vec<u8> = p.palettes.iter().flat_map(|c| c.to_le_bytes()).collect();
+    write_palettes(core, 0xC0, &pal);
+    core.raw_write_16(BG3_SCROLL_X, -1, 0);
+    core.raw_write_16(BG3_SCROLL_Y, -1, 0);
+    let d = core.raw_read_16(DISP_CT, -1);
+    core.raw_write_16(DISP_CT, -1, d & !OBJ_ON);
+}
+
+/// The map back on its layer after a picture (tiles, tilemap, palettes,
+/// the camera's scroll, the sprites).
+pub fn restore_map(core: &mut Core) {
+    let Some(w) = world_map() else { return };
+    core.raw_write_range(BG3_CHARS, -1, &w.tiles);
+    core.raw_write_range(BG3_MAP, -1, &w.tilemap);
+    write_palettes(core, 0xC0, &w.palette);
+    let (x, y) = (core.raw_read_16(S_CAMERA_X, -1), core.raw_read_16(S_CAMERA_Y, -1));
+    core.raw_write_16(BG3_SCROLL_X, -1, x);
+    core.raw_write_16(BG3_SCROLL_Y, -1, y);
+    let d = core.raw_read_16(DISP_CT, -1);
+    core.raw_write_16(DISP_CT, -1, d | OBJ_ON);
+}
+
 /// AW2's map state is put aside when a DS session starts.
 pub fn backup_aw2_state(core: &mut Core) {
     if core.raw_read_8(BACKUP_MARK, -1) == 1 {

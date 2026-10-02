@@ -637,14 +637,21 @@ const AFTER_VICTORY_OR_DEATH: usize = 8;
 const AFTER_CRYSTAL_CALAMITY: usize = 18;
 const AFTER_MEANS_TO_AN_END: usize = 24;
 
-/// Narration: each text in a box of its own, no speaker (AW2's
-/// `ShowTextOnBg0`, op 0x1A), then the script's end.
+/// Narration: each text over its picture (crate::ds_story_art, a magic
+/// call puts it on the map's layer), in a box of its own with no speaker
+/// (AW2's `ShowTextOnBg0`, op 0x1A); then the map back and the end.
 fn narration(cx: &mut Ctx, texts: &[u32]) -> u32 {
     let mut s = Vec::new();
     for &r in texts {
+        if let Some(n) = crate::ds_story_art::NARRATION.iter().position(|x| x.0 == r) {
+            let stub = cx.magic(Magic::Flow(crate::ds_campaign::FLOW_PICTURE + n as u8));
+            s.extend_from_slice(&cmd(0x00, stub, 0, 0, 0));
+        }
         let id = cx.dialogue(r);
         s.extend_from_slice(&cmd(0x1A, 0, id, 0, 0));
     }
+    let back = cx.magic(Magic::Flow(crate::ds_campaign::FLOW_MAP_BACK));
+    s.extend_from_slice(&cmd(0x00, back, 0, 0, 0));
     s.extend_from_slice(&cmd(0x04, 0, 0, 0, 0));
     cx.blob.push(&s)
 }
