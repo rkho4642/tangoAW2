@@ -18,6 +18,7 @@ import os
 
 from .game import NavError
 from .dscampaign import LAST_RESULT, DAY
+from . import tag
 
 MAP = 0x0201E450
 RANGE = MAP + 0x2852
@@ -913,7 +914,8 @@ class Bot:
             self.d.dialogue()
 
     def use_power(self):
-        """The CO's Super Power, else its Power, when the meter allows."""
+        """The pair's Tag Power (crate::tag), else the CO's Super Power, else
+        its Power, when the meters allow."""
         g = self.g
         try:
             m = g.open_map_menu()
@@ -921,7 +923,7 @@ class Bot:
             self.cancel()
             return
         names = [n for n, fl in zip(m["names"], [m["flags"][i] for i in m["visible"]]) if fl == 0]
-        for want in ("Super", "Power"):
+        for want in ("Tag", "Super", "Power"):
             if any(n.startswith(want) for n in names):
                 try:
                     g.choose(want, g.MAP_MENU)
@@ -983,4 +985,20 @@ class Bot:
             self.log(f"  build: {ex}")
             self.cancel()
         d.wait_control()
+        t = tag.partner(e, army)
+        if t is not None and t["phase"] == 1:
+            # A Tag Power's first half: Change brings the partner's Super
+            # Power and every unit moves again.
+            try:
+                self.g.open_map_menu()
+                self.g.choose("Change", self.g.MAP_MENU)
+                self.log("  Change (the Tag Power's second half)")
+                e.wait(60)
+                d.dialogue()
+                d.wait_control()
+            except NavError as ex:
+                self.log(f"  change: {ex}")
+                self.cancel()
+                return
+            return self.play_turn(army)
         d.end_turn()

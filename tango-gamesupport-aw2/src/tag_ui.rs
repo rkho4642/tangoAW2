@@ -132,7 +132,14 @@ const BLINK: u32 = tag::UI + 2;
 /// free (0x0203E800..0x0203F2BF).
 const SAVED: u32 = 0x0203_E800;
 const TEAMS_TILE: u32 = 0x100;
-const TEAMS_TILES: u32 = 80;
+const TEAMS_TILES: u32 = 82;
+/// The rating's stars (8x8, AW2's own small star tiles from the ROM: empty
+/// at 0x08102C24, full at 0x08102C64), after the five boxes.
+const STAR_TILE: u32 = 0x150;
+const STAR_SOURCES: [u32; 2] = [0x0810_2C24, 0x0810_2C64];
+/// The stars' colours (their tiles' indices 9..15) in the empty slot's
+/// palette: AW2's panel colours for them.
+const STAR_COLOURS: [(usize, u16); 7] = [(9, 0x0000), (10, 0x5FFF), (11, 0x027F), (12, 0x77DC), (13, 0x6B39), (14, 0x35F1), (15, 0x0000)];
 const BOX_TILES: u32 = 16;
 const PARTNER_PALS: [u32; 5] = [5, 6, 7, 8, 12];
 const NONE_PAL: u32 = 13;
@@ -443,6 +450,15 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
         }
         e += 8;
     }
+    // The empty slot's palette, with the stars' colours.
+    let mut p = [0u8; 32];
+    for (k, c) in NONE_COLOURS.iter().enumerate() {
+        p[2 * k..2 * k + 2].copy_from_slice(&c.to_le_bytes());
+    }
+    for (k, c) in STAR_COLOURS {
+        p[2 * k..2 * k + 2].copy_from_slice(&c.to_le_bytes());
+    }
+    write_palette(core, NONE_PAL, &p);
     for a in 0..armies {
         let Some((_, fx, fy)) = find(core, start, at, FACE_TILE + FACE_STRIDE * a as u16, true) else { continue };
         let tile = TEAMS_TILE + BOX_TILES * a;
@@ -455,17 +471,32 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
             }
             None => {
                 write_tiles(core, tile, &none_box(core));
-                let mut p = [0u8; 32];
-                for (k, c) in NONE_COLOURS.iter().enumerate() {
-                    p[2 * k..2 * k + 2].copy_from_slice(&c.to_le_bytes());
-                }
-                write_palette(core, NONE_PAL, &p);
                 NONE_PAL
             }
         };
         let (x, y) = (fx + 8, fy + BOX_DY);
         if at + 8 > end {
             break;
+        }
+        // A special pair (Dual Strike's TAG box): its rating, 1..3 stars
+        // of three, on the box's bottom edge.
+        let stars = army_main(core, a)
+            .zip(partner_of(core, a))
+            .and_then(|(m, p)| tag::special_pair(m, p))
+            .map_or(0, |(s, _)| s.min(3));
+        if stars > 0 && at + 8 * 4 <= end {
+            for (k, src) in STAR_SOURCES.iter().enumerate() {
+                let mut t = [0u8; 32];
+                core.raw_read_range(*src, -1, &mut t);
+                write_tiles(core, STAR_TILE + k as u32, &t);
+            }
+            for k in 0..3u16 {
+                let full = (k as u8) < stars;
+                let t = STAR_TILE as u16 + full as u16;
+                put(core, at, (y + 21) as u16 & 0xFF, (x + 2 + 7 * k as i32) as u16 & 0x1FF, t | (NONE_PAL as u16) << 12);
+                core.raw_write_16(at + 6, -1, 0);
+                at += 8;
+            }
         }
         if pal == NONE_PAL {
             // The empty slot shows the army's emblem, as Dual Strike's blank

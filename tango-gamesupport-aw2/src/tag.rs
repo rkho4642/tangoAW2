@@ -270,6 +270,28 @@ pub fn compatibility(a: u8, b: u8) -> u8 {
         .unwrap_or(100)
 }
 
+/// Dual Strike's special pairs: a CO record's list at +0x6C (8 bytes an
+/// entry: the partner's id, its star rating 1..3 at +2, a pointer to five
+/// text ids (four victory lines and the pair's Tag Power name, "Power
+/// Wrench"); a zero partner ends it). The stars are the CO page's TAG box
+/// rating; the Tag Power's strength is the compatibility (+0x84), which
+/// every pair has.
+pub fn special_pair(a: u8, b: u8) -> Option<(u8, u32)> {
+    let (da, db) = (ds_id(a)?, ds_id(b)?);
+    let pack = crate::ds_pack::pack()?;
+    let rec = 0x0215_360C + 0x220 * da as u32;
+    let list = pack.arm9_at(rec + 0x6C, 0x18)?;
+    for e in list.chunks(8) {
+        if e[0] == 0 {
+            break;
+        }
+        if e[0] == db {
+            return Some((e[2], u32::from_le_bytes([e[4], e[5], e[6], e[7]])));
+        }
+    }
+    None
+}
+
 /// A CO's Dual Strike id (AW2's COs and the new ones).
 pub fn ds_id(co: u8) -> Option<u8> {
     crate::co_new::ds_id(co).or_else(|| (co < crate::co_roster::AW2_COS).then(|| crate::co_roster::ds_co(co)).flatten())
