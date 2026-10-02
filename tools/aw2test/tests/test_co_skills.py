@@ -562,3 +562,101 @@ def skills_netplay_versus_rule(ctx):
     identical, values, text = ctx.netplay_replay(g, [(ACTIVE, 30), units, (VERSUS_RULE, 1)])
     ctx.check(identical, f"both peers the same ({text.splitlines()[-3:] if text else ''})")
     ctx.eq(values.get(VERSUS_RULE), bytes([1]), "the rule on, on the peers")
+
+
+def fuel(g, x, y):
+    return g.unit_at(x, y)["fuel"]
+
+
+@test(modes=("ds",))
+def skills_hidden_fuel(ctx):
+    """Sneaky + Stealthy: a hidden Stealth burns 3 fuel less a day (8 -> 5)."""
+    m = ctx.map()
+    m.unit(1, 12, 10, 10).unit(2, "tank", 20, 10)
+    g = ctx.start(m, ["andy", "andy"], humans=(1, 2))
+    set_skills(ctx, g, 1, [0x41, 0x42])
+    f0 = fuel(g, 10, 10)
+    g.select(10, 10)
+    g.move_to(10, 10)
+    g.choose("Hide", g.ACTION_MENU)
+    g.wait_idle()
+    g.end_turn(human=2)
+    g.end_turn(human=1)
+    ctx.eq(f0 - fuel(g, 10, 10), 5, "8 less 1 and 2")
+
+
+@test(modes=("ds",))
+def skills_move_costs(ctx):
+    """Prairie Dog: a Recon (tires) pays 1 on plains (its reach on an open
+    plain: 8, not 4). Pathfinder: a Tank (treads) pays 1 in woods (6, not 3,
+    in a wood)."""
+    m = ctx.map()
+    for x in range(3, 15):
+        for y in range(13, 20):
+            m.terrain(x, y, "wood")
+    m.unit(1, "recon", 20, 6).unit(1, "tank", 8, 16).unit(2, "tank", 28, 1)
+    g = ctx.start(m, ["andy", "andy"])
+    far = lambda cells, x, y: max(abs(a - x) + abs(b - y) for a, b in cells)
+    recon0, tank0 = far(reach(g, 20, 6), 20, 6), far(reach(g, 8, 16), 8, 16)
+    set_skills(ctx, g, 1, [0x38, 0x39])
+    recon1, tank1 = far(reach(g, 20, 6), 20, 6), far(reach(g, 8, 16), 8, 16)
+    ctx.log(f"recon {recon0} -> {recon1}, tank in woods {tank0} -> {tank1}")
+    ctx.check(recon1 > recon0, f"Prairie Dog: the Recon goes further on plains ({recon0} -> {recon1})")
+    ctx.check(tank1 > tank0, f"Pathfinder: the Tank goes further in woods ({tank0} -> {tank1})")
+
+
+SEEN = 0x0201E450 + 0x12
+
+
+@test(modes=("ds",))
+def skills_vision(ctx):
+    """Scout: vision +1 in fog. An Infantry (vision 2) moves to 3 squares
+    from a Tank: it does not see it, with Scout it does (the fog worked out
+    as it moves)."""
+    for scout in (False, True):
+        m = ctx.map()
+        m.unit(1, "infantry", 10, 10).unit(2, "tank", 14, 10)
+        g = ctx.start(m, ["andy", "andy"], fog=True)
+        if scout:
+            set_skills(ctx, g, 1, [0x3B])
+        g.select(10, 10)
+        g.move_to(11, 10)
+        g.choose("Wait", g.ACTION_MENU)
+        g.wait_idle()
+        seen = g.e.u8(SEEN + g.e.u16(ROWS + 20) + 14) != 0
+        ctx.eq(seen, scout, f"{'with' if scout else 'without'} Scout: the Tank 3 away {'seen' if scout else 'not seen'}")
+
+
+@test(modes=("ds",))
+def skills_mistwalker(ctx):
+    """Mistwalker: in the CO's Super Power its units strike first when
+    attacked (Sonja's Counter Break): a Tank attacked by an Infantry on 1 HP
+    destroys it before it fires."""
+    m = ctx.map()
+    m.unit(1, "tank", 10, 10).unit(2, "infantry", 11, 10)
+    g = ctx.start(m, ["andy", "andy"], humans=(1, 2))
+    set_skills(ctx, g, 1, [0x49])
+    g.charge_power(1, "super")
+    g.power("super")
+    ctx.set_hp(g, 11, 10, 10)
+    g.end_turn(human=2)
+    hp = g.unit_at(10, 10)["hp"]
+    g.attack((11, 10), (11, 10), (10, 10))
+    ctx.check(g.unit_at(11, 10) is None, "the Infantry destroyed")
+    ctx.eq(g.unit_at(10, 10)["hp"], hp, "the Tank struck first: untouched")
+
+
+@test(modes=("ds",))
+def skills_soul_of_hachi(ctx):
+    """Soul of Hachi: in the CO's Super Power its cities build ground units."""
+    m = ctx.map()
+    m.terrain(5, 5, "city", 1)
+    m.unit(2, "tank", 27, 17)
+    g = ctx.start(m, ["andy", "andy"])
+    set_skills(ctx, g, 1, [0x4A])
+    g.e.w32(g.players_base + 0x3C, 10000)
+    g.charge_power(1, "super")
+    g.power("super")
+    ids = g.buy(5, 5, 1)
+    ctx.check(1 in ids, f"the city's build menu ({ids})")
+    ctx.check(g.unit_at(5, 5) is not None, "an Infantry built at the city")
