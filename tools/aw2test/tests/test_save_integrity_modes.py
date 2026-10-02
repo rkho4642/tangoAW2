@@ -329,7 +329,7 @@ def save_every_mode_one_boot(ctx):
               "the Survival records as Survival saved them")
     ctx.check(p[WM_PROFILE[0]:WM_PROFILE[1]] == f4.slot(0)[WM_PROFILE[0]:WM_PROFILE[1]], "AW2's world map as AW2 saved it")
     ctx.check(p[lo:lo + 0x14] == f5.slot(0)[lo:lo + 0x14], "the War Room score as saved")
-    ctx.check(f6.slot(15) == f1.slot(15), "the DS record as the DS Campaign saved it")
+    ctx.check(f6.slot(15)[:0x120] == f1.slot(15)[:0x120], "the DS record as the DS Campaign saved it (its progress and records; the COs' skill data after them gains the EXP of the battles since)")
     ctx.check(f6.slot(6) == f3.slot(6), "design 2 as saved")
 
     e, g = boot(ctx, f6.path)

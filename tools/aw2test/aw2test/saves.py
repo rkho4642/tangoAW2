@@ -225,12 +225,23 @@ def compare_snapshots(ctx, a, b, label):
 
 
 # -- checks on images -------------------------------------------------------------------------
+DS_RECORD = 15            # crate::ds_campaign::SAVE_SLOT
+DS_RECORD_HEAD = 0x20 + 8 * 32   # its progress and missions' records (the skill data after them)
+
 def expect_slots(ctx, before, after, changed, label, profile_allow=()):
     """Only the slots in `changed` differ between two images (the profile
     only in `profile_allow` and AW2's save counter); every listed sector
     passes AW2's check."""
     ctx.check(not after.problems(), f"{label}: every slot AW2 lists passes its check ({after.problems()})")
     d = saveimg.diff(before, after)
+    # The DS Campaign's slot also keeps the COs' skill data (EXP, sets:
+    # crate::co_skills) after its progress and records: a battle in any
+    # mode may write it, its progress and records untouched.
+    if DS_RECORD in d and DS_RECORD not in changed:
+        old, new = before.slot(DS_RECORD), after.slot(DS_RECORD)
+        head = lambda b: bytes(b[:DS_RECORD_HEAD]) if b else bytes(DS_RECORD_HEAD)
+        if new is not None and head(old) == head(new):
+            d = {t: v for t, v in d.items() if t != DS_RECORD}
     others = {t: v for t, v in d.items() if t != 0 and t not in changed}
     ctx.check(not others, f"{label}: no other slot written ({ {saveimg.TAG_NAMES.get(t, t): v for t, v in others.items()} })")
     for t in changed:

@@ -240,17 +240,29 @@ const STAGING: u32 = 0x0200_0000;
 /// writer, `sub_0801A7D8(SAVE_SLOT, buffer, SAVE_SIZE)`, which returns to
 /// the proc.
 fn save(core: &mut Core) {
+    let (slot, buffer, len) = stage_slot(core);
+    let cpu = core.gba_mut().cpu_mut();
+    cpu.set_gpr(0, slot as i32);
+    cpu.set_gpr(1, buffer as i32);
+    cpu.set_gpr(2, len as i32);
+    cpu.set_thumb_pc(SLOT_WRITER);
+}
+
+/// The slot's record in the staging buffer: the progress (as saved: the
+/// one in Flash when no campaign is in RAM), the records, the COs' skill
+/// data. (slot, buffer, length) for AW2's slot writer.
+pub fn stage_slot(core: &mut Core) -> (u8, u32, u32) {
     skills_loaded(core);
+    if !progress_valid(core) {
+        load_from_flash(core);
+    }
     let mut b = vec![0u8; (SAVE_SIZE + RECORDS_SIZE) as usize];
     core.raw_read_range(PROGRESS, -1, &mut b[..SAVE_SIZE as usize]);
     core.raw_read_range(RECORDS, -1, &mut b[SAVE_SIZE as usize..]);
     b.extend_from_slice(&crate::co_skills::bytes(core));
     core.raw_write_range(STAGING, -1, &b);
-    let cpu = core.gba_mut().cpu_mut();
-    cpu.set_gpr(0, SAVE_SLOT as i32);
-    cpu.set_gpr(1, STAGING as i32);
-    cpu.set_gpr(2, b.len() as i32);
-    cpu.set_thumb_pc(SLOT_WRITER);
+    crate::co_skills::written(core);
+    (SAVE_SLOT, STAGING, b.len() as u32)
 }
 
 /// Empties the BG0 tilemap buffer, then tail-calls `BG_EnableSyncBG0`

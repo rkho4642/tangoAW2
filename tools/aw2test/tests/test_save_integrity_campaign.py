@@ -352,7 +352,7 @@ def save_ds_campaign_new_drops_mission_suspend(ctx):
     ctx.check(d.world_map_up() and not d.in_battle(), "Continue: the new campaign's map, no battle")
 
 
-RECORD_LEN = 0x20 + 8 * 32       # the DS record: the progress, then the missions' records
+RECORD_LEN = 0x20 + 8 * 32 + 4 + 32 * 28   # the DS record: the progress, the missions' records, the COs' skill data
 
 
 def hard_flag(e):
@@ -397,7 +397,7 @@ def save_ds_campaign_hard_and_records(ctx):
     d.wait_world_map()
     img = saves.flash(e, os.path.join(ctx.out, "hard_new"))
     saves.expect_slots(ctx, start, img, [DS_RECORD], "Hard New", profile_allow=[saves.MODE_BYTE])
-    ctx.eq(len(img.slot(DS_RECORD)), RECORD_LEN, "the DS record: progress and records")
+    ctx.eq(len(img.slot(DS_RECORD)), RECORD_LEN, "the DS record: progress, records, skill data")
     won = cp.win_ds_mission(e, d)
     after = saves.flash(e, os.path.join(ctx.out, "hard_won"))
     saves.expect_slots(ctx, img, after, [DS_RECORD], f"Hard mission {won} won", profile_allow=list(POINTS) + [saves.MODE_BYTE])
@@ -447,4 +447,4 @@ def save_ds_campaign_hard_and_records(ctx):
     e, g, d = boot(ctx, end.path)
     cp.ds_start(e, d, new=False)
     ctx.eq((hard_flag(e), e.u8(dc.P_HARD)), (1, 1), "after a reboot: Continue is Hard")
-    ctx.check(e.read(dc.RECORDS, 8 * 32) == rec2[0x20:], "the records loaded")
+    ctx.check(e.read(dc.RECORDS, 8 * 32) == rec2[0x20:0x20 + 8 * 32], "the records loaded")

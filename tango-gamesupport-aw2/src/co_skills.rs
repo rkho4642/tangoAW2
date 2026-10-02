@@ -470,6 +470,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (SPECIAL_DONE, Box::new(special_done)),
         (MOVE_COSTS_DONE, Box::new(move_costs_done)),
         (SHOT_HIT, Box::new(shot_hit)),
+        (PROFILE_WRITTEN, Box::new(profile_written)),
     ]
 }
 
@@ -483,6 +484,138 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
 pub fn campaign_exp(score: u32, mission: u8, hard: bool) -> u32 {
     let base = score.min(999) * if hard { 2 } else { 1 };
     base * if mission < 8 { 1 } else { 2 }
+}
+
+// --- The modes: which set each army has on, EXP at a battle's end -------------------
+
+const GAME_MODE: u32 = 0x0300_3FC1;
+const MAP_ID: u32 = 0x0300_3FC2;
+const CAMPAIGN: u8 = 1;
+const WAR_ROOM: u8 = 2;
+const VERSUS: u8 = 3;
+const PLAYERS_PTR: u32 = 0x0849_9598;
+/// AW2's campaign maps start at this id (`InsertBestScoreRecord`'s rows).
+const FIRST_CAMPAIGN_MAP: u8 = 0x8A;
+/// A player's score (u16), defeated (u16), yielded (u8).
+const P_SCORE: u32 = 0x38;
+const P_DEFEATED: u32 = 0x14;
+const P_YIELD: u32 = 0x31;
+/// The data changed since it was last written to Flash (by the DS
+/// Campaign's save, or after AW2's profile: [`profile_written`]).
+const DIRTY: u32 = DATA + DATA_LEN;
+/// The Versus rule "Skills" (1 on; crate::pvp keeps it in the match's terms).
+pub const VERSUS_RULE: u32 = DATA + DATA_LEN + 1;
+
+fn player(core: &Core, army: u32) -> u32 {
+    core.raw_read_32(PLAYERS_PTR, -1) + 0x3C * army
+}
+
+fn human(core: &Core, army: u32) -> bool {
+    core.raw_read_8(player(core, army) + 0x1B, -1) == 1
+}
+
+fn army_co(core: &Core, army: u32) -> u8 {
+    core.raw_read_8(player(core, army) + 0x1D, -1)
+}
+
+/// The battle's mode for skills: Survival, the War Room, AW2's campaign,
+/// Versus (with its rule on), or none (the DS Campaign sets its own:
+/// crate::ds_campaign).
+fn mode_set(core: &Core) -> Option<(Set, bool)> {
+    if crate::ds_campaign::active(core) {
+        return None;
+    }
+    if crate::survival::on(core) {
+        return Some((Set::Survival, false));
+    }
+    match core.raw_read_8(GAME_MODE, -1) {
+        CAMPAIGN => Some((Set::Campaign, false)),
+        WAR_ROOM => Some((Set::WarRoom, false)),
+        VERSUS if core.raw_read_8(VERSUS_RULE, -1) == 1 => Some((Set::Versus(0), true)),
+        _ => None,
+    }
+}
+
+/// A battle starts (after [`clear`]): each army's skills by the mode's rule:
+/// the player's armies their COs' set for the mode; in Versus with its
+/// Skills rule on, every army (the computer's too) its CO's Versus set.
+pub fn battle_start(core: &mut Core) {
+    let Some((which, everyone)) = mode_set(core) else { return };
+    crate::ds_campaign::skills_loaded(core);
+    for a in 1..=4u32 {
+        if core.raw_read_8(player(core, a) + 0x1B, -1) == 0 || !(everyone || human(core, a)) {
+            continue;
+        }
+        let co = army_co(core, a);
+        let ids = usable(core, co, which);
+        set(core, a, &ids);
+    }
+}
+
+/// A battle ends (`EndOfGame_Finish`): a won battle gives each of the
+/// player's COs EXP from its score, by Dual Strike's rules for the mode:
+/// Survival half the score (x1); AW2's campaign as the DS Campaign (x2 but
+/// its first eight missions, x1); the War Room x2.5, x2 with skills on.
+/// Versus gives none. (The DS Campaign's is crate::ds_campaign's.)
+pub fn battle_end(core: &mut Core) {
+    if !crate::ds_weather::is_on(core) || crate::ds_campaign::active(core) {
+        return;
+    }
+    let mode = core.raw_read_8(GAME_MODE, -1);
+    let survival = crate::survival::on(core);
+    if !(survival || mode == CAMPAIGN || mode == WAR_ROOM) {
+        return;
+    }
+    let p1 = player(core, 1);
+    if core.raw_read_16(p1 + P_DEFEATED, -1) != 0 || core.raw_read_8(p1 + P_YIELD, -1) != 0 {
+        return;
+    }
+    crate::ds_campaign::skills_loaded(core);
+    for a in 1..=4u32 {
+        if !human(core, a) {
+            continue;
+        }
+        let score = core.raw_read_16(player(core, a) + P_SCORE, -1) as u32;
+        let skills_on = (0..ACTIVE_LEN).any(|k| core.raw_read_8(ACTIVE + ACTIVE_LEN * (a - 1) + k, -1) != 0);
+        let n = if survival {
+            score / 2
+        } else if mode == CAMPAIGN {
+            let early = core.raw_read_8(MAP_ID, -1).wrapping_sub(FIRST_CAMPAIGN_MAP) < 8;
+            score * if early { 1 } else { 2 }
+        } else if skills_on {
+            score * 2
+        } else {
+            score * 5 / 2
+        };
+        if n > 0 {
+            add_exp(core, army_co(core, a), n);
+        }
+    }
+}
+
+/// AW2's profile has just been written (`sub_08016E14`, after its
+/// `sub_0801A7D8(0, ...)`): if the skill data changed, it is written to
+/// the DS Campaign's slot too (the progress and records with it), by the
+/// same writer, which returns here (then with nothing left to write).
+pub const PROFILE_WRITTEN: u32 = 0x0801_6E2C;
+const SLOT_WRITER: u32 = 0x0801_A7D9;
+pub fn profile_written(core: &mut Core) {
+    if !crate::ds_weather::is_on(core) || core.raw_read_8(DIRTY, -1) == 0 || !data_valid(core) {
+        return;
+    }
+    core.raw_write_8(DIRTY, -1, 0);
+    let (slot, buffer, len) = crate::ds_campaign::stage_slot(core);
+    let cpu = core.gba_mut().cpu_mut();
+    cpu.set_gpr(0, slot as i32);
+    cpu.set_gpr(1, buffer as i32);
+    cpu.set_gpr(2, len as i32);
+    cpu.set_gpr(14, (PROFILE_WRITTEN | 1) as i32);
+    cpu.set_thumb_pc(SLOT_WRITER & !1);
+}
+
+/// The DS Campaign's save wrote the data.
+pub fn written(core: &mut Core) {
+    core.raw_write_8(DIRTY, -1, 0);
 }
 
 // --- The skill table (Dual Strike's overlay 0, `0x022F5ECC`) ---------------------
@@ -588,6 +721,7 @@ pub fn add_exp(core: &mut Core, co: u8, n: u32) {
     if let Some(a) = co_at(co) {
         let v = core.raw_read_32(a, -1).min(MAX_EXP);
         core.raw_write_32(a, -1, (v + n).min(MAX_EXP));
+        core.raw_write_8(DIRTY, -1, 1);
     }
 }
 
@@ -624,6 +758,7 @@ pub fn set_of(core: &Core, co: u8, set: Set) -> [u8; 4] {
 pub fn store_set(core: &mut Core, co: u8, set: Set, ids: [u8; 4]) {
     if let Some(a) = co_at(co) {
         core.raw_write_range(a + set.offset(), -1, &ids);
+        core.raw_write_8(DIRTY, -1, 1);
     }
 }
 
@@ -659,7 +794,7 @@ mod tests {
         assert_eq!(co_slot(80), Some(27));
         assert_eq!(co_slot(19), None);
         assert_eq!(Set::Versus(3).offset() + 4, CO_LEN);
-        assert!(DATA + DATA_LEN <= 0x0203_F600, "below the DS Campaign's records");
+        assert!(VERSUS_RULE < 0x0203_F600, "below the DS Campaign's records");
     }
 
     #[test]

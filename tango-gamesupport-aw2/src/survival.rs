@@ -155,6 +155,11 @@ fn running(core: &Core, script: u32) -> bool {
         .any(|p| core.raw_read_32(p, -1) == script)
 }
 
+/// Survival's War Room is open (a run being played).
+pub fn on(core: &Core) -> bool {
+    core.raw_read_8(ON, -1) == 1
+}
+
 fn player(core: &Core, army: u32) -> u32 {
     crate::five::players(core) + 0x3C * army
 }
@@ -559,6 +564,7 @@ pub fn map_start(core: &mut Core) {
 /// prompt): the run goes on, is cleared, or is lost.
 pub const END_OF_GAME: u32 = 0x0803_832C;
 fn end_of_game(core: &mut Core) {
+    crate::co_skills::battle_end(core);
     if core.raw_read_8(ON, -1) != 1 || core.raw_read_8(PHASE, -1) != PLAYING {
         return;
     }
