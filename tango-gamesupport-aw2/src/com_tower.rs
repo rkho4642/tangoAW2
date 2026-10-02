@@ -108,6 +108,7 @@ fn firepower_done(core: &mut Core) {
         add += crate::co_roster::terrain_firepower(core, army, terrain);
     }
     add += crate::co_powers::extra_firepower(core, army);
+    add += crate::tag::firepower(core, army);
     let unit = core.raw_read_32(bu, -1);
     if (0x0200_0000..0x0204_0000).contains(&unit) {
         add += crate::co_skills::firepower(core, army, core.raw_read_8(unit, -1), core.raw_read_8(unit + 1, -1), terrain);

@@ -502,6 +502,12 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         // Battles on two fronts (crate::two_front): the DS Campaign's.
         crate::two_front::tick(core, ds && ds_features && mode.is_none());
         crate::two_front::menus(core, ds && ds_features && mode.is_none());
+        // CO tag pairs (crate::tag): the map menu's Tag and Change.
+        if ds {
+            crate::tag::tick(core, true);
+        } else {
+            crate::tag::put_back(core);
+        }
         crate::design5::sync(core);
 
         let prev = core.raw_read_16(PREV_KEYS, -1) as u32;

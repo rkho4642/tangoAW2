@@ -434,8 +434,9 @@ class Game:
 
     @property
     def MAP_MENU(self):
-        """The map menu's table, as the game reads it (tangoAW2's copy with
-        Front in a two-front battle: pool word 0x0802D49C)."""
+        """The map menu's table, as the game reads it now (tangoAW2's copy
+        with Front in a two-front battle, or with Tag and Change in a battle
+        with CO tag pairs: pool word 0x0802D49C)."""
         return self.e.u32(0x0802D49C)
 
     def live_label(self, table, i):

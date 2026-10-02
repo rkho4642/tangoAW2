@@ -1001,6 +1001,45 @@ pub fn set_look(core: &mut Core, m: &data::MissionInfo) {
     }
 }
 
+/// The computer's tag pairs in the mission being played ([`crate::tag`]):
+/// (army, CO, partner) for each army whose record names both and that the
+/// player does not pick for. A mission with a second front is left to its
+/// own flow: there the pairs form when the second front is won
+/// ([`crate::tag::form_pair`]). The player's pairs are picked on the CO
+/// screen ([`crate::tag::set_pending`]).
+pub fn tag_pairs(core: &Core) -> Vec<(u32, u8, u8)> {
+    if !active(core) || core.raw_read_8(MAP_ID, -1) != data::MAP_ID {
+        return Vec::new();
+    }
+    let Some(m) = campaign(core).and_then(|c| c.model.built.missions.get(core.raw_read_8(MISSION, -1) as usize)) else {
+        return Vec::new();
+    };
+    if m.second_front.is_some() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for k in 0..(m.armies as usize).min(4) {
+        let (a, b) = m.cos[k];
+        if a == 0x1C || b == 0 || b == 0x1C {
+            continue;
+        }
+        if let (Some(ca), Some(cb)) = (data::aw2_co(a), data::aw2_co(b)) {
+            if ca != cb {
+                out.push((k as u32 + 1, ca, cb));
+            }
+        }
+    }
+    out
+}
+
+/// The mission being played, if a DS session's battle is on.
+pub fn mission_info(core: &Core) -> Option<&'static data::MissionInfo> {
+    if !active(core) || core.raw_read_8(MAP_ID, -1) != data::MAP_ID {
+        return None;
+    }
+    campaign(core).and_then(|c| c.model.built.missions.get(core.raw_read_8(MISSION, -1) as usize))
+}
+
 /// Who plays each army (player +0x1B: 1 the player, 2 the computer): in
 /// Dual Strike the player has army 1 and every army whose CO the player
 /// picks (0x1C); the others (Jake's Trial's Rachel, every Black Hole army)

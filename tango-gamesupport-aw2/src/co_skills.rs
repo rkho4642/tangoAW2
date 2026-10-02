@@ -343,6 +343,8 @@ fn luck_done(core: &mut Core) {
 /// The power meter's charge (`sub_080440E0(army, amount)`): Star Power x1.1.
 const METER_CHARGE: u32 = 0x0804_40E0;
 fn meter_charge(core: &mut Core) {
+    // The partner of a tag pair gets half (crate::tag), before Star Power.
+    crate::tag::charged(core);
     if !any_on(core) {
         return;
     }
@@ -553,6 +555,29 @@ pub fn battle_start(core: &mut Core) {
         let ids = usable(core, co, which);
         set(core, a, &ids);
     }
+}
+
+/// The skills army `army` would have on with CO `co` in this battle, by the
+/// mode's rules as [`battle_start`] gives them (the DS Campaign: the
+/// player's armies, the Campaign set): a tag pair's partner
+/// ([`crate::tag`]).
+pub fn ids_for(core: &mut Core, army: u32, co: u8) -> Vec<u8> {
+    if !(1..=4).contains(&army) || core.raw_read_8(player(core, army) + 0x1B, -1) == 0 {
+        return Vec::new();
+    }
+    if crate::ds_campaign::active(core) {
+        if !human(core, army) {
+            return Vec::new();
+        }
+        crate::ds_campaign::skills_loaded(core);
+        return usable(core, co, Set::Campaign);
+    }
+    let Some((which, everyone)) = mode_set(core) else { return Vec::new() };
+    if !(everyone || human(core, army)) {
+        return Vec::new();
+    }
+    crate::ds_campaign::skills_loaded(core);
+    usable(core, co, which)
 }
 
 /// A battle ends (`EndOfGame_Finish`): a won battle gives each of the
