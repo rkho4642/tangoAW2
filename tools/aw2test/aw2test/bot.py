@@ -36,6 +36,7 @@ INVENTIONS = 0x02028360
 HQ, CITY, BASE, AIRPORT, PORT, LAB = 8, 6, 0xE, 0xA, 0xB, 0x14
 PROPERTIES = {HQ, CITY, BASE, AIRPORT, PORT, LAB}
 CAPTURERS = {1, 2}            # Infantry, Mech
+MTE_CRYSTALS = {(3, 3), (9, 5), (15, 3)}  # Means to an End's crystals (ds_campaign_data::MTE_CRYSTALS)
 AIR = {12, 13, 16, 17, 19, 20}
 NAVAL = {18, 21, 22, 23, 24, 25, 26}
 ANTI_AIR = {14, 15, 16}
@@ -64,7 +65,7 @@ def domain(t):
 
 class Bot:
     def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None, build=None,
-                 finish=None):
+                 finish=None, garrison=False):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
@@ -73,7 +74,8 @@ class Bot:
         the stronger); `rush`: the units that capture go for the enemy HQ
         only (a mission against the clock); `finish`: from that day on, as
         `rush` and on the attack (a mission against the clock: win it by
-        the HQ in the last days)."""
+        the HQ in the last days); `garrison`: a unit always stands on our HQ
+        (none can capture it from under it)."""
         self.d, self.g, self.e = d, d.g, d.e
         self.log = log or (lambda s: None)
         self.protect = set(protect)
@@ -83,6 +85,7 @@ class Bot:
         self.stance = stance
         self.rush = rush
         self.finish = finish
+        self.garrison = garrison
         # `build`: what a factory kind builds, best first (instead of BUILD).
         self.build_order = {int(k): v for k, v in (build or {}).items()}
         # `seed`: another player's style (how much danger each kind of unit
@@ -155,6 +158,11 @@ class Bot:
                 # its top-left cell and fired on at its bottom middle.
                 x, y = (b[0], b[1]) if kind == 4 else (b[0] + 1, b[1] + 2)
                 out.append({"x": x, "y": y, "hp": b[4], "kind": kind})
+        # Means to an End: a weak point whose crystal (in its column, north
+        # of it) stands is no target yet.
+        crystals = [s for s in out if s["kind"] == 4 and (s["x"], s["y"]) in MTE_CRYSTALS]
+        if crystals:
+            out = [s for s in out if not (s["kind"] == 3 and any(c["x"] == s["x"] for c in crystals))]
         return out
 
     def range_cells(self):
@@ -380,6 +388,9 @@ class Bot:
         # properties most of all), and a kill ends both.
         worth = self.cost(f["type"]) + (4000 if self.capturing(f) else 0)
         value = dealt / 100 * worth + 15 * dealt + (0.5 * worth + 1500 if kill else 0)
+        if self.late():
+            # The last days of a mission against the clock: every hit counts.
+            return value
         loss = 0
         hp = u["hp"]
         if not indirect and not kill and self.unit_info(f["type"])["min"] <= 1:
@@ -485,6 +496,18 @@ class Bot:
                 best = min(free, key=lambda c: (self.threat(u, c, armed_foes), near(c), cells[c]))
                 return ("wait", best, None)
             return ("stay", here, None)
+        # A garrison: whoever stands on our HQ stays (firing from there if
+        # it can); with nobody on it, the first unit that can get onto it.
+        if self.garrison and u["type"] not in CAPTURERS | self.protect:
+            t = self.team(army)
+            hqs = [p for p, k, o in self.properties() if k == HQ and o and self.team(o) == t]
+            mine = {(m["x"], m["y"]) for m in self.friends(army) if m["id"] != u["id"]}
+            if here in hqs:
+                free = [here]
+            elif not any(h in mine for h in hqs):
+                onto = [c for c in hqs if c in free]
+                if onto:
+                    return ("wait", onto[0], None)
         # Our HQ with an enemy that captures in reach of it: whoever stands
         # on it stays (firing from there if it can), else a unit that can
         # get onto it does (a unit on it cannot be captured from under it).
