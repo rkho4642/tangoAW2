@@ -42,8 +42,11 @@ const RULE_FOG: u32 = 0x0203_FFA7;
 /// saved with the forced fog, so without it a game continued in rain
 /// would keep fog on for good once the rain stops.
 pub fn rule_fog(core: &Core) -> u8 {
-    core.raw_read_8(RULE_FOG, -1)
+    core.raw_read_8(RULE_FOG, -1) & !IN_BATTLE
 }
+
+/// [`RULE_FOG`]'s mark: set in the battle it was made in.
+const IN_BATTLE: u8 = 0x80;
 
 pub fn set_rule_fog(core: &mut Core, v: u8) {
     core.raw_write_8(RULE_FOG, -1, v);
@@ -59,11 +62,24 @@ pub fn tick(core: &mut Core, on: bool) {
     crate::sandstorm::tick(core, on);
     crate::wasteland::tick(core, on);
     crate::com_tower::tick(core, on);
-    let forced = core.raw_read_8(RULE_FOG, -1);
+    let raw = core.raw_read_8(RULE_FOG, -1);
+    let forced = raw & !IN_BATTLE;
+    // A battle left with the memory set drops it (it would else put that
+    // battle's fog choice over the next one's); one restored by a Continue
+    // is kept until its battle is on ([`IN_BATTLE`] not yet set).
+    if !crate::ds_campaign::in_battle(core) {
+        if raw & IN_BATTLE != 0 {
+            core.raw_write_8(RULE_FOG, -1, 0);
+        }
+        return;
+    }
+    if forced != 0 && raw & IN_BATTLE == 0 {
+        core.raw_write_8(RULE_FOG, -1, forced | IN_BATTLE);
+    }
     if on && core.raw_read_8(NEXT_WEATHER, -1) == RAIN {
         if forced == 0 {
             let fog = core.raw_read_8(FOG, -1);
-            core.raw_write_8(RULE_FOG, -1, 1 + fog);
+            core.raw_write_8(RULE_FOG, -1, (1 + fog) | IN_BATTLE);
         }
         core.raw_write_8(FOG, -1, 1);
     } else if forced != 0 {

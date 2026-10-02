@@ -347,3 +347,34 @@ def save_versus_suspend_in_rain_keeps_fog_rule(ctx):
         seen.append((e.u8(WEATHER_NOW), e.u8(NEXT_WEATHER), e.u8(FOG)))
     ctx.log(f"(weather, next, fog) at army 1's next turns: {seen}")
     ctx.eq(seen[-1], (0, 0, 0), "the rain over: clear, and no fog (the Rules' choice)")
+
+
+RULE_FOG = 0x0203FFA7  # ds_weather::RULE_FOG
+
+
+@test(modes=("ds",))
+def save_rain_fog_not_carried_to_the_next_battle(ctx):
+    """The rain's fog rule (crate::ds_weather) is forgotten out of a
+    battle: a battle left with rain coming and no fog of its own (gPlaySt
+    keeps "next: rain" through the menus; set here as a test aid in the
+    menus) no longer turns off the fog of the next battle set up in the
+    same boot."""
+    m = ctx.map()
+    m.unit(1, "tank", 2, 2).unit(2, "tank", 27, 17)
+    save = os.path.join(ctx.out, "map.sav")
+    m.write(paths.base_save(), save)
+    e = Emu(save=save, ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    g.boot_to_teams()
+    e.w8(FOG, 0)
+    e.w8(NEXT_WEATHER, 2)
+    e.wait(4)
+    ctx.eq(e.u8(RULE_FOG), 0, "no fog rule kept in the menus")
+    g.set_teams(["andy", "andy"], {1})
+    g.teams_to_rules()
+    g.set_rules(fog=True, weather="clear", power=True, visuals="off", capt=None)
+    g.start_battle()
+    g.wait_for_input()
+    e.wait(30)
+    ctx.eq(e.u8(FOG), 1, "the next battle's own fog")
