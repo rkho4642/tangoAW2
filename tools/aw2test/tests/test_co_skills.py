@@ -10,8 +10,10 @@ import os
 from aw2test import damage, paths
 from aw2test import dscampaign as dc
 from aw2test.emu import Emu
-from aw2test.game import Game
+from aw2test.game import Game, NavError
 from aw2test.harness import test
+from aw2test import saves
+from aw2test import survival as sv
 
 ACTIVE = 0x0203F7E0  # crate::co_skills::ACTIVE: 6 bytes per army
 FIRST = 0x20
@@ -308,3 +310,83 @@ def skills_star_power(ctx):
     g = ctx.start(m, ["andy", "andy"])
     set_skills(ctx, g, 1, [0x48])
     ctx.attack(g, (10, 10), (10, 10), (11, 10))
+
+
+P_YIELD = 0x31
+P_SCORE = 0x38
+GAME_MODE = 0x03003FC1
+
+
+def war_room_battle(e, g):
+    """(on Select Mode) War Room -> its first map, the CO screen, the battle."""
+    saves.wheel_to(e, saves.WAR_ROOM)
+    e.press("A", 8)
+    e.wait(60)
+    saves.box_row(e, 1)
+    e.press("A", 8)
+    if not e.wait_until(lambda: sv.running(e, sv.SELECT_MAP_PROC), 600, step=10):
+        raise NavError("the War Room's SELECT MAP did not open")
+    e.wait(90)
+    e.press("A", 8)
+    for _ in range(80):
+        if e.u32(0x03000000) == 0x08022049:
+            break
+        if sv.running(e, sv.CO_SCREEN_PROC):
+            e.wait(60)
+            e.press("A", 8)
+            e.wait(100)
+            e.press("A", 8)
+        e.wait(20)
+    if not e.wait_until(lambda: e.u32(0x03000000) == 0x08022049, 1500, step=20):
+        raise NavError("the battle did not start")
+    g._units_base = g._players_base = None
+    g.wait_for_input()
+
+
+@test(modes=("ds",))
+def skills_war_room_exp(ctx):
+    """The War Room: the player's CO has its War Room set on (rank 3: three
+    of its four open skills), the computer none; a won map gives the CO EXP:
+    its score x2 with skills on (x2.5 without, as Dual Strike's War Room);
+    saved with the DS Campaign's slot after the War Room's save. (The set,
+    the EXP for the rank and the computer's yield are test aids.)"""
+    e = Emu(save=paths.base_save(), ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    saves.to_select_mode(e)
+    war_room_battle(e, g)
+    ctx.log(f"game mode {e.u8(GAME_MODE)}")
+    p1 = e.u32(PLAYERS) + 0x3C
+    co = e.u8(p1 + 0x1D)
+    ctx.eq(e.u32(DATA), 0x314C4B53, "the skill data in RAM")
+    ctx.eq(active(e, 1), [], "rank 0: no skills")
+    e.close()
+    # Again, with rank 3 and a War Room set for every CO.
+    e = Emu(save=paths.base_save(), ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    saves.to_select_mode(e)
+    e.w32(DATA, 0x314C4B53)
+    for c in CO_SLOTS:
+        a = DATA + 4 + CO_LEN * co_slot(c)
+        e.w32(a, 3000)
+        e.write(a + 12, bytes([0x20, 0x25, 0x27, 0x47]))  # the War Room set
+    war_room_battle(e, g)
+    co = e.u8(e.u32(PLAYERS) + 0x3C + 0x1D)
+    ctx.eq(active(e, 1), [0x20, 0x25, 0x27], "rank 3: Bruiser, Slam Guard, Snipe Guard on (three slots)")
+    ctx.eq(active(e, 2), [], "the computer: none")
+    for a in range(2, 5):
+        if e.u8(e.u32(PLAYERS) + 0x3C * a + 0x1B):
+            e.w8(e.u32(PLAYERS) + 0x3C * a + P_YIELD, 1)
+    g.open_map_menu()
+    g.choose("End", g.MAP_MENU)
+    if not sv.to_select_map(e):
+        raise NavError("SELECT MAP did not come back")
+    score = e.u16(e.u32(PLAYERS) + 0x3C + P_SCORE)
+    ctx.check(score > 0, f"the map's score {score}")
+    ctx.eq(co_exp(e, co), 3000 + score * 2, "EXP: + the score x2 (skills on)")
+    img = saves.flash(e, os.path.join(ctx.out, "after"))
+    rec = img.slot(15)
+    ctx.require(rec is not None, "the DS Campaign's slot written")
+    off = 0x20 + 8 * 32 + 4 + CO_LEN * co_slot(co)
+    ctx.eq(int.from_bytes(rec[off:off + 4], "little"), 3000 + score * 2, "the EXP in Flash")

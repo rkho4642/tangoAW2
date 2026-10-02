@@ -66,7 +66,7 @@ def domain(t):
 
 class Bot:
     def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None, build=None,
-                 finish=None, garrison=False, ooze=False, hazards=(), seams=(), nearest=False):
+                 finish=None, garrison=False, ooze=False, hazards=(), seams=(), nearest=False, hunt=False):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
@@ -101,6 +101,9 @@ class Bot:
         # `nearest`: a unit that captures makes for the properties nearest
         # it (a race for properties), not the map's first ones.
         self.nearest = nearest
+        # `hunt`: the enemy's units that capture are worth hunting down (a
+        # race for properties).
+        self.hunt = hunt
         # `build`: what a factory kind builds, best first (instead of BUILD).
         self.build_order = {int(k): v for k, v in (build or {}).items()}
         # `seed`: another player's style (how much danger each kind of unit
@@ -406,6 +409,8 @@ class Bot:
         # Its worth, what it would do next turn (a unit taking one of our
         # properties most of all), and a kill ends both.
         worth = self.cost(f["type"]) + (4000 if self.capturing(f) else 0)
+        if self.hunt and f["type"] in CAPTURERS:
+            worth += 8000
         if self.ooze:
             if f["type"] == OOZIUM:
                 worth = max(worth, 12000)

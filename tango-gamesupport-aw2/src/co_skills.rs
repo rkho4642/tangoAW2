@@ -458,7 +458,7 @@ fn shot_hit(core: &mut Core) {
 }
 
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
-    vec![
+    let mut t: Vec<(u32, Box<dyn Fn(&mut Core)>)> = vec![
         (MOVE_DONE, Box::new(move_done)),
         (VISION_DONE, Box::new(vision_done)),
         (CAPTURE_POINTS, Box::new(capture_points)),
@@ -470,8 +470,11 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (SPECIAL_DONE, Box::new(special_done)),
         (MOVE_COSTS_DONE, Box::new(move_costs_done)),
         (SHOT_HIT, Box::new(shot_hit)),
-        (PROFILE_WRITTEN, Box::new(profile_written)),
-    ]
+    ];
+    for at in PROFILE_WRITTEN {
+        t.push((at, Box::new(move |core: &mut Core| profile_written(core, at))));
+    }
+    t
 }
 
 // --- EXP (Dual Strike's `0x020EA240`, `0x020E9C24`) ------------------------------
@@ -566,6 +569,12 @@ pub fn battle_end(core: &mut Core) {
     if !(survival || mode == CAMPAIGN || mode == WAR_ROOM) {
         return;
     }
+    crate::ds_campaign::skills_loaded(core);
+    // AW2's campaign plays as AW2's own (and saves nothing more) until the
+    // player has set skills for a CO (crate::co_skills::any_set).
+    if mode == CAMPAIGN && !survival && !any_set(core) {
+        return;
+    }
     let p1 = player(core, 1);
     if core.raw_read_16(p1 + P_DEFEATED, -1) != 0 || core.raw_read_8(p1 + P_YIELD, -1) != 0 {
         return;
@@ -593,13 +602,15 @@ pub fn battle_end(core: &mut Core) {
     }
 }
 
-/// AW2's profile has just been written (`sub_08016E14`, after its
-/// `sub_0801A7D8(0, ...)`): if the skill data changed, it is written to
-/// the DS Campaign's slot too (the progress and records with it), by the
-/// same writer, which returns here (then with nothing left to write).
-pub const PROFILE_WRITTEN: u32 = 0x0801_6E2C;
+/// AW2's profile has just been written (`sub_0801A7D8(0, ...)` returned:
+/// in `sub_08016E14`, and in the two save routines of `0x0801AC3C` and
+/// `0x0801AE2A`): if the skill data changed, it is written to the DS
+/// Campaign's slot too (the progress and records with it), by the same
+/// writer, which returns to the same place (then with nothing left to
+/// write).
+pub const PROFILE_WRITTEN: [u32; 3] = [0x0801_6E2C, 0x0801_AC40, 0x0801_AE2E];
 const SLOT_WRITER: u32 = 0x0801_A7D9;
-pub fn profile_written(core: &mut Core) {
+pub fn profile_written(core: &mut Core, back: u32) {
     if !crate::ds_weather::is_on(core) || core.raw_read_8(DIRTY, -1) == 0 || !data_valid(core) {
         return;
     }
@@ -609,8 +620,16 @@ pub fn profile_written(core: &mut Core) {
     cpu.set_gpr(0, slot as i32);
     cpu.set_gpr(1, buffer as i32);
     cpu.set_gpr(2, len as i32);
-    cpu.set_gpr(14, (PROFILE_WRITTEN | 1) as i32);
+    cpu.set_gpr(14, (back | 1) as i32);
     cpu.set_thumb_pc(SLOT_WRITER & !1);
+}
+
+/// Some CO has a set of skills (the player has taken up skills).
+pub fn any_set(core: &Core) -> bool {
+    (0..COS).any(|k| {
+        let a = DATA + 4 + CO_LEN * k + 4;
+        (0..CO_LEN - 4).any(|o| core.raw_read_8(a + o, -1) != 0)
+    })
 }
 
 /// The DS Campaign's save wrote the data.
