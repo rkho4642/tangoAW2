@@ -19,14 +19,13 @@ TEAMS = ram.TEAMS
 TEAMS_CURSOR = TEAMS + 0x32
 
 
-def tag_battle(ctx, cos, partners, humans=(1,), units=(), fog=False, rule=True):
-    """A Versus battle on the harness's plains with the CO Tag rule and the
-    partners set in RAM (the Teams screen's picks are tag_teams_screen's)."""
+def tag_battle(ctx, cos, partners, humans=(1,), units=(), fog=False):
+    """A Versus battle on the harness's plains with the partners set in RAM
+    (None: single; the Teams screen's picks are tag_teams_screen's)."""
     m = ctx.map()
     for u in units:
         m.unit(*u)
     g = ctx.boot_teams(m)
-    tag.set_rule(g.e, rule)
     for a, p in enumerate(partners, 1):
         tag.set_teams_partner(g.e, a, p)
     g.set_teams(cos, set(humans))
@@ -40,7 +39,7 @@ def tag_battle(ctx, cos, partners, humans=(1,), units=(), fog=False, rule=True):
 def teams_pick(g, cos, downs, humans=(1,)):
     """On the Teams screen through the pad only (as netplay plays it): the
     COs, then each army's partner `downs[a]` DOWNs from None (START,
-    DOWN.., START). The rule is the Rules screen's (Game.set_extra_rules)."""
+    DOWN.., START): an army with a partner is a pair."""
     e = g.e
     g.set_teams(cos, set(humans))
     for _ in range(2 * (len(cos) - 1)):
@@ -83,31 +82,34 @@ def fill(g, army, active=True, partner=True):
 
 
 @test(modes=("ds",))
-def tag_versus_rule_off_by_default(ctx):
-    """Off at boot: partners picked on the Teams screen make no pair, the map
-    menu is AW2's (no Change, no Tag); on a fresh boot the Rules screen's
-    Skills and CO Tag rows read OFF."""
-    g = tag_battle(ctx, ["andy", "olaf"], ["max", "sami"], rule=False)
+def tag_versus_single_by_default(ctx):
+    """As Dual Strike's Versus: no rule; an army is single unless a partner
+    is picked for it on Teams (the default None): no pair, the map menu
+    AW2's (no Change, no Tag); every army's partner slot shows None."""
+    g = tag_battle(ctx, ["andy", "olaf"], [None, None])
     e = g.e
-    ctx.eq(e.u8(tag.RULE), 0, "the CO Tag rule is off")
     ctx.eq(tag.partner(e, 1), None, "army 1 has no partner")
     ctx.eq(tag.partner(e, 2), None, "army 2 has no partner")
     ctx.eq(e.u32(tag.MENU_POOL), 0x0849AAC0, "the map menu is AW2's own table")
     names = g.map_menu_names()
     ctx.check("Change" not in names and "Tag" not in names, f"no Change or Tag on the map menu ({names})")
-    # A fresh boot: the rule is off on the Teams screen too.
     m = ctx.map()
     g2 = ctx.boot_teams(m)
-    ctx.eq(g2.e.u8(tag.RULE), 0, "off on a fresh Teams screen")
+    g2.set_teams(["andy", "olaf"], {1})
+    g2.e.wait(10)
+    ctx.eq([g2.e.u8(tag.TEAMS_PARTNER + a) for a in range(2)], [tag.NONE, tag.NONE], "None on a fresh Teams screen")
+    boxes = sorted(s[2] & 0x3FF for s in oam(g2.e) if (s[2] & 0x3FF) in (0x100, 0x110))
+    ctx.eq(boxes, [0x100, 0x110], "each army's partner slot shown (None)")
+    ctx.shot(g2, "teams_none")
     ctx.eq(g2.e.u8(g2.SKILLS_RULE), 0, "Skills off on a fresh Teams screen")
 
 
 @test(modes=("ds",))
 def tag_rules_rows(ctx):
-    """The Rules screen's two rows (crate::versus_rules): RIGHT from Visuals
-    reaches Skills, then CO Tag, then wraps to Fog; LEFT from Fog comes back
-    to CO Tag; UP turns a row ON and DOWN OFF; both start OFF; the game's
-    own rules are unchanged by it."""
+    """The Rules screen's Skills row (crate::versus_rules): RIGHT from
+    Visuals reaches it, then wraps to Fog; LEFT from Fog comes back to it;
+    UP turns it ON and DOWN OFF; it starts OFF; the game's own rules are
+    unchanged by it. No CO Tag row (tag pairs need no rule)."""
     m = ctx.map()
     g = ctx.boot_teams(m)
     e = g.e
@@ -128,40 +130,29 @@ def tag_rules_rows(ctx):
     e.press("UP", 6)
     e.wait(20)
     ctx.eq(e.u8(g.SKILLS_RULE), 1, "UP: Skills ON")
-    e.press("RIGHT", 6)
-    e.wait(20)
-    ctx.eq(e.u8(g.VRULE_CURSOR), 2, "RIGHT: CO Tag")
-    ctx.eq(e.u8(tag.RULE), 0, "CO Tag OFF by default")
-    e.press("UP", 6)
-    e.wait(20)
-    ctx.eq(e.u8(tag.RULE), 1, "UP: CO Tag ON")
-    ctx.shot(g, "rules_rows_on")
+    ctx.shot(g, "rules_skills_on")
     e.press("DOWN", 6)
     e.wait(20)
-    ctx.eq(e.u8(tag.RULE), 0, "DOWN: CO Tag OFF")
+    ctx.eq(e.u8(g.SKILLS_RULE), 0, "DOWN: Skills OFF")
     e.press("UP", 6)
     e.wait(20)
     e.press("RIGHT", 6)
     e.wait(20)
-    ctx.eq((e.u8(g.VRULE_CURSOR), e.u8(cursor)), (0, 0), "RIGHT on CO Tag: Fog")
+    ctx.eq((e.u8(g.VRULE_CURSOR), e.u8(cursor)), (0, 0), "RIGHT on Skills: Fog")
     e.press("LEFT", 6)
     e.wait(20)
-    ctx.eq(e.u8(g.VRULE_CURSOR), 2, "LEFT on Fog: CO Tag")
-    e.press("LEFT", 6)
-    e.wait(20)
-    ctx.eq(e.u8(g.VRULE_CURSOR), 1, "LEFT: Skills")
+    ctx.eq(e.u8(g.VRULE_CURSOR), 1, "LEFT on Fog: Skills")
     e.press("LEFT", 6)
     e.wait(20)
     ctx.eq((e.u8(g.VRULE_CURSOR), e.u8(cursor)), (0, 6), "LEFT: Visuals")
     ctx.eq(e.read(rules, 8), game_rules, "the game's own rules unchanged")
-    ctx.eq((e.u8(g.SKILLS_RULE), e.u8(tag.RULE)), (1, 1), "both rules ON")
+    ctx.eq(e.u8(g.SKILLS_RULE), 1, "Skills ON")
 
 
 @test(modes=("ds",))
 def tag_teams_screen(ctx):
-    """The partners on the Teams screen (START, then UP/DOWN), the CO Tag
-    row on the Rules screen, the battle starting with them; human and
-    computer armies alike."""
+    """The partners on the Teams screen (START, then UP/DOWN), the battle
+    starting with them as pairs; human and computer armies alike."""
     m = ctx.map()
     g = ctx.boot_teams(m)
     e = g.e
@@ -206,8 +197,6 @@ def tag_teams_screen(ctx):
     ctx.eq(boxes.get(0x100, (0, 0))[1], 36 + 57, "army 1's partner box under it")
     g.teams_to_rules()
     g.set_rules()
-    g.set_extra_rules(tag=True)
-    ctx.eq(e.u8(tag.RULE), 1, "the Rules screen's CO Tag row: ON")
     g.start_battle()
     g.wait_for_input()
     ctx.eq(g.player(1)["co"], main1, "army 1's CO")
@@ -392,40 +381,26 @@ def end_and_watch(ctx, g, army=2):
 
 @test(modes=("ds",))
 def tag_cpu_versus_partner(ctx):
-    """Versus with CO Tag on: a computer army left without a partner on
-    Teams gets the CO of the Teams list that pairs best with its CO (the
-    highest Dual Strike compatibility, the list's first on a tie); with
-    the rule off it gets none."""
+    """Versus, as Dual Strike's: the player gives the computer's army a
+    partner on Teams (START on its CO stop, DOWN): it plays as a pair; left
+    at None it plays single."""
     m = ctx.map()
     g = ctx.boot_teams(m)
     e = g.e
-    g.set_teams(["andy", "max"], {1})
-    lst = g.teams()["co_list"]
-    ds = romlib.DualStrike()
-    max_ = romlib.co_id("max")
-    best = None
-    for c in lst:
-        if c == max_:
-            continue
-        v = tag.compatibility(ds, max_, c)
-        if best is None or v > best[1]:
-            best = (c, v)
-    ctx.log(f"Max's best partner in the list: {best}")
+    teams_pick(g, ["andy", "max"], [0, 2])
+    want = e.u8(tag.TEAMS_PARTNER + 1)
+    ctx.check(want != tag.NONE, "the computer's partner picked on Teams")
+    ctx.eq(e.u8(tag.TEAMS_PARTNER), tag.NONE, "the human's left at None")
+    ctx.shot(g, "teams_cpu_partner")
     g.teams_to_rules()
     g.set_rules()
-    g.set_extra_rules(tag=True)
     g.start_battle()
     g.wait_for_input()
-    ctx.eq(tag.partner(e, 1), None, "the human army picked no partner: none")
-    ctx.eq((tag.partner(e, 2) or {}).get("co"), best[0], "the computer's partner: the best pair with Max")
-    g.open_map_menu()
-    g.choose("End", g.MAP_MENU)
-    ctx.require(e.wait_until(lambda: g.current_army() == 2, 900, step=8), "the computer's turn")
-    e.wait(90)
-    ctx.shot(g, "cpu_pair_panel")
-    g2 = tag_battle(ctx, ["andy", "max"], [None, None], rule=False)
-    ctx.eq(tag.partner(g2.e, 2), None, "rule off: the computer has no partner")
-    ctx.eq(g2.e.u32(tag.MENU_POOL), 0x0849AAC0, "rule off: AW2's map menu")
+    ctx.eq(tag.partner(e, 1), None, "the human army: single")
+    ctx.eq((tag.partner(e, 2) or {}).get("co"), want, "the computer's army: the pair picked for it")
+    g2 = tag_battle(ctx, ["andy", "max"], [None, None])
+    ctx.eq(tag.partner(g2.e, 2), None, "None: the computer plays single")
+    ctx.eq(g2.e.u32(tag.MENU_POOL), 0x0849AAC0, "no pairs: AW2's map menu")
 
 
 @test(modes=("ds",))
@@ -512,7 +487,7 @@ def tag_save_versus(ctx):
     saves.compare_snapshots(ctx, snap, saves.snapshot(g2), "continued")
     have = (tag.partner(e2, 1), tag.partner(e2, 2), g2.player(1)["co"], g2.player(1)["co_mode"])
     ctx.eq(have, want, "both pairs, meters, power counts and the phase kept")
-    ctx.eq((e2.u8(tag.RULE), e2.u8(g2.SKILLS_RULE)), (e.u8(tag.RULE), e.u8(g.SKILLS_RULE)), "the Rules screen's rows kept")
+    ctx.eq(e2.u8(g2.SKILLS_RULE), e.u8(g.SKILLS_RULE), "the Rules screen's Skills row kept")
     names = g2.open_map_menu()["names"]
     ctx.eq(names, ["CO", "Intel", "Options", "Save", "Change"], "still the first half")
     g2.choose("Change", g2.MAP_MENU)
@@ -533,9 +508,9 @@ def tag_netplay(ctx):
     teams_pick(g, ["max", "olaf"], [1, 3])
     g.teams_to_rules()
     g.set_rules()
-    g.set_extra_rules(skills=True, tag=True)
-    ctx.check(e.u8(tag.RULE) == 1 and e.u8(g.SKILLS_RULE) == 1 and e.u8(tag.TEAMS_PARTNER) != tag.NONE,
-              "rules and partners picked with the pad")
+    g.set_extra_rules(skills=True)
+    ctx.check(e.u8(g.SKILLS_RULE) == 1 and e.u8(tag.TEAMS_PARTNER) != tag.NONE,
+              "the rule and partners picked with the pad")
     g.start_battle()
     g.wait_for_input()
     ctx.require(tag.partner(e, 1) is not None, "army 1 has a partner")
@@ -556,12 +531,10 @@ def tag_netplay(ctx):
     g.wait_for_input()
     want = e.read(tag.STATE, 0x40)
     players = e.read(g.players_base + 0x3C, 0x3C * 2)
-    rules = (e.u8(g.SKILLS_RULE), e.u8(tag.RULE))
     identical, values, text = ctx.netplay_replay(g, [(tag.STATE, 0x40), (g.players_base + 0x3C, 0x3C * 2),
-                                                     (g.SKILLS_RULE, 1), (tag.RULE, 1)])
+                                                     (g.SKILLS_RULE, 1), (tag.TEAMS_PARTNER, 4)])
     ctx.check(identical, "both peers identical")
-    ctx.eq((values.get(g.SKILLS_RULE), values.get(tag.RULE)), (bytes([rules[0]]), bytes([rules[1]])),
-           "both rules ON on the peers")
+    ctx.eq(values.get(g.SKILLS_RULE), bytes([1]), "the Skills rule ON on the peers")
     ctx.eq(values.get(tag.STATE), want, "the pairs as played")
     ctx.eq(values.get(g.players_base + 0x3C), players, "the players as played")
 

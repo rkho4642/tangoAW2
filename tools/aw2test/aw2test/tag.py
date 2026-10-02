@@ -11,7 +11,6 @@ from . import rom as romlib
 STATE = 0x0203F400
 REC = 0x20
 P_CO, P_PHASE, P_USES, P_ANNOUNCE, P_CHARGE, P_SKILLS = 0x00, 0x01, 0x02, 0x03, 0x04, 0x08
-RULE = STATE + 0xA0
 TEAMS_PARTNER = STATE + 0xA4
 PANEL = STATE + 0xAC
 MAGIC_AT = STATE + 0xFC
@@ -35,8 +34,6 @@ def partner(e, army):
             "charge": struct.unpack_from("<I", b, P_CHARGE)[0], "skills": bytes(b[P_SKILLS:P_SKILLS + 6])}
 
 
-def set_rule(e, on):
-    e.w8(RULE, 1 if on else 0)
 
 
 def set_teams_partner(e, army, co):

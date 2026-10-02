@@ -1790,17 +1790,19 @@ stay out.
 - **On screen** (`tag_ui.rs`): under AW2's CO panel a second strip in the
   panel's own style (its tiles and army colours) with the partner's HUD
   face and its meter drawn as AW2 draws the active CO's; on Versus' Teams
-  screen a partner box (the CO's portrait at 30 pixels) under each CO, the
-  columns moved up 16 pixels while one is shown.
-- **Versus**: the Rules screen's **CO Tag** row (default OFF, beside
-  **Skills**; `versus_rules.rs`). The partners are picked on Teams: START
-  on an army's CO stop, UP/DOWN through the COs and None, START again
-  ("Choose a partner CO."). Humans and the computer alike; a computer
-  army left at None gets the CO of the Teams list that pairs best with its
-  CO (the highest compatibility, the list's first on a tie: the list is
-  kept at state +0xD0 while Teams is up; Dual Strike's Versus leaves the
-  computer's partner to the player). Five-army games have no pairs. In netplay both seats' buttons reach both screens, so
-  both peers start with the same pairs.
+  screen a partner slot (the CO's portrait at 30 pixels, or None) under
+  each CO, the columns moved up 16 pixels.
+- **Versus**, as Dual Strike's: there is no tag rule or tag screen. Dual
+  Strike's Versus CO screen (Normal Battle: after the map list) gives every
+  army a second CO slot, its COs and a blank; an army with a second CO is a
+  tag team, one with the blank plays single (checked in melonDS). Here every
+  army's partner slot is under its box on Teams, None by default: START on
+  an army's CO stop, UP/DOWN through the COs and None, START again ("Choose
+  a partner CO."). Humans and the computer alike: the player picks the
+  computer's partner, as in Dual Strike, and the computer then plays the
+  pair (Change, both powers, the Tag Power). Five-army games have no pairs.
+  In netplay both seats' buttons reach the Teams screen, so both peers
+  start with the same pairs.
 - **The DS Campaign**: a mission's record names each army's two COs
   (+0x56; `0x1C` the player picks, `0x80 | id` a clone): the computer's
   pairs are formed at map start (`ds_campaign::tag_pairs`); where the
@@ -1814,9 +1816,9 @@ stay out.
   `tag::set_pending(core, army, co, partner)` asks for a pair at the next
   map start. All write RAM only, and only with the pack.
 - **Saves**: a suspended game (Versus, the campaigns) keeps the pairs, the
-  phase, meters and power counts and the Versus rules past AW2's block
-  (`suspend.rs`: "TAG2" at +0xE28, a hash of the block, the two rules, 8
-  bytes an army; the write is made longer only then).
+  phase, meters and power counts and the Versus rule Skills past AW2's
+  block (`suspend.rs`: "TAG2" at +0xE28, a hash of the block, the rule and
+  three spare bytes, 8 bytes an army; the write is made longer only then).
 - **Without the pack** nothing of it: the menu, the Rules and Teams
   screens are AW2's and none of this RAM is written (battery and
   `compat_aw2_byte_identical`).
@@ -1824,11 +1826,12 @@ stay out.
   pair's name) and its CO-swap animation: Change and the Tag Power use
   AW2's own screens; special pairs' victory lines; tag skills. Market
   Crash and other meter drains reach only the active CO.
-- **Tests:** `tools/aw2test/tests/test_tag.py`: the rule's rows and
-  defaults, Teams picks and the boxes, Change, meters, the Tag Power against
-  the damage calculator (both halves, Max and Andy's 110), the computer,
-  a Versus suspend, netplay replay, the DS Campaign's pairs, pack off;
-  the computer: its own partner with the rule on (none with it off),
+- **Tests:** `tools/aw2test/tests/test_tag.py`: single by default, the
+  Rules screen's Skills row, Teams picks and the boxes, Change, meters, the
+  Tag Power against the damage calculator (both halves, Max and Andy's
+  110), the computer, a Versus suspend, netplay replay, the DS Campaign's
+  pairs, pack off; the computer: a pair when the player gives it a partner
+  (single with None),
   Change to the CO further from its Super Power, the new CO's CO Power the
   turn after, the Tag Power in Versus and in the DS Campaign's Tag Battle.
 
@@ -1849,8 +1852,8 @@ slot is loaded over the buffer). Before this, a game continued after
 Ex Machina had every marked unit free, and one saved while rain was coming
 kept fog on for good once the rain stopped. The sandstorm and the map's
 look are in the weather block (`0x03004490` +3), which AW2 saves itself;
-Com Towers are counted on the map. Tag pairs and the Versus rules Skills
-and CO Tag ride after the block (+0xE28, "TAG2", see CO tag pairs).
+Com Towers are counted on the map. Tag pairs and the Versus rule Skills
+ride after the block (+0xE28, "TAG2", see CO tag pairs).
 Without the pack nothing is written.
 Tests: `save_versus_suspend_keeps_ex_machina_stun`,
 `save_versus_suspend_in_rain_keeps_fog_rule`.

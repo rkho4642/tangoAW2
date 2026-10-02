@@ -65,15 +65,16 @@ const CURRENT_ARMY: u32 = 0x0300_33EC;
 const GAME_MODE: u32 = 0x0300_3FC1;
 const VERSUS: u8 = 3;
 
-/// The Versus rules Skills and CO Tag ([`crate::versus_rules`]) and the CO
-/// tag pairs ([`crate::tag`]) ride past the 0xE28-byte block: while a rule
-/// is on or a battle has pairs the block is written longer (the staging
+/// The Versus rule Skills ([`crate::versus_rules`]) and the CO tag pairs
+/// ([`crate::tag`]) ride past the 0xE28-byte block: while the rule is on or
+/// a battle has pairs the block is written longer (the staging
 /// buffer is 0x2000 bytes; AW2's reader takes the slot's whole length back).
 /// A mark, a hash of AW2's part of the block (+0..+0xDAC, so a stale copy
-/// from another save is never taken), the two rules, then the pairs.
+/// from another save is never taken), the rule (and three spare bytes),
+/// then the pairs.
 const TAG_AT: u32 = BLOCK + 0xE28;
 const TAG_MARK: u32 = 0x3247_4154; // "TAG2"
-const RULES: [u32; 2] = [crate::co_skills::VERSUS_RULE, crate::tag::RULE];
+const RULES: [u32; 1] = [crate::co_skills::VERSUS_RULE];
 pub const TAG_LEN: u32 = 8 + 4 + crate::tag::SAVED_LEN as u32;
 
 fn block_hash(core: &Core) -> u32 {
@@ -92,11 +93,11 @@ fn captured(core: &mut Core) {
     }
     let rules = RULES.map(|r| core.raw_read_8(r, -1) & 1);
     let versus = core.raw_read_8(GAME_MODE, -1) == VERSUS;
-    if crate::tag::any(core) || (versus && rules != [0, 0]) {
+    if crate::tag::any(core) || (versus && rules != [0]) {
         let mut t = Vec::with_capacity(TAG_LEN as usize);
         t.extend_from_slice(&TAG_MARK.to_le_bytes());
         t.extend_from_slice(&block_hash(core).to_le_bytes());
-        t.extend_from_slice(&[rules[0], rules[1], 0, 0]);
+        t.extend_from_slice(&[rules[0], 0, 0, 0]);
         t.extend_from_slice(&crate::tag::saved(core));
         core.raw_write_range(TAG_AT, -1, &t);
     }

@@ -1,15 +1,17 @@
 //! CO tag pairs on screen ([`crate::tag`]), with the Dual Strike pack:
 //!
-//! - **Versus' Teams screen**: under each army's box its partner's box
-//!   (32x28: the CO's Teams portrait drawn at 30 pixels in a dark line), or
-//!   a "None" box while it is picked; with any partner shown the columns
-//!   (frames, faces, emblems, labels, arrows) go up 16 pixels to make room.
+//! - **Versus' Teams screen**: as Dual Strike's CO screen, every army has a
+//!   partner slot: under its box the partner's box (32x28: the CO's Teams
+//!   portrait drawn at 30 pixels in a dark line), or "None" (the default:
+//!   the army plays single); the columns (frames, faces, emblems, labels,
+//!   arrows) go up 16 pixels to make room.
 //!   START on an army's CO stop switches the D-pad between its CO (the
 //!   game's own) and its partner: the game's arrows move over and under the
 //!   partner box, UP and DOWN go through the Teams list (and None), the
 //!   army's own CO left out; the help line reads "Choose a partner CO."
-//!   (text 0x7304, through crate::versus_rules's help trap). The pairs play
-//!   when the Rules screen's CO Tag is ON (crate::versus_rules). In netplay
+//!   (text 0x7304, through crate::versus_rules's help trap). An army with a
+//!   partner, a human's or the computer's, plays as a pair (no rule, as in
+//!   Dual Strike, whose partner slot has a blank). In netplay
 //!   both seats' buttons reach the Teams screen, as for the rest of it. The
 //!   boxes' tiles and colours are borrowed (OBJ tiles 0x100..0x13F, palettes
 //!   4..8, which the Teams screen leaves unused) and put back when it goes.
@@ -188,16 +190,6 @@ pub fn teams_tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
             restore(core);
         }
         return keys;
-    }
-    // The list a computer army's partner is picked from (crate::tag::auto_partner).
-    let list = teams_list(core);
-    let n = list.len().min(tag::TEAMS_LIST_MAX as usize);
-    let mut want = vec![n as u8];
-    want.extend_from_slice(&list[..n]);
-    let mut now = vec![0u8; want.len()];
-    core.raw_read_range(tag::TEAMS_LIST, -1, &mut now);
-    if now != want {
-        core.raw_write_range(tag::TEAMS_LIST, -1, &want);
     }
     let pressed = keys & !prev;
     let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
@@ -418,10 +410,8 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
         let p = core.raw_read_8(tag::TEAMS_PARTNER + a, -1);
         (p != NONE && Some(p) != army_main(core, a)).then_some(p)
     };
-    let shown: Vec<bool> = (0..armies).map(|a| partner_of(core, a).is_some() || editing as u32 == a).collect();
-    if !shown.iter().any(|&s| s) {
-        return at;
-    }
+    // Every army has its partner slot, as Dual Strike's CO screen: a
+    // partner's box, or None.
     borrow(core);
     // The columns up.
     let mut e = start;
@@ -434,9 +424,6 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
         e += 8;
     }
     for a in 0..armies {
-        if !shown[a as usize] {
-            continue;
-        }
         let Some((_, fx, fy)) = find(core, start, at, FACE_TILE + FACE_STRIDE * a as u16, true) else { continue };
         let tile = TEAMS_TILE + BOX_TILES * a;
         let pal = match partner_of(core, a) {
@@ -578,5 +565,6 @@ pub fn flush(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
         return at;
     }
     let at = teams_flush(core, start, at, end);
+    tag::co_screen_flush(core, start, at);
     panel_flush(core, start, at, end)
 }

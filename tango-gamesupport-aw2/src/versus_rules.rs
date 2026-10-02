@@ -1,7 +1,8 @@
-//! Versus' Rules screen with the Dual Strike pack: two more rule rows,
-//! **Skills** (the COs' CO skills, crate::co_skills::VERSUS_RULE) and **CO
-//! Tag** (CO tag pairs, crate::tag::RULE), both ON/OFF and OFF at every boot,
-//! after AW2's seven (Fog, Weather, Funds, Turn, Capt, Power, Visuals).
+//! Versus' Rules screen with the Dual Strike pack: one more rule row,
+//! **Skills** (the COs' CO skills, crate::co_skills::VERSUS_RULE), ON/OFF and
+//! OFF at every boot, after AW2's seven (Fog, Weather, Funds, Turn, Capt,
+//! Power, Visuals). (Tag pairs have no rule: as in Dual Strike, an army with
+//! a partner picked on Teams is a pair, crate::tag_ui.)
 //!
 //! AW2's rows are seven objects of the Teams/Rules record (`0x02017C50`:
 //! +0x54 their pointers, +0x33 the cursor, +0x30 0 on the Rules stage,
@@ -14,14 +15,14 @@
 //! tile pool and its (tile, id) pairs, the layout by its size): the frame's
 //! sprite-layer lists get their entries when they are pushed to OAM
 //! (`PushSpriteLayerObjects`, `0x0801BF2C`), placed by the Visuals row
-//! (they come and go with it), on a second line under Capt, Power and
-//! Visuals. Their labels are drawn in AW2's font in the labels' colours.
+//! (it comes and goes with it), on a second line under Capt and Power. Its
+//! label is drawn in AW2's font in the labels' colours.
 //!
-//! The cursor: RIGHT on Visuals goes on to Skills and CO Tag (and on to Fog),
-//! LEFT on Fog to CO Tag; while it is on one of the two, the game's cursor
-//! stays on Visuals with its arrows, pulse and help line taken off it, and
-//! UP and DOWN change the row's value (with the game's cursor sound). The
-//! help line is the row's (text ids 0x7302, 0x7303). Both seats' buttons
+//! The cursor: RIGHT on Visuals goes on to Skills (and on to Fog), LEFT on
+//! Fog to Skills; while it is there, the game's cursor stays on Visuals with
+//! its arrows, pulse and help line taken off it, and UP and DOWN change the
+//! value (with the game's cursor sound). The help line is the row's (text
+//! id 0x7302). Both seats' buttons
 //! reach the Rules screen in netplay, so both peers set the same rules.
 //! Without the pack the screen is AW2's own.
 
@@ -39,7 +40,7 @@ const OBJ_Y: u32 = 0x2A;
 const OBJ_SELECTED: u32 = 0x46;
 
 /// RAM (tangoAW2's tag state, crate::tag::UI + 0x08..): the row the cursor
-/// is on (0 none, 1 Skills, 2 CO Tag), the Rules stage's input ran last
+/// is on (0 none, 1 Skills), the Rules stage's input ran last
 /// frame, a cursor sound to play, the sprite layers given their entries
 /// this frame, the labels' tiles borrowed.
 const VCURSOR: u32 = crate::tag::UI + 0x08;
@@ -61,19 +62,12 @@ pub struct Row {
     help_text: &'static [u8],
 }
 
-pub const ROWS: [Row; 2] = [
-    Row { label: "Skills", diamond: 0xD5, value: crate::co_skills::VERSUS_RULE, help: 0x7302, help_text: b"Select ON to use the COs' skills.\0" },
-    Row {
-        label: "CO Tag",
-        diamond: 0xD2,
-        value: crate::tag::RULE,
-        help: 0x7303,
-        help_text: b"Select ON for tag pairs (Teams: START).\0",
-    },
-];
+pub const ROWS: [Row; 1] =
+    [Row { label: "Skills", diamond: 0xD5, value: crate::co_skills::VERSUS_RULE, help: 0x7302, help_text: b"Select ON to use the COs' skills.\0" }];
+const LAST: u8 = ROWS.len() as u8;
 
 /// Where each row goes from the Visuals row (its x, y).
-const PLACES: [(i32, i32); 2] = [(-48, 56), (-16, 48)];
+const PLACES: [(i32, i32); 1] = [(-48, 56)];
 
 fn on(core: &Core, ds: bool) -> bool {
     ds && crate::pvp::in_versus(core) && !crate::five::active(core)
@@ -132,7 +126,7 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
             sound = true;
             keys &= !KEY_RIGHT;
         } else if cursor == 0 && pressed & KEY_LEFT != 0 {
-            v = 2;
+            v = LAST;
             core.raw_write_8(CURSOR, -1, VISUALS as u8);
             sound = true;
             keys &= !KEY_LEFT;
@@ -146,7 +140,7 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
             v -= 1;
             sound = true;
         } else if pressed & KEY_RIGHT != 0 {
-            if v == 2 {
+            if v == LAST {
                 v = 0;
                 core.raw_write_8(CURSOR, -1, 0);
             } else {

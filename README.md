@@ -113,9 +113,9 @@ Both press Ready; the game starts from power-on for both. Go to
   **Change** on the map menu swaps your COs (and ends the turn); with both
   meters full **Tag** fires the first CO's Super Power, then Change fires
   the partner's and every unit moves again, with the pair's firepower bonus.
-  The DS Campaign's missions bring their pairs; in Versus turn the Rules
-  screen's **CO Tag** row on and pick partners on Teams with **START**,
-  then **UP**/**DOWN**.
+  The DS Campaign's missions bring their pairs; in Versus, as in Dual
+  Strike, any army (the computer's too) with a partner is a pair: on Teams
+  press **START** on its CO, then **UP**/**DOWN** (None: single).
 
 <table>
 <tr>

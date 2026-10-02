@@ -73,12 +73,9 @@ const P_CPU_SECOND: u32 = 0x0E;
 pub const P_SHOW: u32 = 0x0F;
 const ARMIES: u32 = 5;
 
-/// The Versus rule "CO Tag" (1 on). In RAM: off at every boot, set on
-/// Versus' Rules screen (crate::versus_rules; shared by both netplay
-/// seats).
-pub const RULE: u32 = STATE + 0xA0;
 /// The partner each army picked on Versus' Teams screen (a CO id, 0xFF
-/// none), armies 1..4.
+/// none; an army with one plays as a pair, as Dual Strike's Versus: no
+/// rule), armies 1..4. (STATE + 0xA0..0xA3 spare.)
 pub const TEAMS_PARTNER: u32 = STATE + 0xA4;
 /// 1 while the battle has a pair (the map menu's copy is used).
 const BATTLE_ON: u32 = STATE + 0xA9;
@@ -90,10 +87,6 @@ pub const PANEL: u32 = STATE + 0xAC;
 const PENDING: u32 = STATE + 0xB4;
 /// Teams-screen bookkeeping ([`crate::tag_ui`]): STATE + 0xC0..0xCF.
 pub const UI: u32 = STATE + 0xC0;
-/// The Teams screen's CO list as last seen (a count, then the ids; up to
-/// 40): the COs a computer army's partner is picked from.
-pub const TEAMS_LIST: u32 = STATE + 0xD0;
-pub const TEAMS_LIST_MAX: u32 = 40;
 pub const STATE_END: u32 = STATE + 0x100;
 
 const NONE: u8 = 0xFF;
@@ -115,8 +108,6 @@ const AI_STATE: u32 = 0x0300_4780;
 // Player block.
 const PLAYER: u32 = 0x3C;
 const PL_HUMAN: u32 = 0x1B;
-/// The controller byte of a computer army (1 a human, 0 none).
-const CPU: u8 = 2;
 const PL_CO: u32 = 0x1D;
 const PL_MODE: u32 = 0x1E;
 const PL_CHARGE: u32 = 0x20;
@@ -394,7 +385,7 @@ fn ready_units(core: &mut Core) {
 }
 
 /// Every map start (`crate::sandstorm`'s trap): the pairs of the battle.
-/// Versus with the CO Tag rule on: each army's Teams-screen partner; a
+/// Versus: each army's Teams-screen partner (none: single); a
 /// mode's pending pairs ([`set_pending`]); the DS Campaign's missions
 /// ([`crate::ds_campaign::tag_pairs`]).
 pub fn map_start(core: &mut Core) {
@@ -407,16 +398,15 @@ pub fn map_start(core: &mut Core) {
         && !crate::ds_campaign::active(core)
         && !crate::five::active(core);
     let mut pairs: Vec<(u32, u8, u8)> = Vec::new();
-    if versus && core.raw_read_8(RULE, -1) == 1 {
+    if versus {
+        // Dual Strike's Versus: an army (a human's or the computer's) with
+        // a partner picked on Teams is a pair; one without, single.
         for a in 1..=4u32 {
             if core.raw_read_8(player(core, a) + PL_HUMAN, -1) == 0 {
                 continue;
             }
-            let mut b = core.raw_read_8(TEAMS_PARTNER + a - 1, -1);
+            let b = core.raw_read_8(TEAMS_PARTNER + a - 1, -1);
             let main = army_co(core, a);
-            if (b == NONE || b == main) && core.raw_read_8(player(core, a) + PL_HUMAN, -1) == CPU {
-                b = auto_partner(core, main).unwrap_or(NONE);
-            }
             if b != NONE && b != main {
                 pairs.push((a, main, b));
             }
@@ -445,27 +435,6 @@ pub fn map_start(core: &mut Core) {
         }
         form_pair(core, a, b, 0);
     }
-}
-
-/// A computer army's partner in Versus with CO Tag on when none was picked
-/// for it on Teams (Dual Strike's Versus leaves that to the player): the CO
-/// of the Teams list that makes the best pair with its CO (the highest
-/// compatibility, so the strongest Tag Power), the earliest in the list
-/// on a tie. The list is the one both netplay seats saw.
-pub fn auto_partner(core: &Core, main: u8) -> Option<u8> {
-    let n = core.raw_read_8(TEAMS_LIST, -1).min(TEAMS_LIST_MAX as u8) as u32;
-    let mut best: Option<(u8, u8)> = None;
-    for k in 0..n {
-        let c = core.raw_read_8(TEAMS_LIST + 1 + k, -1);
-        if c == main || c == NONE {
-            continue;
-        }
-        let v = compatibility(main, c);
-        if best.map_or(true, |(_, bv)| v > bv) {
-            best = Some((c, v));
-        }
-    }
-    best.map(|(c, _)| c)
 }
 
 // --- The DS Campaign's CO screen: the player's partners ------------------------------
@@ -556,6 +525,62 @@ fn co_screen_partners(core: &mut Core) {
             if core.raw_read_8(COUNTRY_LOCKED + c, -1) != 0 {
                 core.raw_write_8(COUNTRY_LOCKED + c, -1, 0);
             }
+        }
+    }
+}
+
+/// The CO screen's sprites, at the frame's flush (crate::tag_ui::flush): a
+/// partner's row of the picks box shows its army's country emblem (AW2
+/// gives every pick its own army's: a partner would show the next army's),
+/// and while a partner is picked the badge on the face is its army's ("1P"
+/// for army 1's partner, not "2P"). The box's emblems are 16x16 sprites of
+/// OBJ palette 12 at x 20, a row every 16 pixels from y 104; the badges
+/// 16x16 sprites of palette 13 at tile 836 + 4 a pick.
+const BOX_EMBLEM_X: u16 = 20;
+const BOX_EMBLEM_Y: u16 = 104;
+const BOX_EMBLEM_PAL: u16 = 12;
+const BADGE_PAL: u16 = 13;
+const BADGE_TILE: u16 = 836;
+pub fn co_screen_flush(core: &mut Core, start: u32, at: u32) {
+    if !is_on(core) || !crate::ds_campaign::active(core) {
+        return;
+    }
+    let Some(proc) = (PROC_POOL.0..PROC_POOL.1).step_by(0x6C).find(|&p| core.raw_read_32(p, -1) == CO_SELECT_SCRIPT) else {
+        return;
+    };
+    let (n, k) = ds_partner_picks(core);
+    if k == 0 {
+        return;
+    }
+    let square16 = |a0: u16, a1: u16| (a0 >> 14) == 0 && (a1 >> 14) == 1 && (a0 >> 8) & 3 != 2;
+    let mut emblems: [Option<(u32, u16)>; 5] = [None; 5];
+    let mut e = start;
+    while e + 8 <= at {
+        let (a0, a1, a2) = (core.raw_read_16(e, -1), core.raw_read_16(e + 2, -1), core.raw_read_16(e + 4, -1));
+        let y = a0 & 0xFF;
+        if square16(a0, a1) && a1 & 0x1FF == BOX_EMBLEM_X && a2 >> 12 == BOX_EMBLEM_PAL && y >= BOX_EMBLEM_Y && (y - BOX_EMBLEM_Y) % 16 == 0 {
+            let row = ((y - BOX_EMBLEM_Y) / 16) as usize;
+            if row < 5 {
+                emblems[row] = Some((e, a2));
+            }
+        }
+        e += 8;
+    }
+    for r in n..(n + k).min(5) {
+        if let (Some((entry, _)), Some((_, army_a2))) = (emblems[r as usize], emblems[(r - n) as usize]) {
+            core.raw_write_16(entry + 4, -1, army_a2);
+        }
+    }
+    let pick = core.raw_read_16(proc + 0x64, -1) as u32;
+    if (n..n + k).contains(&pick) {
+        let (from, to) = (BADGE_TILE + 4 * pick as u16, BADGE_TILE + 4 * (pick - n) as u16);
+        let mut e = start;
+        while e + 8 <= at {
+            let (a0, a1, a2) = (core.raw_read_16(e, -1), core.raw_read_16(e + 2, -1), core.raw_read_16(e + 4, -1));
+            if square16(a0, a1) && a2 >> 12 == BADGE_PAL && a2 & 0x3FF == from {
+                core.raw_write_16(e + 4, -1, (a2 & !0x3FF) | to);
+            }
+            e += 8;
         }
     }
 }
@@ -998,10 +1023,9 @@ mod tests {
 
     #[test]
     fn ram_fits() {
-        assert!(STATE + REC * ARMIES <= RULE);
+        assert!(STATE + REC * ARMIES <= TEAMS_PARTNER);
         assert!(PENDING + 2 * ARMIES <= UI);
         assert!(UI + 0x10 <= STATE + 0xFC);
-        assert!(UI + 0x10 <= TEAMS_LIST && TEAMS_LIST + 1 + TEAMS_LIST_MAX <= STATE + 0xFC);
         assert!(STATE >= 0x0203_F400 && STATE_END <= 0x0203_F600, "below the DS Campaign's records");
     }
 
