@@ -107,8 +107,15 @@ Both press Ready; the game starts from power-on for both. Go to
   a rank every 1,000 EXP opens skills and slots (up to 4). Press **SELECT**
   on a CO screen or on an army's CO on Versus' Teams screen for Dual
   Strike's SET SKILLS screen: **A** puts a skill on or takes it off, **B**
-  keeps the set; on Teams **L** turns Versus' Skills rule on (off by
-  default) for every army.
+  keeps the set. In Versus the Rules screen's **Skills** row turns them on
+  (off by default) for every army.
+- **CO tag pairs** (with the Dual Strike ROM): Dual Strike's two-CO armies.
+  **Change** on the map menu swaps your COs (and ends the turn); with both
+  meters full **Tag** fires the first CO's Super Power, then Change fires
+  the partner's and every unit moves again, with the pair's firepower bonus.
+  The DS Campaign's missions bring their pairs; in Versus turn the Rules
+  screen's **CO Tag** row on and pick partners on Teams with **START**,
+  then **UP**/**DOWN**.
 
 <table>
 <tr>

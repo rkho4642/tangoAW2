@@ -613,7 +613,10 @@ Campaign's records; 0x0203E000..0x0203F73F was found unwritten at the title, Sel
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203FDC8..0x0203FDFB, stun, battle distance, Teams list),
-0x0203FF00.. (earlier features). `factory.rs` has a test that no two traps share
+0x0203E800..0x0203F09F (the Teams screen's borrowed tiles while partners show), 0x0203F100..0x0203F2FF
+(the Rules screen's borrowed label tiles), 0x0203F400..0x0203F4FF (tag pairs), 0x0203FF00.. (earlier
+features). Free ROM: 0x08780000..0x0878FFFF (the tag map menu, its stubs and strings, the Rules rows' help
+lines). `factory.rs` has a test that no two traps share
 an address.
 
 The new COs' music (`ds_music.rs`): each new CO's turn plays its own Dual
@@ -1633,7 +1636,7 @@ Dual Strike's CO skills, from its code (overlay 0's skill table at
 `0x7B<<24|i`}; its per-CO bitmap test `0x020E7EE0`):
 
 - **Skills.** Its 43 player skills (ids 0x20..0x4A) less the three tag
-  skills (0x35..0x37: no tag pairs here). Each takes a slot; their effects
+  skills (0x35..0x37: the tag pairs, see CO tag pairs, leave them out). Each takes a slot; their effects
   stack. Names, ranks and descriptions come from the pack.
 - **In battle.** Each army's skills are a bitmap in RAM (`ACTIVE`,
   `0x0203F7E0`, 6 bytes an army), cleared at every map start and set by
@@ -1679,8 +1682,9 @@ Dual Strike's CO skills, from its code (overlay 0's skill table at
 - **The SET SKILLS screen** (`skills_panel.rs`). On the CO screen (War
   Room, Survival, the campaigns: `ProcScr_CoSelect`) SELECT opens it for the
   CO highlighted; on Versus' Teams screen SELECT on an army's CO stop, for
-  its Versus set (R and L there change the army's colour), and on it L
-  turns the Skills rule on or off. It is Dual Strike's SET SKILLS screen on
+  its Versus set (R and L there change the army's colour). Versus'
+  Skills rule is a row of the Rules screen (`versus_rules.rs`, see CO tag
+  pairs), off by default. It is Dual Strike's SET SKILLS screen on
   one screen, converted at run time from the .nds: its SKILLS RANK board
   (`ohashi/res_skilledit`'s tilemap and palette, `res_skilledit_lang_E`'s
   banner and spot tiles; ten rank columns 24 pixels apart, Dual Strike's 32
@@ -1711,6 +1715,117 @@ Dual Strike's CO skills, from its code (overlay 0's skill table at
   SKILLS screen on both screens (and what it covers put back), the Versus
   rule.
 
+## CO tag pairs (`tag.rs`, `tag_ui.rs`, `versus_rules.rs`)
+
+Dual Strike's tag pairs (Change and the Tag Power) in AW2's battles, with
+the Dual Strike pack. Its tag-only skills (Teamwork, Synergy, Bodyguard)
+stay out.
+
+**What Dual Strike does** (its arm9, read statically and checked in melonDS,
+`tango-backend-melonds/examples/ds_script`):
+
+- A player record is 0x98 bytes (P1 at `0x02189300` in a battle); its CO
+  slots are the words at +0x6C (the active CO) and +0x70 (the partner):
+  bits 0..6 the CO, 10..11 the power on, 14..17 the powers used, 21..31
+  the meter. Each CO keeps its own meter and power count.
+- The map menu (table `0x02165BE4`) is CO, Intel, Power, Super, Tag,
+  Options, Save, Change, End. **Change** (`0x020DD6BC`) turns a power off
+  (`0x020E2CE0`), swaps the two slots and their skills (`0x020E19B4`),
+  shows the incoming CO's tag-in line and its swap animation, and ends the
+  turn. **Tag** (`0x020DD404`, both meters at their Super Powers:
+  `0x020E2AC8`) sets the record's +0x25 to 1 and runs the active CO's Super
+  Power; in that first half End is hidden and Change ("Switch COs and move
+  again.") sets +0x25 to 2, swaps, makes every unit ready (`0x020C6F98`)
+  and runs the partner's Super Power. +0x25 goes back to 0 at the army's
+  next turn (`0x020C1950`).
+- **Meters** (`0x020DCA..`): the active CO is charged as alone; the
+  partner gets half of the active CO's amount (then its own Star Power);
+  nothing while a power is on (`0x020E2E10`).
+- **The Tag Power's firepower**: the pair's compatibility (the CO record's
+  +0x84 table, by the partner: 65..130) adds compatibility - 100 to
+  firepower in both halves (`0x020E5C40` -> `0x020E5508`); defence gets
+  nothing (its callers pass 0). Special pairs (+0x6C) only rename the
+  power ("Power Wrench"; "Dual Strike" otherwise) and add victory lines.
+- **The computer** (`0x020995C4`): Tag when both are ready; keeps its
+  Super Power while the partner's meter is past half (the threshold is a
+  parameter); no CO Power when the partner's Super Power is ready. At its
+  turn's end (`0x02099F88`): in the first half Change; else
+  (`0x02099BA0`, CO powers on, none on) Change when the active CO is
+  nearer its Super Power than the partner, the two alike by a rating
+  (`0x02099DAC`: Max 1, Sami 4, Grit 5, the others 2).
+- **EXP**: both COs of a pair get the full EXP (`0x020E9C24`).
+
+**What tangoAW2 does:**
+
+- **State** (RAM `0x0203F400..0x0203F4FF`, netplay and rollback safe: all
+  in emulated RAM). A record of 0x20 bytes for each army 1..5: the
+  partner's CO, the phase (0, 1 first half, 2 second half), its power
+  count, announcement byte, meter (u32), skills (6 bytes, `co_skills`'
+  layout), the computer's second-half flag. The active CO stays AW2's
+  (player block +0x1D); Change swaps the partner's fields with the player
+  block's.
+- **Map menu.** A copy of AW2's table at `0x08780000` (free ROM) with Tag
+  (after Super, Super's icon, text 0x7300) and Change (before End, text
+  0x7301), the menu pool word `0x0802D49C` pointing at it only while a
+  battle has pairs; the entries' tests and actions are 16-byte stubs that
+  jump to one trap (`0x0803CC5A`, dead code in `sub_0803CC3C`). With nine
+  entries the menu opens at the screen's top (`0x0802D484`): it fits,
+  y 2..158. Tag sets the phase and runs `MapMenu_SuperPower`; Change turns
+  the power off (as AW2's day change does), swaps and runs
+  `MapMenu_End`; Change in the first half swaps, makes the units ready and
+  runs `MapMenu_SuperPower` for the partner (AW2's own Super Power screen
+  and quote for each CO). The phase resets at `StartArmyTurn`
+  (`0x080267AC`).
+- **Meters**: `AddCoPowerCharge` (`0x080440E0`, the trap `co_skills`
+  shares): the partner gets half, then its Star Power, up to its Super
+  Power's cost; nothing while a power is on. The firepower (compatibility
+  - 100, from the pack's arm9 record table `0x0215360C` + 0x220 a CO,
+  +0x84) goes through `com_tower`'s firepower hook.
+- **The computer**: `AiDeliberateCoPower` (`0x0805DB70`, `0x0805DBCC`),
+  `AiEndTurnStep`'s end (`0x08061ACE`: in the first half it pays the
+  partner's Super Power and plays the turn again with it; else Dual
+  Strike's Change test), `AiBeginTurn`'s Black Factory call
+  (`0x08061900`, not twice). The hold threshold is half; Dual Strike's
+  battle-state ratings for Kanbei, Sonja, Hachi and Colin are 2.
+- **On screen** (`tag_ui.rs`): under AW2's CO panel a second strip in the
+  panel's own style (its tiles and army colours) with the partner's HUD
+  face and its meter drawn as AW2 draws the active CO's; on Versus' Teams
+  screen a partner box (the CO's portrait at 30 pixels) under each CO, the
+  columns moved up 16 pixels while one is shown.
+- **Versus**: the Rules screen's **CO Tag** row (default OFF, beside
+  **Skills**; `versus_rules.rs`). The partners are picked on Teams: START
+  on an army's CO stop, UP/DOWN through the COs and None, START again
+  ("Choose a partner CO."). Humans and the computer alike; five-army games
+  have no pairs. In netplay both seats' buttons reach both screens, so
+  both peers start with the same pairs.
+- **The DS Campaign**: a mission's record names each army's two COs
+  (+0x56; `0x1C` the player picks, `0x80 | id` a clone): the computer's
+  pairs are formed at map start (`ds_campaign::tag_pairs`); where the
+  player has two picks the CO screen takes a second CO (pick count
+  `0x0803BD42`, `SetArmyCoIdsFromList` `0x0803BCDC`) and the second is the
+  partner. Missions with a second front are left to their own flow.
+- **For the two-front missions** (`ds_campaign`'s second front):
+  `tag::form_pair(core, army, co, charge)` gives an army a partner (its
+  active CO stays; `charge` the partner's meter in AW2's units; its
+  skills are the mode's set); `tag::break_pair(core, army)` takes it away;
+  `tag::set_pending(core, army, co, partner)` asks for a pair at the next
+  map start. All write RAM only, and only with the pack.
+- **Saves**: a suspended game (Versus, the campaigns) keeps the pairs, the
+  phase, meters and power counts and the Versus rules past AW2's block
+  (`suspend.rs`: "TAG2" at +0xE28, a hash of the block, the two rules, 8
+  bytes an army; the write is made longer only then).
+- **Without the pack** nothing of it: the menu, the Rules and Teams
+  screens are AW2's and none of this RAM is written (battery and
+  `compat_aw2_byte_identical`).
+- **Left out**: Dual Strike's tag intro (both COs, "POWER 110%", the
+  pair's name) and its CO-swap animation: Change and the Tag Power use
+  AW2's own screens; special pairs' victory lines; tag skills. Market
+  Crash and other meter drains reach only the active CO.
+- **Tests:** `tools/aw2test/tests/test_tag.py`: the rule's rows and
+  defaults, Teams picks and the boxes, Change, meters, the Tag Power against
+  the damage calculator (both halves, Max and Andy's 110), the computer,
+  a Versus suspend, netplay replay, the DS Campaign's pairs, pack off.
+
 ## Suspended games (`suspend.rs`)
 
 The map menu's Save (`sub_08016D30`) writes the 0xE28-byte block
@@ -1728,7 +1843,9 @@ slot is loaded over the buffer). Before this, a game continued after
 Ex Machina had every marked unit free, and one saved while rain was coming
 kept fog on for good once the rain stopped. The sandstorm and the map's
 look are in the weather block (`0x03004490` +3), which AW2 saves itself;
-Com Towers are counted on the map. Without the pack nothing is written.
+Com Towers are counted on the map. Tag pairs and the Versus rules Skills
+and CO Tag ride after the block (+0xE28, "TAG2", see CO tag pairs).
+Without the pack nothing is written.
 Tests: `save_versus_suspend_keeps_ex_machina_stun`,
 `save_versus_suspend_in_rain_keeps_fog_rule`.
 
