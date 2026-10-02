@@ -606,8 +606,9 @@ Survival and campaign data),
 table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
 0x0862DA38..0x08630A37 (the DS Campaign's text ids 0x7400..0x7FFF),
 0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used),
-0x08E80000..0x08EFFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow and Means to an End's).
-Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F600..0x0203F6FF (the DS
+0x08E80000..0x08EFFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow and Means to an End's),
+0x08E70000..0x08E73FFF (two fronts: stubs, swap scripts, the menus' copies, labels; text ids 0x7FFD, 0x7FFE).
+Free RAM used: 0x0203E400..0x0203F3FF (two fronts: their state, the front off the screen), 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F600..0x0203F6FF (the DS
 Campaign's records; 0x0203E000..0x0203F73F was found unwritten at the title, Select Mode, in AW2 and DS battles), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
@@ -987,7 +988,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   campaign flags 0x60..0x62; tangoAW2 keeps them at 0x90..0x92, since 0x60
   is AW2's Hard Campaign flag and with it set every mission used its hard
   deployment, as 0.4.0 did; a 0.4.0 record's flags move as it loads). Second fronts: Victory or Death!, Lightning
-  Strikes, Omens and Signs, Ring of Fire, Means to an End.
+  Strikes, Omens and Signs, Ring of Fire, Means to an End (played on both
+  fronts: "Two fronts" below).
 - **Events** are AW2's, grown. Trigger records are 8 bytes, op = 3 * AW2's
   op + the front (0 main, 1 second, 2 either), 0x15/0x16 open a block for
   normal/hard only, 0x1A ends a list. Scripts are AW2's 16-byte commands
@@ -1074,8 +1076,9 @@ overlay 1, the campaign's code, at `0x02350560`).
   the mission; Black Obelisks and Crystals keep their hit points nowhere
   (`obelisk.rs` has no such path). On Black Hole's turn of every sixth day
   each standing weak point destroys the unit below it and spawns an Oozium
-  there (AW2's `CreateUnitAt`); destroying all three wins. Its second
-  front's three Black Crystals stand on the main map for now (below).
+  there (AW2's `CreateUnitAt`); destroying all three wins. Each is
+  shielded (no target, a hit undone) until the Black Crystal guarding it is
+  shattered on the mission's second front (below, "Two fronts").
   Tests: `ds_campaign_grand_bolt`, `ds_campaign_grand_bolt_blocks`,
   `test_obelisk_breakable.py` (Obelisks breakable on a Versus design map
   and in Crystal Calamity and For the Future!; in Means to an End only the
@@ -1258,36 +1261,13 @@ overlay 1, the campaign's code, at `0x02350560`).
 
 **Compromises.**
 
-- Second fronts are not played: the five two-front missions are their main
-  front, Dual Strike's second-front triggers dropped, but in Means to an End.
-- **Means to an End on one front** (the user's choices). Dual Strike's
-  second front (record 0x100) holds three Black Crystals, each guarding one
-  of the Grand Bolt's weak points; destroying all three also wins. Here
-  they stand on the main map, on the plain north of the bolt, each in the
-  column of the weak point it guards: (3, 3), (9, 5), (15, 3) (on the Grand
-  Bolt's picture until its second front is played)
-  (`ds_campaign_data::MTE_CRYSTALS`, tangoAW2's Crystals: they heal Black
-  Hole's units around them as on Crystal Calamity). The second front's
-  trigger records are kept as the main map's: a crystal shattered plays
-  Dual Strike's "Commander! We have shattered one of the black crystals!"
-  and "Well done! Now we can strike one of the Grand Bolt's weak points!"
-  (once per crystal: `0x02351C58` answers once for each crystal down, the
-  count at `0x0203F700`), and every crystal shattered wins (its op 0x44,
-  Black Hole loses). A weak point whose crystal stands takes no damage: it
-  is no target where a unit picks one (`GetInventionAt` `0x0803DE94`,
-  trapped for its two targeting callers, `0x0802B3DC` and `0x0802E2EA`) and
-  its hit points are kept each frame (`0x0203F701..`, `grand_bolt::tick`,
-  keyed on its own tile) whatever hits it.
-  The day limit is 36, not 24: the header's limit (the "Day(s) Left"
-  counter), the trigger on which Black Hole wins (day 24 becomes 36), and
-  the texts that state it (`ds_campaign_data::compromise_text`: the
-  briefing, bank 0xC0 text 682, now "shatter the three black crystals and
-  defeat Von Bolt within 36 days", no top or touch screen; Von Bolt's "In
-  36 days" and "On the 36th day", bank 0x26 text 70; Lash's crystals "to
-  the north", text 69). Every other mission keeps Dual Strike's limits and
-  texts (`day_limits_are_dual_strikes`, with the .nds: every mission's
-  limit, trigger days and day texts). The Grand Bolt's charge stays every
-  sixth day. Tests: `ds_campaign_means_to_an_end`, `ds_campaign_map_27`.
+- The five two-front missions are played on both fronts ("Two fronts"
+  below), with that section's compromises; their single-front
+  compromises of 0.4.x (Means to an End's crystals on its main map, its
+  36-day limit and the texts changed to say so, the second fronts'
+  records dropped) are gone: every limit, record and text is Dual
+  Strike's own (`day_limits_are_dual_strikes`,
+  `two_fronts_are_dual_strikes`).
 - AW2 armies have one CO: a tag pair is its first CO, the "CO pair" tests
   check that CO only, and there are no tag or Dual Strike powers. CO skills
   are tangoAW2's (below); the computer's Hard skill lists of Dual Strike's
@@ -1313,6 +1293,12 @@ overlay 1, the campaign's code, at `0x02350560`).
     trigger holds): every unit within 2 spaces of (13, 5), but Black
     Hole's team's, Ooziums and loaded units, is left with 1 HP (no
     explosion drawn; Missile Guard takes 10 off, as Dual Strike's 0x2A).
+    The trigger is a main-front record (Black Hole's turn, the battle's
+    flag 2 clear) and (13, 5) is the main map's centre base ("The Black
+    Arc's bombs will keep the allies from making use of the center
+    factory"): the bomb falls on the main front, from the Black Arc on
+    the second front, until the second front's winning record sets flag 2
+    (the fronts share the battle's flags, "Two fronts").
   - Ring of Fire's Volcano: Dual Strike's structure kind 2 (4x4, anchor
     0x1A2 on its third row, at (8, 8)) becomes AW2's own Volcano (anchor
     0x1A7, rim 0x1A5; invention kind 2). It erupts as AW2's does (the
@@ -1325,7 +1311,10 @@ overlay 1, the campaign's code, at `0x02350560`).
     runs `0x02351988`, which clears the volcano's owner in Dual Strike
     (`0x020DA938`): here `0x0203F704` is set and `crate::obelisk`'s
     turn-start trap skips the Volcano. The second front's win
-    (`0x023518CC`) does the same; the second front is not played.
+    (`0x023518CC`, its match-end record on the second front) does the
+    same. The second front's own Volcano erupts on its own cells (Dual
+    Strike's list 2, `ds_campaign_rules::eruption` by the front on the
+    screen) and is never stilled.
   - Means to an End's choice: `0x02351D3C` / `0x02351D28` set / clear
     campaign flag 0x3C (Dual Strike's `0x021017F4(0x3C, 1 / 0)`).
   - Muck Amok!'s (14, 1) (`0x02351640`) is army 3's HQ; its capture
@@ -1389,6 +1378,241 @@ buffer gets it from there, so the profile in Flash stays AW2's
 (`aw2_campaign_kept_by_ds_session`: the profile byte for byte, Continue
 and New's notice in the same boot and after a reboot, with and without
 the pack).
+
+## Two fronts (`two_front.rs`)
+
+Dual Strike's five two-front missions (Victory or Death!, Lightning Strikes,
+Omens and Signs, Ring of Fire, Means to an End) are played on both fronts,
+with the Dual Strike pack, offline.
+
+**Dual Strike's two-front battles, as found** (the USA .nds, melonDS with
+`tango-backend-melonds/examples/ds_script`; a battle in progress for each
+mission was reached from Dual Strike's campaign map by setting the mission
+record id the map hands on, `0x02183CC0`):
+
+- **Two maps.** The mission's record (+0x10) names its second front's
+  record (0xFC..0x100): its own map, deployment, look, weather and fog
+  (+0x1A..+0x1C; Victory or Death!'s Black Arc flies in a sandstorm over a
+  Desert look), the same armies, colours and teams, each army's tag CO (the
+  second of its CO pair) leading it there, no day limit. The battle keeps a
+  state per front (`[[0x027C027C] + 4 * front + 0x48]`, the front by
+  `0x027C0284`); Dual Strike's palette function (`0x020F92B8`) gives only
+  Means to an End's main front a palette of its own, every other front its
+  look's.
+- **Turns.** Day 1: the main front's armies in order (the player, then Black
+  Hole), then the second front's (in order), then day 2 on the main front;
+  both fronts count the same day. The second front plays on the top screen
+  (SWAP shows the top screen's info panel instead).
+- **Who plays it.** "In Campaign mode, the second front is controlled
+  automatically" (the tutorial, bank 0x31): the player's second CO's army is
+  the computer's. Outside the campaign Dual Strike offers "Direct the
+  secondary front manually." / "Allow CPU to direct the secondary front."
+  (help lines in its text bank 0xC0). "CO Powers can't be used there,
+  either. The action is too fast."
+- **Send** (the unit command table at arm9 `0x02166000`, 0x20 bytes an
+  entry: "Send" twice, `0x021661E0` and `0x02166200`, their handler
+  `0x020BCE50`): a unit leaves the main front for the second ("Keep in mind
+  that units sent to the second front can't come back"), at no cost. On a
+  front in the sky only aircraft go ("You'll need to send fighters and
+  bombers up to the second front ... You won't be able to send helicopters,
+  because they can't fly high enough"); "On maps where both fronts are
+  based on the ground, units can be sent to the second front from bases
+  that build units. Oh, and from the HQ, too. Units you've sent will arrive
+  in the area around the second-front HQ. Naval units will arrive in the
+  waters near the second-front HQ." A full front refuses ("The secondary
+  front is full--you can't send any more units to the top screen").
+- **Ends.** Each front's own records (Dual Strike keeps both fronts' records
+  in one list: a condition's op is 3 x AW2's op + its front, 0 main, 1
+  second, 2 either; a fire's 0x17 + its front) and AW2's rules end it. "The
+  battle won't end if you lose on the second front, but the CO remaining on
+  the main front will be left alone facing two enemy COs"; won, "The second
+  front has been secured. The CO will now report back to the main front."
+  and "the surviving units will be added to the power meter"; lost, Black
+  Hole's CO goes to the main front ("Return to the main front for tag
+  battle."). Its result: "The <army> Army has won / lost on the secondary
+  front!" (bank 0xC0). Every condition of the five missions:
+
+| Mission | Main front | Second front | Across the fronts | Test |
+|---|---|---|---|---|
+| Victory or Death! | won: every Black Crystal there destroyed (`0x023505E8`, after an action: Black Hole loses), or AW2's rules; lost: AW2's rules | the Black Arc: won when its four minicannons are destroyed (`0x02350610`), lost when the player is routed | the Black Arc's bomb on the main front's (13, 5) each Black Hole turn until the second front's winning record sets the battle's flag 2; won: the survivors charge the power meter | `two_front_victory_or_death` |
+| Lightning Strikes | AW2's rules (rout, HQ) | AW2's rules | won / lost: the outcome's hook | `two_front_lightning_strikes` |
+| Omens and Signs | won: the ocean fortress's four minicannons destroyed (`0x02350610` on the main front); lost: AW2's rules | the Black Arc: won when its minicannons are destroyed, lost when the player is routed | the fortress shielded while the Black Arc stands ("Black Hole's utilizing a barrier field ... energy is flowing from the Black Arc"); its fall: "Black Arc fatal error. Ocean fortress barrier collapsing." | `two_front_omens_and_signs` |
+| Ring of Fire | lost on day 18 (Black Hole's turn-start record); won: AW2's rules; four cities taken: the Volcano stilled (`0x02351804` -> `0x02351988`) | AW2's rules | won: its match-end record stills the main front's Volcano (`0x023518CC`: "We've seized a volcano-controlling unit!"); each front's Volcano erupts on its own cells (arm9 `0x02167E98`: list 1 the main front's, list 2 the second's) | `two_front_ring_of_fire` |
+| Means to an End | lost on day 24; won: the Grand Bolt's three weak points destroyed (`0x02350560`) | its three Black Crystals: each shattered plays "We have shattered one of the black crystals!" (`0x02351C58`); every one shattered wins it (`0x023505E8`); lost when the player is routed | each crystal shattered opens one weak point (west to east), shielded until then | `two_front_means_to_an_end` |
+
+**The description** (`campaign_model::TwoFront`, a `MissionInfo`'s
+`two_front`): the battle's own map header is its main front; the
+description names the second front (`second`: an index of `Built::headers`,
+the second front's header, and of `Built::missions`, its look, weather, fog
+and armies), each army's CO there (`cos`: AW2 ids, or `PICK`: the player
+picks it on the CO screen after the main front's picks), who directs the
+player's armies there (`control`: `Cpu` or `Manual`), what may be sent
+(`send`: `None`, `Air`, `Ground`) and whether CO powers work there
+(`powers`). The second front's header carries its own event lists (for
+Dual Strike's missions: its records of the shared list,
+`ds_campaign_data::convert_triggers` with front 1), its map, deployment,
+colours, teams and 4x4 structure's picture, and no day limit. Dual
+Strike's source fills it from the record (`ds_campaign_data::two_front`: a
+front whose deployment is aircraft only is in the sky). Nothing in
+`two_front.rs` is Dual Strike's: a custom campaign's mission describes its
+second front the same way.
+
+**The gate.** `two_front::battle` decides where any of it is on: a DS
+Campaign mission whose description has a second front. Without it nothing
+runs or is written (the menus' pool words keep the game's tables; the
+state stays zero): one-front DS missions, AW2's campaign, Versus, the War
+Room, Survival, the Design Room, netplay and the pack off are untouched
+(`two_front_menus_only_there`; the pack-off battery).
+
+**How it plays.**
+
+- **The store.** A front not on the screen is kept as AW2's own suspend
+  block (`CaptureBattleSaveState` `sub_08016F38`: day, army, gPlaySt with
+  its fog, weather and rules, the weather block with the look, players,
+  units, the tiles changed from its map, inventions, the pipe seams;
+  0xE28 bytes) and tangoAW2's state that lasts past a turn (the rain's fog
+  rule, CO skills, Ex Machina's stun) at `0x0203E500`. The battle's flags
+  (AW2's mission flags `0x030033F4`, its records' "once" flags among them)
+  are the battle's, not a front's: they go across with every swap. The DS
+  Campaign's session state (flags 0x20.., the countdown, Means to an End's
+  and Ring of Fire's state) is the mission's.
+- **The swap** is a script of AW2's script slots (the kind AW2's Continue
+  runs, `0x0848A1EC`; ops: 2 call, 0x18 wait, 0x1E / 0x1F wipe to / from
+  black): wipe to black, capture the live front into the staging buffer
+  (`0x02000000`), exchange it with the store, write the other front's
+  header into the battle's map table entry, then as AW2's Continue rebuilds
+  a saved battle (`ResumeScript_LoadSuspendSave` `sub_08017658`:
+  `InitGameSettings`, `RestoreBattleSaveState` `sub_08017208`, the terrain
+  plane `sub_0801759C`, the unit cycle `sub_08026798`, the map's graphics
+  `sub_08023348`, its frame callbacks `sub_0803662C`), set the map state
+  machine's state (`0x030032D8`), wipe in. A front never played starts as
+  a battle starts (`InitMapGameState` `sub_08034890` on its header, with
+  gPlaySt's armies, COs, controllers and rules set for it, then its
+  deployment, `sub_080196C0`, as the battle start's script `0x0849D10C`
+  does). Its steps are magic stubs (`two_front::magic`, ids `0x2F000000 |
+  n` through the DS Campaign's landing) that tail-call the game's
+  functions.
+- **Rounds.** At the handover state (`MapState_TurnHandoverPrompt`
+  `0x08034AF8`, trapped) with no army after the current one in the battle,
+  the round's swap runs instead; the other front is brought back at its
+  own handover (the next handover passes), so its next army (and day)
+  begins as AW2's own turn change does. While the second front is fought,
+  the main front plays a round, then the second front, then the next day.
+- **Front** (the map menu: the game's table copied with Front after
+  Options, `MAP_MENU_POOL` `0x0802D49C` pointing at the copy while the gate
+  is on; Save's test made ours, hidden while the second front is on the
+  screen): the same swap, the other front shown with the map cursor (its
+  army made the player's for as long, as AW2's dispatch gives a player's
+  army the cursor) and every button but the D-pad kept from the game; B
+  swaps back. The front looked at is put back as it was (its block still in
+  the staging buffer, checked; a front set up only to be looked at is set
+  up again at its first round); the front left comes back as AW2's
+  Continue brings a saved turn back (`two_front_view_round_trip`: units,
+  players, inventions, gPlaySt, the map's planes, day and army, weather,
+  the battle's flags, the cursor, the skills byte for byte).
+- **Panels.** The help line ("View the other front.", while Front is
+  highlighted, where AW2's map menu has its own), the view's title and its
+  B button ("Second front", "Back", bottom centre, between the terrain and
+  unit panels) and the second front's result ("Second front won!",
+  "Second front lost.", on the player's turn): a window of AW2's own (its
+  map menu's window cells on BG2, palette 8; the cells under it kept and
+  put back) and AW2's proportional font (the menus' glyphs `0x084C32E4`,
+  widths `0x084C36E4`) drawn into free OBJ tiles (`heal_effect`'s, which it
+  uses only during a structure's heal) as 8x16 sprites. During the second
+  front's rounds "Second front" stands at the top in the same font, white
+  outlined in black, without a window (the game's own windows come and go
+  there during CPU turns).
+- **Send** (the unit command menu's copy, `UNIT_MENU_POOL` `0x0802D59C`):
+  in the slot of the "Capt" with a star, which no sendable unit ever has
+  (an aircraft never captures; a unit on its own HQ or base has nothing to
+  capture), the command menu having room for 13 entries, all used. Shown
+  by the description's rule (greyed when the army has 50 units there);
+  chosen, the game's Wait ends the move, then (`RunMapEventsAfterUnitAction`
+  `0x080743E8`, trapped) the unit leaves the main front and is written into
+  the stored second front by its army's HQ there (else its units' cells),
+  on the nearest free cell its movement can enter; before the second front
+  starts it waits in a queue of 8 and arrives when it does.
+- **The second front's end.** Its records (or AW2's rules) end its battle as
+  any battle ends (`FinalizeMatchResult`, the match-end records, state
+  0x12); at `MapState_EndOfGame` (`0x08034EF0`, trapped) on the second
+  front, once its scenes are over, the outcome is kept and the main front
+  comes back for good (its result panel shown). Won: the survivors' value
+  (price x bars, as a battle's) charges army 1's power meter
+  (`sub_080440E0`). Then `second_front_over`, **the hook for tag pairs**:
+  `second_front_result` gives (won, the winning army, its second-front CO);
+  a tag-pair module joins that CO to that army's main-front CO there.
+- **The CO screen.** A two-front mission's second-front picks follow the
+  main front's on AW2's own CO screen (`sub_0803BD14`, the number of picks,
+  and `SetArmyCoIdsFromList` `sub_0803BCDC`, trapped while it shows):
+  Lightning Strikes' main CO is fixed (Rachel) and the player picks the
+  second front's.
+- **A mission saved halfway** keeps both fronts: the block of the main front
+  (the only front the player saves on), then "T2FT", the two-front state and
+  the store, in slot 14 (AW2's writer splits a record over sectors of
+  0xFAD bytes: two parts); Continue brings them back
+  (`two_front_saved_halfway`, across a reboot).
+- **Means to an End**: its crystals stand on its second front only
+  (`ds_campaign_data::MTE_CRYSTALS`, (1, 1), (8, 1), (14, 1), west to
+  east); while the second front is on the screen each crystal shattered is
+  kept (`0x0203F705`, a bit each) for the main front's weak points
+  (`ds_campaign_rules::crystal_alive`). **Omens and Signs**: the main
+  front's fortress minicannons keep their hit points while the second front
+  is not won (a hit lands, its events see it, and is undone once the
+  action and its scenes are over, `ds_campaign_rules::omens_barrier_tick`).
+
+**RAM and ROM.** `0x0203E400..0x0203E4A5` the state (front on the screen,
+the second front's course, the swap, the view, the queue, the shared
+flags, the second front's COs and the mission they were picked for),
+`0x0203E500..0x0203F396` the store (block and tangoAW2's state); the
+staging buffer's tail (`0x02001D80..0x02001FFF`: the panel's BG2 cells,
+the incoming front's tangoAW2 state). ROM `0x08E70000..0x08E73FFF`
+(stubs, the three swap scripts, the menus' copies, the labels; text ids
+0x7FFD Send, 0x7FFE Front). Traps: `0x08034AF8`, `0x08034EF0`,
+`0x0803BD14`, `0x0803BCDC`, `0x080743E8`, `0x080743AA` (the unit layers'
+rebuild after a Send returns there: alignment padding in
+`UnitSelectedEvent_Init`, never run). Hooks in other modules:
+`ds_campaign`'s landing (the stubs), `map_start` (the live front's rules,
+its controllers), `script_end_match` (the main front's), `co_setup` (a
+second-front pick opens the CO screen); `ds_campaign_rules` (crystals,
+barrier, eruption cells, the Volcano), `grand_bolt::on` (the main front's),
+`suspend` (both fronts), `pvp` (tick, menus, keys), `branding` (sprites).
+
+**Compromises.**
+
+- One screen: the second front is seen during its rounds and through Front;
+  Dual Strike shows it on the top screen all the time.
+- The fronts in the sky (Victory or Death!, Omens and Signs) are drawn as
+  AW2 sea in their look (they are sea cells in AW2's terms); Dual Strike
+  draws clouds there. The Black Arc is AW2's Sea Fortress picture (Dual
+  Strike's record names "0a6", the same bytes).
+- The second front's computer is AW2's own CPU: units with nothing in reach
+  hold (Dual Strike's may advance); the player sends units to carry it.
+- No tag pairs yet (the hook above): the second front's CO does not join
+  the main front; nor does Black Hole's.
+- The survivors' power is a battle's measure (price x bars), not Dual
+  Strike's own formula (not read).
+- The swap's wipes take about a second each way.
+
+**A two-front Versus map, later.** It would need: a source of descriptions
+besides the campaign's `Built` (two map ids of the Versus map table, a
+`TwoFront` per map, `header()` reading its headers); the gate extended to
+it (and, online, to both players having the pack, as the matches' content
+flags do); `Manual` control (both fronts the players', each seat owning
+its armies on both: `pvp`'s seat-by-army rule holds as long as the armies
+keep their slots); the Teams screen's COs per front; and its suspend
+(Versus slot 4, as slot 14 here). The state is netplay-safe as it is: the
+store and every byte of the swap live in the emulated EWRAM, every ROM
+write (the map table entry, the menus' pool words, the stubs) follows RAM
+each frame, and nothing reads the host; rollback restores both fronts with
+the rest of RAM.
+
+**Tests** (`tools/aw2test/tests/test_two_fronts.py`, no bot play: the
+units and structures are set up directly): `two_front_rounds`,
+`two_front_view_round_trip`, `two_front_menus_only_there`,
+`two_front_send`, `two_front_cpu_directs`, `two_front_saved_halfway`, and
+one per mission above (each condition of each front triggered through the
+game's state); `ds_campaign_data`'s `two_fronts_are_dual_strikes` and
+`day_limits_are_dual_strikes` (with the .nds).
 
 ## CO skills (`co_skills.rs`, `skills_panel.rs`)
 
@@ -1515,7 +1739,7 @@ from the directory.
 | 2 / 3 / 4 | Campaign / War Room / Versus game saved halfway, 0xE28 (tangoAW2's tail: `suspend.rs`) | map menu Save |
 | 5..7 | design maps 1..3, 0x724 (tangoAW2: +0x4C4 the five-army mark, +0x723 the look) | Design Room Save |
 | 8 | the design map a saved Versus game is on (its current terrain and units) | map menu Save on a design map |
-| 14 | a DS Campaign mission saved halfway (tangoAW2) | map menu Save in a DS mission |
+| 14 | a DS Campaign mission saved halfway (tangoAW2); a two-front mission's second front and two-front state follow the block (two sectors) | map menu Save in a DS mission |
 | 15 | the DS Campaign's record, 0x20 (tangoAW2) | DS Campaign New, mission start, after a win |
 
 Ten slots at most; a write needs two free sectors. The Design Room has no

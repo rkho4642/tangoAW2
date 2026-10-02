@@ -423,7 +423,7 @@ fn install(core: &mut Core) -> bool {
 fn install_world_map(core: &mut Core) -> bool {
     let Some(c) = campaign(core) else { return false };
     let n = c.model.missions;
-    let picks: Vec<bool> = c.model.built.missions.iter().take(n).map(|m| m.cos.iter().take(m.armies as usize).any(|&(co, _)| co == 0x1C)).collect();
+    let picks: Vec<bool> = c.model.built.missions.iter().take(n).map(player_picks).collect();
     let texts: Vec<u16> = c.model.built.missions.iter().take(n).map(|m| m.info_text).collect();
     crate::ds_worldmap::install(core, &picks, c.co_setup, &texts, &c.model.built.story.after_win)
 }
@@ -741,7 +741,8 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
 }
 
 fn script_end_match(core: &mut Core) {
-    if active(core) {
+    // (the second front's end is not the mission's: crate::two_front)
+    if active(core) && !crate::two_front::second_live(core) {
         let c = core.raw_read_32(LAST_CONDITION, -1);
         let day = core.raw_read_16(0x0300_4080, -1);
         core.raw_write_32(WIN_CAUSE, -1, c);
@@ -965,7 +966,10 @@ pub fn map_start(core: &mut Core) {
     if !active(core) || core.raw_read_8(MAP_ID, -1) != data::MAP_ID {
         return;
     }
-    let Some(m) = campaign(core).and_then(|c| c.model.built.missions.get(core.raw_read_8(MISSION, -1) as usize)) else { return };
+    let Some(main) = campaign(core).and_then(|c| c.model.built.missions.get(core.raw_read_8(MISSION, -1) as usize)) else { return };
+    // On a two-front battle's second front, that front's own rules
+    // (crate::two_front).
+    let m = crate::two_front::live_info(core).unwrap_or(main);
     let (mode, w) = match m.weather {
         1 => (3, 1),
         2 => (3, 2),
@@ -979,13 +983,14 @@ pub fn map_start(core: &mut Core) {
     core.raw_write_8(WEATHER, -1, w);
     core.raw_write_8(NEXT_WEATHER, -1, w);
     core.raw_write_8(FOG, -1, m.fog as u8);
-    if core.raw_read_8(MISSION, -1) as usize == data::MEANS_TO_AN_END {
+    if m.index == data::MEANS_TO_AN_END {
         // Dual Strike's own palette for this map (crate::wasteland).
         crate::wasteland::set_biome(core, crate::wasteland::GRAND_BOLT_LOOK);
     } else {
         crate::wasteland::set_ds_look(core, m.look);
     }
     set_controllers(core, m);
+    crate::two_front::map_start(core);
 }
 
 /// Who plays each army (player +0x1B: 1 the player, 2 the computer): in
@@ -1015,6 +1020,13 @@ fn set_controllers(core: &mut Core, m: &data::MissionInfo) {
     }
 }
 
+/// The player picks a CO for the mission: for an army (Dual Strike's
+/// 0x1C), or for a second front (crate::two_front).
+fn player_picks(m: &data::MissionInfo) -> bool {
+    m.cos.iter().take(m.armies as usize).any(|&(co, _)| co == 0x1C)
+        || m.two_front.as_ref().is_some_and(|t| t.cos.contains(&crate::campaign_model::PICK))
+}
+
 /// The mission's armies the player picks a CO for (Dual Strike's 0x1C), and
 /// the COs to pick from; fills the CO select screen's lists. 1 if there is
 /// a pick to make.
@@ -1022,7 +1034,7 @@ fn co_setup(core: &mut Core) -> u32 {
     let Some(c) = campaign(core) else { return 0 };
     let index = core.raw_read_8(MISSION, -1) as usize;
     let Some(m) = c.model.built.missions.get(index) else { return 0 };
-    if !m.cos.iter().take(m.armies as usize).any(|&(co, _)| co == 0x1C) {
+    if !player_picks(m) {
         return 0;
     }
     // Dual Strike's pool, by country (AW2's tabs: Orange Star, Blue Moon,
@@ -1097,6 +1109,10 @@ fn is_flag(core: &mut Core) {
 /// The landing of every magic stub: r3 = the magic id.
 fn landing(core: &mut Core) {
     let id = core.gba().cpu().gpr(3) as u32;
+    // Two-front battles' own stubs (crate::two_front).
+    if id & 0xFF00_0000 == crate::two_front::MAGIC {
+        return crate::two_front::magic(core, id);
+    }
     let r = match campaign(core).and_then(|c| c.model.built.magic.get(id as usize)).cloned() {
         Some(data::Magic::Flow(FLOW_CO_SETUP)) => co_setup(core),
         Some(data::Magic::Flow(FLOW_SAVE)) => return save(core),

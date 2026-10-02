@@ -157,6 +157,61 @@ impl Built {
     }
 }
 
+/// A battle on two fronts: the description [`crate::two_front`] plays (Dual
+/// Strike's dual-screen battles; docs/AW2.md "Two fronts"). The battle's
+/// own [`MissionInfo`] and map header are its main front's; this names the
+/// second front's and its rules. Nothing here is Dual Strike's: a custom
+/// campaign's mission (or, later, a Versus map) describes its fronts the
+/// same way.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TwoFront {
+    /// The second front: its map header (an index of [`Built::headers`]:
+    /// its map, deployment, structure picture, event lists, COs, colours,
+    /// teams; no day limit) and its [`MissionInfo`] (an index of
+    /// [`Built::missions`]: look, weather, fog, armies).
+    pub second: u8,
+    /// Each army's CO on the second front (AW2 CO ids; [`PICK`]: the player
+    /// picks it on the CO screen, after the main front's picks).
+    pub cos: [u8; 4],
+    /// Who gives the orders to the player's armies on the second front.
+    pub control: FrontControl,
+    /// What the main front may send to the second ([`SendRule`]).
+    pub send: SendRule,
+    /// Whether CO powers may be used on the second front.
+    pub powers: bool,
+}
+
+/// The second front's CO is the player's pick ([`TwoFront::cos`]).
+pub const PICK: u8 = 0xFE;
+
+/// Who directs the player's armies on the second front.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrontControl {
+    /// The computer plays them (Dual Strike's campaign: "In Campaign mode,
+    /// the second front is controlled automatically").
+    Cpu,
+    /// The player does (Dual Strike's "Direct the secondary front
+    /// manually", a battle option outside the campaign).
+    Manual,
+}
+
+/// Which units the main front may send to the second (the unit's Send
+/// command), and where they arrive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SendRule {
+    /// No sending.
+    None,
+    /// A front in the sky: Fighters, Bombers, Stealths and Black Bombs from
+    /// anywhere ("You won't be able to send helicopters, because they can't
+    /// fly high enough"); they arrive by the army's own units there.
+    Air,
+    /// Both fronts on the ground: any unit standing on its army's HQ or a
+    /// base, airport or port ("units can be sent to the second front from
+    /// bases that build units. Oh, and from the HQ, too"); they arrive
+    /// around the army's HQ there, naval units in the waters near it.
+    Ground,
+}
+
 #[derive(Clone, Debug)]
 pub struct MissionInfo {
     pub index: usize,
@@ -164,8 +219,9 @@ pub struct MissionInfo {
     /// The world map's mission panel text: the mission's objective (the
     /// first text of its objective script), two lines.
     pub info_text: u16,
-    /// The record index of its second front (not played: see docs/AW2.md).
-    pub second_front: Option<u8>,
+    /// A battle on two fronts ([`TwoFront`], crate::two_front): its second
+    /// front's description. None for an ordinary one-front battle.
+    pub two_front: Option<TwoFront>,
     pub number: u8,
     pub cos: [(u8, u8); 4],
     pub colours: [u8; 4],

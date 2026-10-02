@@ -126,6 +126,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     traps.extend(crate::mode_menu::traps());
     traps.extend(crate::ds_campaign::traps());
     traps.extend(crate::ds_worldmap::traps());
+    traps.extend(crate::two_front::traps());
     traps
 }
 

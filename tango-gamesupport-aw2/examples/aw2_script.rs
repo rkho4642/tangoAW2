@@ -380,6 +380,21 @@ fn main() {
                 std::fs::write(parts[3], buf).unwrap();
             }
             "frame" => println!("frame {frame}"),
+            // The console's state to a file and back (for picking up a run
+            // where an earlier one stopped; the ROM image's runtime patches
+            // follow RAM and are put back by the next frame).
+            "statefile" => {
+                let s = link.core(0).save_state().expect("save state");
+                std::fs::write(parts[1], s.as_slice()).unwrap();
+            }
+            "loadfile" => {
+                let bytes = std::fs::read(parts[1]).expect("state file");
+                let mut s = mgba::state::State::new_uninit();
+                let n = std::mem::size_of::<mgba::state::State>().min(bytes.len());
+                unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), s.as_mut_ptr() as *mut u8, n) };
+                let s = unsafe { s.assume_init() };
+                link.core_mut(0).load_state(&s).expect("load state");
+            }
             "audio" => {
                 drain_audio(link.core_mut(0));
                 *RECORDING.lock().unwrap() = Some(Vec::new());

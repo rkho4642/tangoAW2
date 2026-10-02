@@ -80,8 +80,8 @@ for _i in (18, 23):   # Crystal Calamity, For the Future!
 def grand_bolt_only_closed_parts_resist(ctx):
     """Means to an End: its weak points are the Grand Bolt's parts (a
     minicannon on tile 0x194 at (3, 9), (9, 11), (15, 9)); with their
-    crystals standing they keep their hit points; its crystals (Black
-    Crystals) lose theirs."""
+    crystals standing (on its second front, crate::two_front: their own
+    breaking is test_two_fronts') they keep their hit points."""
     e = Emu(save=paths.base_save(), ds=True)
     g = Game(e, ctx.image)
     ctx.games.append(g)
@@ -97,6 +97,4 @@ def grand_bolt_only_closed_parts_resist(ctx):
         e.w8(a + 4, hp - 20)
         e.wait(4)
         ctx.eq(e.u8(a + 4), hp, "a closed weak point keeps its hit points")
-    crystals = [a for x, y, k, a in inv if k == 4 and (x, y) not in parts]
-    for a in crystals:
-        lowered_stays(ctx, e, a, "a Black Crystal")
+    ctx.eq([(x, y) for x, y, k, a in inv if k == 4 and (x, y) not in parts], [], "no Black Crystal on the main map")

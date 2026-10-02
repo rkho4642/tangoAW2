@@ -23,8 +23,7 @@ PROC_CAMPAIGN = 0x0849EB34        # ProcScr_Campaign (AW2's campaign)
 PROC_MISSION = 0x0849EBFC
 DS_TABLE = 0x08E00000             # survival::TABLE (room for 0x100 ids)
 DS_DATA = 0x08F00000              # ds_campaign::DATA ("DSCD")
-MTE_CRYSTALS = [(3, 3), (9, 5), (15, 3)]  # ds_campaign_data::MTE_CRYSTALS
-MTE_DAYS = 36
+MTE_DAYS = 24                     # Dual Strike's own (its crystals are on its second front: test_two_fronts)
 
 
 def boot(ctx, save=None):
@@ -418,7 +417,9 @@ def ds_campaign_grand_bolt(ctx):
         e.wait(20)
         if at() == [(2, 27)] * 3:
             spawned = True
-        if e.u8(0x030033EC) == 1 and spawned:
+        # (back on the main front: its second front plays its own round in
+        # between, crate::two_front)
+        if e.u8(0x030033EC) == 1 and spawned and e.u8(0x0203E400) == 0 and e.u8(0x0203E403) == 0:
             break
     ctx.check(spawned, "day 6: an Oozium of Black Hole's below each weak point")
     ctx.check(d.active() and d.mission() == 24 and d.in_battle(), "the mission goes on")
@@ -502,13 +503,10 @@ def _every_mission(step):
         w, h = m["w"], m["h"]
         rows = [e.u16(dc.MAP + 0x417A + 2 * y) for y in range(h)]
         tiles = [e.u16(dc.MAP + 0xA22 + 2 * (rows[y] + x)) for y in range(h) for x in range(w)]
-        # (Means to an End's second-front crystals stand on its map: a
-        # documented compromise, ds_campaign_means_to_an_end)
-        moved = {y * w + x for x, y in MTE_CRYSTALS} if index == 24 else set()
         classes = [e.u8(dc.MAP + 0x1432 + rows[y] + x) for y in range(h) for x in range(w)]
         grand_bolt = index == 24
         bad = [(i % w, i // w) for i, (t, want) in enumerate(zip(tiles, m["tiles"]))
-               if t != want and want not in CONVERTED and not (grand_bolt and t in (0x01, 0x194, 0x1A4)) and i not in moved]
+               if t != want and want not in CONVERTED and not (grand_bolt and t in (0x01, 0x194, 0x1A4))]
         ctx.check(not bad, f"{label}: every tile as Dual Strike's ({len(bad)} differ: {bad[:6]})")
         none = [(i % w, i // w) for i, c in enumerate(classes) if c == 0]
         ctx.check(not none, f"{label}: every tile has a terrain ({len(none)} without: {none[:6]})")
@@ -749,7 +747,10 @@ def _until_army(e, d, army, frames=18000, each=None):
         if d.scripts_running() or not d.in_battle():
             e.press("A", 4)
         e.wait(20)
-        if e.u8(0x030033EC) == army and not d.scripts_running() and d.in_battle() and not told[-1:] == [d.text_shown()]:
+        # (on the main front: a two-front mission's second front plays its
+        # own round in between, crate::two_front)
+        main = e.u8(0x0203E400) == 0 and e.u8(0x0203E403) == 0
+        if e.u8(0x030033EC) == army and main and not d.scripts_running() and d.in_battle() and not told[-1:] == [d.text_shown()]:
             break
     return told
 
@@ -1455,72 +1456,20 @@ def ds_campaign_records(ctx):
 
 @test(modes=("ds",))
 def ds_campaign_means_to_an_end(ctx):
-    """Means to an End on one front (docs/AW2.md): Dual Strike's second
-    front's three Black Crystals stand on the main map, in the north, each
-    in its weak point's column; a weak point whose crystal stands takes no
-    damage (its force field); a crystal shattered plays Dual Strike's
-    "We have shattered one of the black crystals!" and opens its weak
-    point; every crystal shattered wins. Its day limit is 36 (the header's
-    counter; Black Hole's win on day 36, not 24). (The crystals and the
-    weak point's hits are set here as a test aid; the legitimate win is
-    ds_campaign_win_27.)"""
+    """Means to an End as Dual Strike has it (its single-front compromises
+    gone): its day limit is 24 (the header's counter; Black Hole's win on day
+    24: test_two_fronts), no Black Crystal stands on its main map (they are
+    on its second front, crate::two_front), and its texts are Dual Strike's
+    own (the briefing on the world map's panel, "within 24 days")."""
     e, g, d = boot(ctx)
     d.start(step=27)
-    ctx.eq(e.u16(DS_TABLE + 0x5C * dc.DS_MAP_ID + 0x24), MTE_DAYS, "the day limit: 36")
+    ctx.eq(e.u16(DS_TABLE + 0x5C * dc.DS_MAP_ID + 0x24), MTE_DAYS, "the day limit: 24")
     d.wait_map()
     ctx.eq(d.mission(), 24, "Means to an End")
     shot(ctx, e, "means_to_an_end_start.png")
     rows = lambda y: e.u16(dc.MAP + 0x417A + 2 * y)
     tile = lambda x, y: e.u16(dc.MAP + 0xA22 + 2 * (rows(y) + x))
-    ctx.eq([tile(x, y) for x, y in MTE_CRYSTALS], [0x192] * 3, "three Black Crystals on the map")
-    inv = lambda: [(e.u8(0x02028360 + 8 * k), e.u8(0x02028361 + 8 * k), (e.u16(0x02028362 + 8 * k) >> 6) & 15, 0x02028360 + 8 * k)
-                   for k in range(16)]
-    crystals = {(x, y): a for x, y, k, a in inv() if k == 4 and (x, y) in MTE_CRYSTALS}
-    obelisks = {(x, y): a for x, y, k, a in inv() if k == 4 and (x, y) in [(3, 9), (9, 11), (15, 9)]}
-    ctx.eq(sorted(crystals), sorted(MTE_CRYSTALS), "each crystal an invention (the game's own)")
-    west = obelisks[(3, 9)]
-    hp = e.u8(west + 4)
-    e.w8(west + 4, hp - 30)
-    e.wait(2)
-    ctx.eq(e.u8(west + 4), hp, "the west weak point's crystal stands: no damage")
-    g.goto(3, 3)
-    e.wait(20)
-    shot(ctx, e, "crystals.png")
-    # The west crystal shattered.
-    e.w8(crystals[(3, 3)] + 4, 0)
-    d.end_turn()
-    told = []
-    for _ in range(900):
-        t = d.text_shown()
-        if t and (not told or told[-1] != t):
-            told.append(t)
-        if d.scripts_running():
-            if t and "shattered" in norm(t):
-                shot(ctx, e, "crystal_shattered.png")
-            e.press("A", 4)
-        e.wait(20)
-        if e.u8(0x030033EC) == 1 and told:
-            break
-    ctx.check(any("shattered" in norm(t) for t in told), f"Dual Strike's dialogue: {[norm(t)[:50] for t in told][:3]}")
-    hp = e.u8(west + 4)
-    e.w8(west + 4, hp - 30)
-    e.wait(2)
-    ctx.eq(e.u8(west + 4), hp - 30, "the west weak point open: it takes damage")
-    centre = obelisks[(9, 11)]
-    hp = e.u8(centre + 4)
-    e.w8(centre + 4, hp - 30)
-    e.wait(2)
-    ctx.eq(e.u8(centre + 4), hp, "the centre one still closed")
-    # Every crystal shattered: the win.
-    for c in MTE_CRYSTALS:
-        e.w8(crystals[c] + 4, 0)
-    e.w8(dc.LAST_RESULT, 0)
-    d.wait_control()
-    d.end_turn()
-    for _ in range(900):
-        if e.u8(dc.LAST_RESULT):
-            break
-        if d.scripts_running() or not d.in_battle():
-            e.press("A", 4)
-        e.wait(20)
-    ctx.eq(e.u8(dc.LAST_RESULT), 1, "every crystal shattered: won")
+    w, h = d.size()
+    ctx.check(not any(tile(x, y) == 0x192 for y in range(h) for x in range(w)), "no Black Crystal on the main map")
+    ctx.eq(e.u8(0x0203E401), 1, "its second front is fought (crate::two_front)")
+

@@ -137,7 +137,21 @@ fn save_write(core: &mut Core) {
     core.raw_read_range(crate::ds_campaign_rules::MTE_TOLD, -1, &mut b[24..]);
     core.raw_write_range(DS_AT, -1, &b);
     core.gba_mut().cpu_mut().set_gpr(0, DS_SLOT as i32);
+    // A battle on two fronts (crate::two_front): the front not on the
+    // screen and the battle's state follow the block (the slot takes more
+    // than one sector: AW2's writer splits a record in 0xFAD-byte parts).
+    if let Some(fronts) = crate::two_front::saved_state(core) {
+        let mut t = FRONTS_MARK.to_le_bytes().to_vec();
+        t.extend_from_slice(&fronts);
+        core.raw_write_range(BLOCK + BLOCK_SIZE, -1, &t);
+        core.gba_mut().cpu_mut().set_gpr(2, (BLOCK_SIZE + t.len() as u32) as i32);
+    }
 }
+
+/// The block's length as AW2 saves it, and the mark of the two-front state
+/// saved after it.
+const BLOCK_SIZE: u32 = 0xE28;
+const FRONTS_MARK: u32 = 0x5446_3254; // "T2FT"
 
 /// The block just applied by a DS mission's Continue: the session's flags
 /// and countdown.
@@ -150,12 +164,21 @@ fn applied_ds(core: &mut Core) {
     core.raw_write_32(crate::ds_campaign::COUNTDOWN, -1, u32::from_le_bytes(b[4..8].try_into().unwrap()));
     core.raw_write_range(crate::ds_campaign::FLAGS, -1, &b[8..24]);
     core.raw_write_range(crate::ds_campaign_rules::MTE_TOLD, -1, &b[24..]);
+    // A two-front battle's other front and state (saved after the block).
+    if core.raw_read_32(BLOCK + BLOCK_SIZE, -1) == FRONTS_MARK {
+        let mut f = vec![0u8; crate::two_front::SAVED_LEN as usize];
+        core.raw_read_range(BLOCK + BLOCK_SIZE + 4, -1, &mut f);
+        crate::two_front::restore_saved(core, &f);
+        core.raw_write_32(BLOCK + BLOCK_SIZE, -1, 0);
+    }
 }
 
 /// The sector holding the DS mission saved halfway, if AW2's directory
 /// lists one.
 fn ds_sector(core: &Core) -> Option<u32> {
-    (0..16).find(|&i| core.raw_read_8(DIRECTORY + i, -1) == DS_SLOT)
+    // (its first part: a two-front battle's takes two sectors; the sector's
+    // +0x0C is part << 4 | parts - 1)
+    (0..16).find(|&i| core.raw_read_8(DIRECTORY + i, -1) == DS_SLOT && core.raw_read_8(FLASH + 0x1000 * i + 0x0C, -1) >> 4 == 0)
 }
 
 /// The DS mission saved halfway (its index), read from Flash.

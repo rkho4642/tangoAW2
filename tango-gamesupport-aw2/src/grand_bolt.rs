@@ -151,6 +151,8 @@ pub fn on(core: &Core) -> bool {
     crate::ds_campaign::active(core)
         && crate::ds_campaign::mission(core) == crate::ds_campaign_data::MEANS_TO_AN_END as u8
         && crate::ds_campaign::in_battle(core)
+        // (its main front: the second front's map is its own)
+        && !crate::two_front::second_live(core)
 }
 
 /// The Grand Bolt's picture at map cell (x, y), in Means to an End's

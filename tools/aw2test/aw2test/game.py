@@ -390,7 +390,9 @@ class Game:
         while n <= max_frames:
             self.wait_idle(max_frames, stable=4)
             x, y = self.cursor()
-            key, back = ("RIGHT", "LEFT") if x < 29 else ("LEFT", "RIGHT")
+            # (towards the map's middle: maps are up to 30 wide)
+            width = self.e.u16(0x0201E450) or 30
+            key, back = ("RIGHT", "LEFT") if x < min(29, width - 1) else ("LEFT", "RIGHT")
             self.e.hold(key, 6)
             self.e.wait(10)
             if self.cursor() != (x, y):
@@ -429,7 +431,12 @@ class Game:
         """The unit command menu's table, as the game reads it (tangoAW2's copy
         with the Dual Strike pack: pool word 0x0802D59C)."""
         return self.e.u32(0x0802D59C)
-    MAP_MENU = 0x0849AAC0
+
+    @property
+    def MAP_MENU(self):
+        """The map menu's table, as the game reads it (tangoAW2's copy with
+        Front in a two-front battle: pool word 0x0802D49C)."""
+        return self.e.u32(0x0802D49C)
 
     def live_label(self, table, i):
         """A menu entry's label as the game shows it now (text table and
@@ -450,7 +457,7 @@ class Game:
                 table = struct.unpack_from("<I", b, 0x20)[0]
                 vis = list(b[0x31:0x31 + b[0x41]])  # +0x40 entries in the table, +0x41 shown
                 menu_proc = struct.unpack_from("<I", b, 0x44)[0]
-                if not (0x08000000 <= table < 0x08800000):
+                if not (0x08000000 <= table < 0x09000000):
                     return None
                 try:
                     names = [self.live_label(table, i) for i in vis]

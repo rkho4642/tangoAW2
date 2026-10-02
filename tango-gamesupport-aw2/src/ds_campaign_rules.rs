@@ -334,16 +334,29 @@ pub(crate) const MTE_TOLD: u32 = 0x0203_F700;
 /// Ring of Fire: its Volcano stilled (Dual Strike's rule: Black Hole's
 /// unit hiding in the city found).
 const VOLCANO_STILL: u32 = 0x0203_F704;
+/// Means to an End: its second front's crystals shattered (a bit each, west
+/// to east), for the main front's weak points while the second front is
+/// not on the screen (crate::two_front).
+const CRYSTALS_DOWN: u32 = 0x0203_F705;
 /// The mission's state kept with a mission saved halfway (`crate::suspend`):
 /// Means to an End's and Ring of Fire's, from [`MTE_TOLD`].
-pub(crate) const MTE_LEN: u32 = 5;
+pub(crate) const MTE_LEN: u32 = 6;
 /// The mission's state above, cleared when a mission starts (0x0203F708..
 /// 0x0203F73B holds the Volcano's eruption cells: [`eruption`], written
 /// before each use; crate::map_anim's state starts at 0x0203F740).
 const MISSION_STATE: (u32, u32) = (0x0203_F700, 0x10);
 
-/// Crystal `k` of Means to an End still stands.
+/// Crystal `k` of Means to an End still stands: on its second front (on
+/// the screen: its inventions list; else as it was left there).
 pub fn crystal_alive(core: &Core, k: usize) -> bool {
+    if crate::two_front::second_live(core) {
+        crystal_alive_here(core, k)
+    } else {
+        core.raw_read_8(CRYSTALS_DOWN, -1) & (1 << k) == 0
+    }
+}
+
+fn crystal_alive_here(core: &Core, k: usize) -> bool {
     let (x, y) = MTE_CRYSTALS[k];
     (0..16).map(|i| INVENTIONS + 8 * i).take_while(|&a| (core.raw_read_16(a + 2, -1) >> 6) & 0xF != 0).any(|a| {
         (core.raw_read_16(a + 2, -1) >> 6) & 0xF == 4
@@ -351,6 +364,68 @@ pub fn crystal_alive(core: &Core, k: usize) -> bool {
             && core.raw_read_8(a + 1, -1) as u32 == y
             && core.raw_read_8(a + 4, -1) > 0
     })
+}
+
+/// Every frame of a two-front battle (crate::two_front): Means to an End's
+/// crystals as they stand on its second front, while it is on the screen.
+pub fn mte_crystals_tick(core: &mut Core) {
+    if crate::ds_campaign::mission(core) != MEANS_TO_AN_END as u8 || !crate::two_front::second_live(core) || crate::two_front::swapping(core) {
+        return;
+    }
+    let down = (0..3).filter(|&k| !crystal_alive_here(core, k)).fold(0u8, |m, k| m | 1 << k);
+    let now = core.raw_read_8(CRYSTALS_DOWN, -1);
+    if down | now != now {
+        core.raw_write_8(CRYSTALS_DOWN, -1, down | now);
+    }
+}
+
+/// Omens and Signs (record index): its main front's ocean fortress is
+/// shielded while the Black Arc, on its second front, stands (Dual Strike:
+/// "Black Hole's utilizing a barrier field ... energy is flowing from the
+/// Black Arc ... It's coming from the second front down to the floating
+/// fortress on the main front!"; its second front won: "Black Arc fatal
+/// error. Ocean fortress barrier collapsing.").
+pub const OMENS_AND_SIGNS: u8 = 14;
+/// The fortress's minicannons' hit points while shielded (four).
+const BARRIER_HP: u32 = 0x0203_F73C;
+const BARRIER_LEN: u32 = 4;
+
+/// The main front's minicannons (entries of the inventions list: kind 4,
+/// not a Crystal nor the Grand Bolt's), at most four.
+fn fortress(core: &Core) -> Vec<u32> {
+    (0..16)
+        .map(|i| INVENTIONS + 8 * i)
+        .take_while(|&a| (core.raw_read_16(a + 2, -1) >> 6) & 0xF != 0)
+        .filter(|&a| {
+            let (x, y) = (core.raw_read_8(a, -1) as u32, core.raw_read_8(a + 1, -1) as u32);
+            (core.raw_read_16(a + 2, -1) >> 6) & 0xF == 4 && !matches!(tile_at(core, x, y), 0x192 | 0x194)
+        })
+        .take(BARRIER_LEN as usize)
+        .collect()
+}
+
+/// Every frame of a two-front battle (crate::two_front): Omens and Signs'
+/// barrier on its main front while its second front is not won. A hit
+/// lands (its events see it: "Hey! What gives? We can't seem to damage
+/// it.") and is undone once the action and its events are over.
+pub fn omens_barrier_tick(core: &mut Core) {
+    if crate::ds_campaign::mission(core) != OMENS_AND_SIGNS || crate::two_front::live(core) != Some(0) || crate::two_front::swapping(core) {
+        return;
+    }
+    let up = !crate::two_front::second_front_result(core).is_some_and(|r| r.0);
+    let state = core.raw_read_16(0x0300_32D8, -1);
+    let settled = matches!(state, 3 | 4 | 5 | 0xD) && !crate::two_front::events_running(core);
+    for (k, e) in fortress(core).into_iter().enumerate() {
+        let hp = core.raw_read_8(e + 4, -1);
+        let kept = core.raw_read_8(BARRIER_HP + k as u32, -1);
+        if !up || kept == 0 || hp > kept {
+            if kept != hp {
+                core.raw_write_8(BARRIER_HP + k as u32, -1, hp);
+            }
+        } else if hp < kept && settled {
+            core.raw_write_8(e + 4, -1, kept);
+        }
+    }
 }
 
 /// Means to an End in a session.
@@ -371,6 +446,9 @@ pub fn mte_start(core: &mut Core) {
     for k in 0..MISSION_STATE.1 {
         core.raw_write_8(MISSION_STATE.0 + k, -1, 0);
     }
+    for k in 0..BARRIER_LEN {
+        core.raw_write_8(BARRIER_HP + k, -1, 0);
+    }
 }
 
 /// AW2's invention kind of the Volcano (the inventions list).
@@ -383,6 +461,8 @@ pub fn volcano_still(core: &Core, entry: u32) -> bool {
     crate::ds_campaign::active(core)
         && crate::ds_campaign::in_battle(core)
         && core.raw_read_8(VOLCANO_STILL, -1) != 0
+        // (the main front's Volcano: the second front's erupts on)
+        && !crate::two_front::second_live(core)
         && (core.raw_read_16(entry + 2, -1) >> 6) & 0xF == KIND_VOLCANO
 }
 
@@ -403,7 +483,9 @@ pub fn eruption(core: &mut Core) {
         return;
     }
     let Some(pack) = crate::ds_pack::pack() else { return };
-    let Some(list) = pack.arm9_at(DS_ERUPTION_LISTS + 4, 4).map(|b| u32::from_le_bytes(b.try_into().unwrap())) else { return };
+    // Dual Strike's lists by front: 1 the main front's, 2 the second's.
+    let front = crate::two_front::second_live(core) as u32;
+    let Some(list) = pack.arm9_at(DS_ERUPTION_LISTS + 4 * (1 + front), 4).map(|b| u32::from_le_bytes(b.try_into().unwrap())) else { return };
     let mut at = ERUPTION_CELLS;
     for k in 0..ERUPTION_CELLS_LEN / 4 - 1 {
         let Some(c) = pack.arm9_at(list + 4 * k, 4) else { break };
@@ -577,6 +659,8 @@ mod ram_tests {
     fn state_fits() {
         assert!(VOLCANO_STILL < MISSION_STATE.0 + MISSION_STATE.1);
         assert!(MTE_TOLD + MTE_LEN <= ERUPTION_CELLS);
-        assert!(ERUPTION_CELLS + ERUPTION_CELLS_LEN <= 0x0203_F740, "before crate::map_anim's state");
+        assert!(ERUPTION_CELLS + ERUPTION_CELLS_LEN <= BARRIER_HP);
+        assert!(BARRIER_HP + BARRIER_LEN <= 0x0203_F740, "before crate::map_anim's state");
+        assert!(CRYSTALS_DOWN < MTE_TOLD + MTE_LEN && CRYSTALS_DOWN > VOLCANO_STILL);
     }
 }
