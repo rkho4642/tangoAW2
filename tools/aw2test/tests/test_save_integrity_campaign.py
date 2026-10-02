@@ -350,3 +350,101 @@ def save_ds_campaign_new_drops_mission_suspend(ctx):
     e, g, d = boot(ctx, after.path)
     cp.ds_start(e, d, new=False)
     ctx.check(d.world_map_up() and not d.in_battle(), "Continue: the new campaign's map, no battle")
+
+
+RECORD_LEN = 0x20 + 8 * 32       # the DS record: the progress, then the missions' records
+
+
+def hard_flag(e):
+    f = dc.HARD_FLAG - 0x20
+    return (e.u8(DS_FLAGS + f // 8) >> (f % 8)) & 1
+
+
+@test(modes=("ds",))
+def save_ds_campaign_hard_and_records(ctx):
+    """A Hard DS Campaign (opened by a Normal campaign cleared: the record's
+    clears byte, set here as Means to an End's win sets it) over an AW2
+    campaign in progress: New Hard, a mission won (its record in the Hard
+    word), saved in slot 15 only; a Hard mission saved halfway and
+    continued after a reboot is still Hard (the session's flag 0x60, AW2's
+    Hard Campaign flag, which the DS Campaign keeps as its difficulty); won,
+    its record is saved. AW2's own flag 0x60 and campaign records in the
+    profile are untouched throughout; after a reboot Continue is Hard with
+    the records shown."""
+    c = aw2_campaign_image(ctx, True)
+    start = c["suspended"]
+    aw2_profile = start.slot(0)
+    e, g, d = boot(ctx, start.path)
+    d.open_campaign_box()
+    d.chooser_row(1)
+    e.press("A", 8)
+    e.wait(30)
+    e.w32(dc.P_MAGIC, dc.PROGRESS_MAGIC)
+    e.w8(dc.P_CLEARS, 1)
+    d.box_row(1)
+    e.wait(20)
+    e.press("A", 8)
+    e.wait(20)
+    e.press("DOWN", 6)            # the Normal / Hard choice: Hard
+    e.wait(20)
+    e.press("A", 8)
+    for _ in range(40):
+        if e.wait_until(d.active, 30, step=5):
+            break
+        e.press("A", 8)
+    ctx.require(d.active(), "Hard: the session starts")
+    ctx.eq((e.u8(dc.P_HARD), hard_flag(e)), (1, 1), "a Hard campaign")
+    d.wait_world_map()
+    img = saves.flash(e, os.path.join(ctx.out, "hard_new"))
+    saves.expect_slots(ctx, start, img, [DS_RECORD], "Hard New", profile_allow=[saves.MODE_BYTE])
+    ctx.eq(len(img.slot(DS_RECORD)), RECORD_LEN, "the DS record: progress and records")
+    won = cp.win_ds_mission(e, d)
+    after = saves.flash(e, os.path.join(ctx.out, "hard_won"))
+    saves.expect_slots(ctx, img, after, [DS_RECORD], f"Hard mission {won} won", profile_allow=list(POINTS) + [saves.MODE_BYTE])
+    rec = after.slot(DS_RECORD)
+    word = lambda r, m, hard: int.from_bytes(r[0x20 + 8 * m + 4 * hard:0x24 + 8 * m + 4 * hard], "little")
+    ctx.check(word(rec, won, 1) >> 20 > 0 and word(rec, won, 0) == 0, f"its record in the Hard word ({word(rec, won, 1):#x})")
+    ctx.eq(rec[6], 1, "the record says Hard")
+    # A Hard mission saved halfway.
+    d.pick_mission()
+    d.wait_map()
+    mission = d.mission()
+    saves.suspend(g)
+    snap = saves.snapshot(g)
+    saved = saves.flash(e, os.path.join(ctx.out, "hard_saved"))
+    saves.expect_slots(ctx, after, saved, [DS_SUSPEND], "a Hard mission saved halfway",
+                       profile_allow=list(saves.OPTIONS) + [saves.MODE_BYTE])
+    e.close()
+    e, g, d = boot(ctx, saved.path)
+    d.open_campaign_box()
+    d.chooser_row(1)
+    e.press("A", 8)
+    e.wait(30)
+    d.box_row(0)
+    e.press("A", 8)
+    ctx.require(e.wait_until(lambda: e.u32(0x03000000) == 0x08022049, 1200, step=10), "Continue: the Hard mission")
+    g._units_base = g._players_base = None
+    g.wait_for_input()
+    ctx.eq((d.mission(), hard_flag(e), e.u8(dc.P_HARD)), (mission, 1, 1), "the mission, Hard")
+    saves.compare_snapshots(ctx, snap, saves.snapshot(g), "the Hard mission continued")
+    ctx.require(d.force_win(), "won")
+    for _ in range(400):
+        e.wait(30)
+        if d.world_map_up() and e.u8(dc.WM_STATE + 0x10):
+            break
+        if d.scripts_running() or not d.in_battle():
+            e.press("A", 4)
+    e.wait(60)
+    end = saves.flash(e, os.path.join(ctx.out, "hard_won2"))
+    ctx.check(DS_SUSPEND not in end.tags() and not end.problems(), f"the halfway save dropped, every slot valid {end.tags()}")
+    rec2 = end.slot(DS_RECORD)
+    ctx.check(word(rec2, mission, 1) >> 20 > 0 and word(rec2, won, 1) == word(rec, won, 1),
+              "both Hard records saved (the first unchanged)")
+    p = end.slot(0)
+    ctx.check(p[0:0x48] == aw2_profile[0:0x48], "AW2's flags (its own Hard Campaign flag 0x60 among them) untouched")
+    ctx.check(p[0x2A0:0x3F0] == aw2_profile[0x2A0:0x3F0], "AW2's campaign records untouched")
+    e.close()
+    e, g, d = boot(ctx, end.path)
+    cp.ds_start(e, d, new=False)
+    ctx.eq((hard_flag(e), e.u8(dc.P_HARD)), (1, 1), "after a reboot: Continue is Hard")
+    ctx.check(e.read(dc.RECORDS, 8 * 32) == rec2[0x20:], "the records loaded")
