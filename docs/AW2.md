@@ -1101,7 +1101,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   sector. The map menu's Save item is hidden in a DS mission (its test word
   `0x0849AB64` points at a stub): a suspended mission would come back as an
   AW2 one.
-- **Hook points** (for merging other work): traps `0x0803BA4C`,
+- **Hook points** (for merging other work): traps `0x08016BA0` (the profile
+  serializer's end), `0x0803BA4C`,
   `0x0803BA88`, `0x08038484`, `0x0803CBA0`, `0x0803CBD8`, `0x0803BC7C`
   (`GetCampaignSaveFlag`: the DS box's Continue), `0x0803840C`, `0x0803CC5E`
   (the stubs' landing); `SetMapPlayed` (`0x0803CA28`, Survival's trap) also
@@ -1148,17 +1149,30 @@ battle) and its ending (`specialProperty` 0x10 put on its first mission so
 its win starts AW2's ending proc `0x084A0A3C`; the scenes and staff roll
 until Select Mode is back) are traced every 20 frames (the text shown, the
 song, the screen, the game's frame count) without the pack, with it, and
-after a DS Campaign session in the same boot. The runs press New at the
-same frame from the boot (a session's reference is an AW2 campaign
-session left the same way) and write nothing to RAM. With the pack every
-sample matches (500 and 683). After a DS session the ending matches in
-full and the opening in everything but 9 samples of the world map's
-zoom and spinning Mission Start stamp (a pixel here and there; texts,
-songs and frame counts equal, Mission 1 and its battle the same after).
-That state is not in RAM, VRAM, palettes, OAM or AW2's code bytes (copying
-the reference's over at the New press leaves it), so it is console state
-outside memory after the session's songs; the test allows that one window
-and nothing else.
+after a DS Campaign session in the same boot, and must match exactly. The
+runs press New at the same frame from the boot and write nothing to RAM.
+A session's reference is a pack-off AW2 campaign session left with Yes at
+the same frame: for the opening one entered with Continue (AW2's world map
+from the menu, as the DS session enters it; AW2's proc pool is then left
+the same way, and the next campaign starts its procs in the same slots,
+which the world map's opening zoom and stamp depend on), for the ending
+one entered with New (no AW2 campaign loaded, as in a DS session, so the
+results' running total starts the same). Every sample matches (500 for
+the opening, 683 for the ending).
+
+**AW2's profile during a session.** AW2's save writer (`sub_0801A7D8`)
+serializes the profile (`0x08016B2C`: 0x02028030, 0x0200C078, 0x0200C2D0,
+0x0200C420 and the world map state 0x0202FDFC, 0x5CC bytes) into a new
+slot-0 sector with every slot it writes, since the profile's header lists
+the other slots' sectors. The DS Campaign's own record (slot 15) is written
+so too, while the world map state holds the DS map's: before this fix
+that took AW2's campaign away (no Continue, and New no longer warned).
+The serializer is trapped at its end (`0x08016BA0`): while AW2's world map
+state is in the session's backup (`ds_worldmap::backup_aw2_state`), the
+buffer gets it from there, so the profile in Flash stays AW2's
+(`aw2_campaign_kept_by_ds_session`: the profile byte for byte, Continue
+and New's notice in the same boot and after a reboot, with and without
+the pack).
 
 ## CO skills (design, not built yet)
 

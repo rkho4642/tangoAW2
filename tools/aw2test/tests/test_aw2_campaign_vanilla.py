@@ -20,6 +20,7 @@ win (`force_win`, at the same frame in the runs compared) then starts the
 game's own ending proc, `0x084A0A3C`. The same mark is made in every run.)"""
 
 import os
+import struct
 
 from aw2test import dscampaign as dc
 from aw2test import paths
@@ -34,25 +35,13 @@ ENDING_PROC = 0x084A0A3C
 PROC_CAMPAIGN = 0x0849EB34
 FRAME_COUNT = 0x03004008
 # The frames New is pressed at (from the boot): straight from the title,
-# and after a DS Campaign session (its reference waits on the menu until
-# then). AW2's frame counts, its menus' timers and the console's own state
-# then match in the runs compared, with no RAM written: the world map's
-# pan, palette cycles and the results' shimmer run from them.
+# and after a session (a DS Campaign session, or its reference: an AW2
+# campaign session, left with Yes at LEAVE_AT in both). AW2's frame counts,
+# its menus' timers and music then match in the runs compared, with no
+# RAM written.
 NEW_AT = 1400
 NEW_AFTER_DS = 6000
 LEAVE_AT = 5400
-DS_LEAVE_EARLY = 2
-# After a DS session the world map's opening zoom and the spinning Mission
-# Start stamp differ from the reference's by a pixel here and there for 9
-# samples (180 frames, 375..383): the same pictures to the eye, texts,
-# songs and frame counts equal, everything after it (Mission 1 and its
-# battle) the same. The cause is not in RAM, VRAM, palettes, OAM or the
-# ROM's code (copying the reference's RAM, VRAM, palettes and OAM over at
-# the New press leaves it; AW2's code bytes are the pack's own after the
-# session), so it is console state outside memory (the sound hardware's,
-# timers) after the session's songs. This one window is allowed, nothing
-# else.
-MOVED = 12
 # The frame the first battle is won at (the reference's, two runs' later).
 WIN_AT = {1400: 6100, 6000: 10700}
 
@@ -99,31 +88,23 @@ def save_pair(ctx, ref, got, label, k):
             f.write(t[k][2])
 
 
-def compare(ctx, ref, got, label, moved=0):
-    """The traces are the same: every text, song, screen and frame count.
-    With `moved`, the screens (only) may differ in one window of up to that
-    many samples (see MOVED); texts, songs and frame counts still match
-    everywhere."""
+def compare(ctx, ref, got, label):
+    """The traces are the same: every text, song, screen and frame count;
+    else the first difference (its two screens saved)."""
     n = min(len(ref), len(got))
     bad = [k for k in range(n) if ref[k] != got[k]]
-    # (the game's frame count too: no frame lost or gained)
-    hard = [k for k in bad if ref[k][:2] != got[k][:2] or ref[k][3] != got[k][3]]
-    span = bad[-1] - bad[0] + 1 if bad else 0
-    if hard or span > moved:
-        k = (hard or bad)[0]
+    if bad:
+        k = bad[0]
         what = [name for name, a, b in zip(("text", "song", "screen", "frame count"), ref[k], got[k]) if a != b]
         save_pair(ctx, ref, got, label, k)
-        ctx.check(False, f"{label}: differs at sample {k} ({20 * k} frames): {', '.join(what)} {ref[k][:2]} vs {got[k][:2]}; "
-                  f"{len(bad)} samples differ ({bad[:12]}), {len(hard)} in text, song or frame count")
+        ctx.check(False, f"{label}: differs at sample {k} ({20 * k} frames): {', '.join(what)} "
+                  f"{ref[k][:2]} vs {got[k][:2]}; {len(bad)} samples differ ({bad[:12]})")
         return
     texts = len({t[0] for t in ref if t[0] is not None})
-    note = f"; screens differ in samples {bad[0]}..{bad[-1]} only (allowed: {moved})" if bad else ""
-    if bad:
-        save_pair(ctx, ref, got, label, bad[0])
-    ctx.check(len(ref) == len(got), f"{label}: {n} samples the same ({texts} texts, songs, screens){note}")
+    ctx.check(len(ref) == len(got), f"{label}: {n} samples the same ({texts} texts, songs, screens)")
 
 
-def start_aw2_new(e, d, ds, new_at, from_box=False):
+def start_aw2_new(e, d, ds, new_at, from_box=False, count=None):
     """From the title (or Campaign's box, open on the chooser): Campaign,
     (AW2 CAMPAIGN with the pack,) New; then until AW2's campaign proc runs
     (the trace starts there)."""
@@ -137,8 +118,14 @@ def start_aw2_new(e, d, ds, new_at, from_box=False):
     e.wait(30)
     assert e.frame <= new_at, f"New is late: frame {e.frame} > {new_at}"
     e.wait(new_at - e.frame)
+    if count is not None:
+        e.w32(FRAME_COUNT, count)
     e.press("A", 8)
-    e.wait_until(lambda: PROC_CAMPAIGN in procs(e), 1800, step=1)
+    # (over a saved AW2 campaign, the game's notice first: A)
+    for _ in range(20):
+        if e.wait_until(lambda: PROC_CAMPAIGN in procs(e), 60, step=1):
+            break
+        e.press("A", 8)
 
 
 def procs(e):
@@ -167,34 +154,85 @@ def ds_session_first(e, d):
     map, then back to Select Mode."""
     d.start(new=True, pick=False)
     d.wait_world_map()
-    # (the session's end takes Select Mode 3 frames longer to come back:
-    # Yes 3 frames earlier, so its music and timers start where the
-    # reference's do)
-    leave_map(e, d, LEAVE_AT - DS_LEAVE_EARLY)
+    leave_map(e, d, LEAVE_AT)
 
 
-def aw2_session_first(e, d):
-    """The reference for it (pack off): an AW2 campaign session, New, its
-    story, AW2's world map, then back to Select Mode at the same frame. (Select
-    Mode's music starts again there in both, and AW2's mission start waits
-    on it.)"""
+def aw2_session_first(e, d, cont):
+    """Its reference (pack off): an AW2 campaign session left the same way
+    at the same frame. With `cont`, Continue (AW2's world map entered from
+    the menu, as the DS session enters it: the proc pool is left as the DS
+    session leaves it, so AW2's next campaign starts its procs in the same
+    slots and its world map opening runs the same); else New, its story,
+    its world map (no AW2 campaign loaded, as in the DS session: the
+    results' running total starts the same)."""
     d.open_campaign_box()
-    d.box_row(1)
+    d.box_row(0 if cont else 1)
     e.wait(30)
     e.press("A", 8)
-    d.wait_world_map()
+    for _ in range(3000):
+        if d.world_map_up() and not d.scripts_running():
+            break
+        e.press("A", 4)
+        e.wait(10)
     leave_map(e, d, LEAVE_AT)
+
+
+_SAVE = {}
+
+
+def campaign_save(ctx):
+    """A save with an AW2 campaign to continue (pack off, from the pinned
+    save: New, the story, Mission 1 won, AW2's world map, back to Select
+    Mode), made once per test run in the test's output."""
+    if "path" not in _SAVE:
+        e = Emu(save=paths.base_save(), ds=False)
+        d = dc.DsCampaign(Game(e))
+        d.open_campaign_box()
+        d.box_row(1)
+        e.wait(30)
+        e.press("A", 8)
+        for _ in range(4000):
+            if d.in_battle() and e.u8(0x030033EC) == 1 and not d.scripts_running():
+                break
+            e.press("A", 4)
+            e.wait(10)
+        assert d.force_win(), "AW2's Mission 1 not won"
+        for _ in range(3000):
+            if d.world_map_up() and not d.scripts_running():
+                break
+            e.press("A", 4)
+            e.wait(10)
+        leave_map(e, d, e.frame + 200)
+        _SAVE["path"] = e.save(os.path.join(ctx.out, "aw2_campaign"))
+        e.close()
+    return _SAVE["path"]
+
+
+def profile(e):
+    """AW2's profile in Flash: the newest slot-0 sector's payload."""
+    best = None
+    for s in range(16):
+        h = e.read(0x0E000000 + 0x1000 * s, 0x54)
+        if h[:4] == b"2ars" and h[0x0D] == 0:
+            gen = struct.unpack_from("<I", h, 8)[0]
+            if best is None or gen > best[0]:
+                best = (gen, s, struct.unpack_from("<H", h, 0x50)[0])
+    if best is None:
+        return None
+    return e.read(0x0E000000 + 0x1000 * best[1] + 0x52, best[2])
 
 
 OPENING_FRAMES = 10000
 
 
 def opening(ctx, ds, after_ds=False, new_at=NEW_AT, frames=OPENING_FRAMES):
-    e = Emu(save=paths.base_save(), ds=ds)
+    e = Emu(save=campaign_save(ctx) if after_ds else paths.base_save(), ds=ds)
     g = Game(e)
     d = dc.DsCampaign(g)
-    if after_ds:
-        (ds_session_first if ds else aw2_session_first)(e, d)
+    if after_ds and ds:
+        ds_session_first(e, d)
+    elif after_ds:
+        aw2_session_first(e, d, cont=True)
     start_aw2_new(e, d, ds, new_at, from_box=after_ds)
     t = trace(e, frames, os.path.join(ctx.out, f"s{int(ds)}{int(after_ds)}{new_at}"))
     active = e.u8(dc.ACTIVE)
@@ -217,7 +255,7 @@ def aw2_campaign_opening_vanilla(ctx):
     ref, _ = opening(ctx, False, after_ds=True, new_at=NEW_AFTER_DS)
     after, (active, _) = opening(ctx, True, after_ds=True, new_at=NEW_AFTER_DS)
     ctx.eq(active, 0, "after a DS session: none now")
-    compare(ctx, ref, after, "after a DS Campaign session", moved=MOVED)
+    compare(ctx, ref, after, "after a DS Campaign session")
 
 
 ENDING_FRAMES = 24000
@@ -227,8 +265,10 @@ def ending(ctx, ds, after_ds=False, new_at=NEW_AT):
     e = Emu(save=paths.base_save(), ds=ds)
     g = Game(e)
     d = dc.DsCampaign(g)
-    if after_ds:
-        (ds_session_first if ds else aw2_session_first)(e, d)
+    if after_ds and ds:
+        ds_session_first(e, d)
+    elif after_ds:
+        aw2_session_first(e, d, cont=False)
     # AW2's first mission marked as its last (as its final mission is).
     sp = e.u8(AW2_MISSIONS + 2)
     e.w8(AW2_MISSIONS + 2, sp | 0x10)
@@ -266,3 +306,51 @@ def aw2_campaign_ending_vanilla(ctx):
     ref, _ = ending(ctx, False, after_ds=True, new_at=NEW_AFTER_DS)
     after, _ = ending(ctx, True, after_ds=True, new_at=NEW_AFTER_DS)
     compare(ctx, ref, after, "after a DS Campaign session")
+
+
+def continue_offered(e, d):
+    try:
+        d.box_row(0)
+        return True
+    except Exception:
+        return False
+
+
+@test(modes=("ds",))
+def aw2_campaign_kept_by_ds_session(ctx):
+    """An AW2 campaign in progress survives a DS Campaign session: its
+    Continue is still offered in the same boot and after a reboot, New
+    still warns before overwriting it, and AW2's profile in Flash is byte
+    for byte what it was. (AW2's save writer serializes the profile with
+    every slot it writes, the DS record's too; the profile's last part is
+    the world map state, which holds the DS map's during a session: until
+    this was found the profile was written so, and the AW2 campaign lost.)"""
+    save = campaign_save(ctx)
+    e = Emu(save=save, ds=True)
+    d = dc.DsCampaign(Game(e))
+    before = profile(e)
+    ctx.require(before is not None, "the save has AW2's profile")
+    ds_session_first(e, d)
+    ctx.eq(e.u8(dc.ACTIVE), 0, "the DS session is over")
+    ctx.check(profile(e) == before, "AW2's profile in Flash unchanged by the DS session")
+    d.chooser_row(0)
+    e.press("A", 8)
+    e.wait(30)
+    ctx.check(continue_offered(e, d), "AW2 CAMPAIGN's Continue offered after the session")
+    d.box_row(1)
+    e.wait(20)
+    e.press("A", 8)
+    warned = not e.wait_until(lambda: PROC_CAMPAIGN in procs(e), 90, step=1)
+    ctx.check(warned, "AW2 CAMPAIGN's New warns before overwriting it")
+    after = e.save(os.path.join(ctx.out, "after_ds"))
+    e.close()
+    for ds in (False, True):
+        e = Emu(save=after, ds=ds)
+        d = dc.DsCampaign(Game(e))
+        d.open_campaign_box()
+        if ds:
+            d.chooser_row(0)
+            e.press("A", 8)
+            e.wait(30)
+        ctx.check(continue_offered(e, d), f"after a reboot ({'with' if ds else 'without'} the pack): AW2's Continue offered")
+        e.close()

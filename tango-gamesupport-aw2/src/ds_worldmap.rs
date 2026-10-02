@@ -793,7 +793,30 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (BONUS, Box::new(|core: &mut Core| if crate::ds_campaign::active(core) { ret(core) })),
         (ALTERNATIVES, Box::new(|core: &mut Core| if crate::ds_campaign::active(core) { ret(core) })),
         (NATION_PANEL, Box::new(|core: &mut Core| if crate::ds_campaign::active(core) { ret(core) })),
+        (PROFILE_SERIALIZED, Box::new(profile_serialized)),
     ]
+}
+
+/// AW2's profile serializer (`0x08016B2C`, RAM to the save buffer), at its
+/// end (r6 the buffer). Its last part is AW2's world map state (its
+/// campaign: the Continue), which holds the DS map's while AW2's is in the
+/// backup. AW2's save writer serializes the profile with every slot it
+/// writes (the profile's header lists the other slots' sectors), the DS
+/// Campaign's own record too: the buffer gets AW2's state from the backup,
+/// so the profile in Flash stays AW2's.
+const PROFILE_SERIALIZED: u32 = 0x0801_6BA0;
+const PROFILE_STATE_AT: u32 = 0x4D0;
+fn profile_serialized(core: &mut Core) {
+    if core.raw_read_8(BACKUP_MARK, -1) != 1 {
+        return;
+    }
+    let buffer = core.gba().cpu().gpr(6) as u32;
+    if !(0x0200_0000..0x0204_0000).contains(&buffer) {
+        return;
+    }
+    let mut b = vec![0u8; STATE_SIZE as usize];
+    core.raw_read_range(AW2_STATE_BACKUP, -1, &mut b);
+    core.raw_write_range(buffer + PROFILE_STATE_AT, -1, &b);
 }
 
 #[cfg(test)]
