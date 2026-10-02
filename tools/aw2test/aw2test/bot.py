@@ -65,7 +65,7 @@ def domain(t):
 
 class Bot:
     def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None, build=None,
-                 finish=None, garrison=False):
+                 finish=None, garrison=False, ooze=False):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
@@ -75,7 +75,10 @@ class Bot:
         only (a mission against the clock); `finish`: from that day on, as
         `rush` and on the attack (a mission against the clock: win it by
         the HQ in the last days); `garrison`: a unit always stands on our HQ
-        (none can capture it from under it)."""
+        (none can capture it from under it); `ooze`: against Ooziums (an
+        Oozium eats a unit next to it, one a day: it is worth hunting down
+        while it can be finished off, and the unit on the enemy HQ comes
+        first)."""
         self.d, self.g, self.e = d, d.g, d.e
         self.log = log or (lambda s: None)
         self.protect = set(protect)
@@ -86,6 +89,7 @@ class Bot:
         self.rush = rush
         self.finish = finish
         self.garrison = garrison
+        self.ooze = ooze
         # `build`: what a factory kind builds, best first (instead of BUILD).
         self.build_order = {int(k): v for k, v in (build or {}).items()}
         # `seed`: another player's style (how much danger each kind of unit
@@ -215,7 +219,7 @@ class Bot:
         """Expected damage (in HP points of 100) as AW2 works it out, COs aside.
         An Oozium has no weapon: moving onto a unit next to it destroys it."""
         if att == OOZIUM:
-            return 0 if dfd in AIR or dfd in NAVAL else dfd_hp
+            return 0 if dfd in NAVAL else dfd_hp
         b = self.base(att, dfd)
         if b <= 0:
             return 0
@@ -249,6 +253,8 @@ class Bot:
         works out a unit's range)."""
         info = self.unit_info(f["type"])
         d = dist(cell, (f["x"], f["y"]))
+        if self.ooze and f["type"] == OOZIUM:
+            return d <= max(info["move"], 1)
         if info["min"] > 1:
             return info["min"] <= d <= info["max"]
         if d > info["move"] + 1:
@@ -387,6 +393,11 @@ class Bot:
         # Its worth, what it would do next turn (a unit taking one of our
         # properties most of all), and a kill ends both.
         worth = self.cost(f["type"]) + (4000 if self.capturing(f) else 0)
+        if self.ooze:
+            if f["type"] == OOZIUM:
+                worth = max(worth, 12000)
+            if self.on_enemy_hq(f, u["army"]):
+                worth += 15000
         value = dealt / 100 * worth + 15 * dealt + (0.5 * worth + 1500 if kill else 0)
         if self.late():
             # The last days of a mission against the clock: every hit counts.
@@ -401,6 +412,11 @@ class Bot:
         others = [o for o in foes if not kill or o.get("id") != f.get("id")]
         after = self.threat(u, cell, others, max(hp, 1)) if not indirect else 0
         return value - 0.7 * loss - 0.4 * after / 100 * self.cost(u["type"])
+
+    def on_enemy_hq(self, f, army):
+        """`f` stands on an HQ of the enemy of `army` (in the way of its capture)."""
+        c = self.cls(f["x"], f["y"])
+        return c & 0x1F == HQ and c >> 5 and self.team(c >> 5) != self.team(army)
 
     def capturing(self, f):
         """`f` stands on a property of another army (taking it)."""
@@ -518,6 +534,15 @@ class Bot:
             onto = [c for c in guard if c in free]
             if onto and u["type"] not in self.protect:
                 return ("wait", onto[0], None)
+        # A unit that captures and can stand on the enemy HQ (or a goal)
+        # captures it before anything else: that capture ends the army.
+        if u["type"] in CAPTURERS:
+            hq = self.goals + [p for p, k in self.targets_for_capture(army) if k == HQ]
+            if here in hq:
+                return ("capt", here, None)
+            onto = [c for c in free if c in hq]
+            if onto:
+                return ("capt", min(onto, key=lambda c: (hq.index(c), self.threat(u, c, armed_foes))), None)
         # Fire: from here (indirect) or from a free cell next to the target.
         if indirect:
             cands = [(here, f) for f in targets if info["min"] <= dist(here, (f["x"], f["y"])) <= info["max"]]

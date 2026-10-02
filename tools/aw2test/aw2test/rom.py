@@ -296,12 +296,16 @@ class DualStrike:
         return layout, tiles, palette
 
     def record(self, t):
+        """Unit `t`'s record (tangoAW2's id: its 26 Carrier and 27 Oozium are
+        Dual Strike's 25 and 26)."""
+        t = t - 1 if t in (26, 27) else t
         o = DS_UNITS - DS_OVERLAY0_BASE + DS_RECORD * t
         return self.ov0[o:o + DS_RECORD]
 
     def damage_row(self, t, weapon):
         """As AW2's row: index = AW2 defender type 0..27 (25 = dived Sub;
-        tangoAW2's 26 Carrier and 27 Oozium are Dual Strike's 25 and 26)."""
+        tangoAW2's 26 Carrier and 27 Oozium are Dual Strike's 25 and 26, as
+        attackers too)."""
         r = self.record(t)
         base = 0x24 if weapon == 0 else 0x44
         out = []
@@ -336,8 +340,7 @@ class DualStrike:
         b = self.co_block(co, mode)
         if b is None:
             return None
-        # AW2's ids of the Carrier and the Oozium (Dual Strike's 25 and 26).
-        r = self.record({26: 25, 27: 26}.get(t, t))
+        r = self.record(t)
         cls, combat = r[0x1C], r[0x20]
         v = self._class_stat(b, cls)[which] if cls < 7 else 0
         k = {5: 7, 4: 8, 2: 9, 6: 9, 7: 10}.get(combat)
