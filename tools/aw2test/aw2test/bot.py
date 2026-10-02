@@ -63,7 +63,7 @@ def domain(t):
 
 
 class Bot:
-    def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None):
+    def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None, build=None):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
@@ -79,6 +79,8 @@ class Bot:
         self.structures_goal = structures
         self.stance = stance
         self.rush = rush
+        # `build`: what a factory kind builds, best first (instead of BUILD).
+        self.build_order = {int(k): v for k, v in (build or {}).items()}
         # `seed`: another player's style (how much danger each kind of unit
         # takes, when it goes on the attack, which unit moves first among
         # equals); the same seed plays the same game.
@@ -793,7 +795,7 @@ class Bot:
             if owner != army or kind not in BUILD or (x, y) in occ:
                 continue
             funds = self.funds(army)
-            order = list(BUILD[kind])
+            order = list(self.build_order.get(kind, BUILD[kind]))
             if kind == BASE and need_capt and capt < 2:
                 order = [2, 1]
                 capt += 1

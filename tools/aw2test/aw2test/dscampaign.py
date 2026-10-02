@@ -641,7 +641,7 @@ class DsCampaign:
     def size(self):
         return self.e.u16(MAP), self.e.u16(MAP + 2)
 
-    def win_mission(self, step, max_days=40, log=None, seed=None, cos=None):
+    def win_mission(self, step, max_days=40, log=None, seed=None, cos=None, player=None):
         """A player's mission: from the title, DS CAMPAIGN with the record at
         `step` (every mission before it won), the mission picked on the world
         map, the test player's COs, the battle played through the pad
@@ -656,9 +656,14 @@ class DsCampaign:
             opts["seed"] = seed
         prefs = cos if cos is not None else opts.pop("cos", None)
         opts.pop("cos", None)
+        player = player or opts.pop("player", "bot")
+        opts.pop("player", None)
         self.start(step=step)
         picks = self.choose_cos(co_picks(data, index), prefs)
-        r = self.play(max_days, log=log, **opts)
+        # The player's side played by the test player (the pad), or by the
+        # game's own CPU (its armies handed to the computer).
+        r = self.autoplay(max_days, log=log) if player == "cpu" else self.play(max_days, log=log, **opts)
+        r["player"] = player
         r["cos"] = picks
         # The results, then the world map (and the story Dual Strike plays
         # there after this mission): every text shown on the way.
@@ -704,7 +709,10 @@ CO_PREFS = [6, 14, 2, 76, 17, 1, 79, 80, 18, 0, 77, 4, 78, 73, 74, 72]
 # Infantry, Black Boats Ahoy!'s Lander), missions won on their structures
 # (a Black Crystal, minicannons, Black Obelisks, the Grand Bolt's weak
 # points), and those against the clock (always on the attack).
-PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"rush": True}, 16: {"rush": True}}
+PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"rush": True}, 16: {"rush": True},
+         # Means to an End: bombers and B copters from its airports fly over
+         # the Oozium to the Grand Bolt's weak points.
+         24: {"build": {0xA: [17, 19, 16]}}}
 STRUCTURE_MISSIONS = {8, 13, 14, 17, 18, 23, 24}
 TIMED_MISSIONS = {12, 21, 22, 24}
 
