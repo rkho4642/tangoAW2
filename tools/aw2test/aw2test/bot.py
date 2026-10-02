@@ -65,7 +65,7 @@ def domain(t):
 
 class Bot:
     def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None, build=None,
-                 finish=None, garrison=False, ooze=False):
+                 finish=None, garrison=False, ooze=False, hazards=()):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
@@ -90,6 +90,9 @@ class Bot:
         self.finish = finish
         self.garrison = garrison
         self.ooze = ooze
+        # `hazards`: cells a volcano's eruption hits each day (50 HP) while
+        # it is not stilled (ds_campaign_rules: 0x0203F704).
+        self.hazards = {tuple(c) for c in hazards}
         # `build`: what a factory kind builds, best first (instead of BUILD).
         self.build_order = {int(k): v for k, v in (build or {}).items()}
         # `seed`: another player's style (how much danger each kind of unit
@@ -241,6 +244,8 @@ class Bot:
         """What the enemy can do to `u` standing on `cell` next turn (HP points)."""
         hp = u["hp"] if hp is None else hp
         t = 0
+        if cell in self.hazards and not self.e.u8(0x0203F704):
+            t += 50
         for f in foes:
             if not self.can_hit(f, cell):
                 continue

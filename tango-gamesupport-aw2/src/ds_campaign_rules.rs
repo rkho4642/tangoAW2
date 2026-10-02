@@ -345,8 +345,9 @@ const VOLCANO_STILL: u32 = 0x0203_F704;
 /// The mission's state kept with a mission saved halfway (`crate::suspend`):
 /// Means to an End's and Ring of Fire's, from [`MTE_TOLD`].
 pub(crate) const MTE_LEN: u32 = 5;
-/// The mission's state above, cleared when a mission starts (0x0203F710..
-/// holds the Volcano's eruption cells: [`eruption`], written before each use).
+/// The mission's state above, cleared when a mission starts (0x0203F708..
+/// 0x0203F73B holds the Volcano's eruption cells: [`eruption`], written
+/// before each use; crate::map_anim's state starts at 0x0203F740).
 const MISSION_STATE: (u32, u32) = (0x0203_F700, 0x10);
 
 /// Crystal `k` of Means to an End still stands.
@@ -424,7 +425,9 @@ pub fn volcano_still(core: &Core, entry: u32) -> bool {
 /// [`ERUPTION_CELLS`].
 pub const ERUPTION_CALL: u32 = 0x0803_EE3C;
 const DS_ERUPTION_LISTS: u32 = 0x0216_7E98;
-const ERUPTION_CELLS: u32 = 0x0203_F710;
+const ERUPTION_CELLS: u32 = 0x0203_F708;
+/// Twelve cells and the end mark.
+const ERUPTION_CELLS_LEN: u32 = 4 * 13;
 pub fn eruption(core: &mut Core) {
     if !(crate::ds_campaign::active(core) && crate::ds_campaign::in_battle(core)) {
         return;
@@ -432,7 +435,7 @@ pub fn eruption(core: &mut Core) {
     let Some(pack) = crate::ds_pack::pack() else { return };
     let Some(list) = pack.arm9_at(DS_ERUPTION_LISTS + 4, 4).map(|b| u32::from_le_bytes(b.try_into().unwrap())) else { return };
     let mut at = ERUPTION_CELLS;
-    for k in 0..12u32 {
+    for k in 0..ERUPTION_CELLS_LEN / 4 - 1 {
         let Some(c) = pack.arm9_at(list + 4 * k, 4) else { break };
         let (x, y) = (u16::from_le_bytes([c[0], c[1]]), u16::from_le_bytes([c[2], c[3]]));
         if x == 0xFFFF {
@@ -596,4 +599,16 @@ fn spawn_oozium(core: &mut Core, k: usize) -> bool {
     cpu.set_gpr(2, crate::roster::OOZIUM as i32);
     cpu.set_thumb_pc(CREATE_UNIT_AT);
     true
+}
+
+#[cfg(test)]
+mod ram_tests {
+    use super::*;
+
+    #[test]
+    fn state_fits() {
+        assert!(VOLCANO_STILL < MISSION_STATE.0 + MISSION_STATE.1);
+        assert!(MTE_TOLD + MTE_LEN <= ERUPTION_CELLS);
+        assert!(ERUPTION_CELLS + ERUPTION_CELLS_LEN <= 0x0203_F740, "before crate::map_anim's state");
+    }
 }

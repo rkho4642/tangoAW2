@@ -1273,7 +1273,7 @@ overlay 1, the campaign's code, at `0x02350560`).
     but on Dual Strike's cells: the trap `ds_campaign_rules::eruption` at
     `0x0803EE3C` hands it Dual Strike's list for the main map (ARM9
     `0x02167E98`, lists by the volcano's owner; list 1, twelve cells round
-    the map's edge), copied to `0x0203F710` in AW2's format. Taking Black
+    the map's edge), copied to `0x0203F708` in AW2's format. Taking Black
     Hole's four cities round it (`0x02351804`, cities, not Com Towers)
     runs `0x02351988`, which clears the volcano's owner in Dual Strike
     (`0x020DA938`): here `0x0203F704` is set and `crate::obelisk`'s
