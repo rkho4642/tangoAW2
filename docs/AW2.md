@@ -36,7 +36,7 @@ USA cartridge `AW2E`, CRC32 `5AD0E571`, 64 KiB Flash save.
 | `0x030033FC` | Title-menu mode: 1 Campaign, 3 Versus, 5 War Room. Kept through the mode's menus and battles. |
 | `0x03000000` | Main-loop callback; `0x08043591` while the full-screen CO page is open (the battle scene is unloaded then). |
 | `0x020232C0 + 0x3C*n` | Player block for army n+1. Colour byte at `+0x1A`: 1 Orange Star, 2 Blue Moon, 3 Green Earth, 4 Yellow Comet, 5 Black Hole. |
-| `0x02028030`, `0x02028031` | Hard Campaign and Sound Room unlocked. |
+| `0x02028030`.. | AW2's campaign flags 0x20.. (a bit each; `IsCampaignCompletionFlagSet`): 0x20 Hard Campaign, 0x28 the Sound Room, 0x21 the campaign won, 0x23..0x26 set by its missions; 0x60.. from `0x02028038`. |
 | `0x02028040`..`0x02028059` | Battle Maps bought. |
 | `0x0202805A`..`0x0202805F` | COs available, then CO colour edits. |
 
@@ -45,7 +45,11 @@ current army (odd armies seat 0, even armies seat 1) reaches the pad.
 Elsewhere both seats' buttons are ORed.
 
 Unlocks: every frame the unlock block is set. The game saves that block,
-so an in-game save keeps it.
+so an in-game save keeps it. Hard Campaign and the Sound Room are campaign
+flags 0x20 and 0x28, bit 0 of `0x02028030` and `0x02028031`: only those bits
+are set, the bytes' other flags (0x21 the campaign won, 0x23..0x26 its
+missions', ...) are kept (until 0.4.0 the whole bytes were written as 1,
+and those flags were lost at every save; `save_keeps_aw2_completion_flags`).
 
 Armies: picked on Versus' Teams screen. SELECT or R moves the highlighted
 army (cursor / 2) to the next colour no other army has, L to the previous
