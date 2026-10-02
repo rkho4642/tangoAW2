@@ -470,7 +470,8 @@ fn black_arc(core: &mut Core) {
                 continue;
             }
             let hp = core.raw_read_8(u.0 + 4, -1);
-            let left = (hp & 0x7F).saturating_sub(100).max(1);
+            let hit = crate::co_skills::blast(core, army, 100) as u8;
+            let left = (hp & 0x7F).saturating_sub(hit).max(1);
             core.raw_write_8(u.0 + 4, -1, (hp & 0x80) | left);
         }
     }

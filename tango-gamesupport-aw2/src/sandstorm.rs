@@ -146,6 +146,9 @@ fn map_start(core: &mut Core) {
         set_one_day(core, false);
     }
     crate::wasteland::map_start(core);
+    if is_on(core) {
+        crate::co_skills::clear(core);
+    }
     crate::survival::map_start(core);
     crate::ds_campaign::map_start(core);
 }

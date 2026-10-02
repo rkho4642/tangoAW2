@@ -33,6 +33,10 @@ class Ctx:
         self.failures = []
         self.checks = 0
         self.games = []
+        # The CO skills each army has on (crate::co_skills; tests set them),
+        # and a sandstorm blowing, for the calculator.
+        self.skills = {}
+        self.sandstorm = False
 
     # -- reporting ---------------------------------------------------------------
     def log(self, msg):
@@ -118,6 +122,8 @@ class Ctx:
             co=p["co"], co_mode=p["co_mode"],
             temp_firepower=p["temp_firepower"] + tower_fp, temp_defence=p["temp_defence"] + tower_def,
             dived=bool(u["flags"] & 0x20), co_abilities=bool(st["co_abilities"]),
+            skills=frozenset(self.skills.get(u["army"], ())),
+            weather=3 if self.sandstorm else st["weather"],
         )
 
     def properties(self, g, army):

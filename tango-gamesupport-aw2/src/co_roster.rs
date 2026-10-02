@@ -411,6 +411,8 @@ fn stat_function(core: &mut Core, field: usize) {
 const DEFENCE_ARMY: u32 = 0x0804_2CF8;
 const DEFENCE_DONE: u32 = 0x0804_2D10;
 const DEFENCE_SIDE: u32 = 0x0203_FFBA;
+/// The unit type whose defence is being worked out (crate::co_skills).
+const DEFENCE_TYPE: u32 = 0x0203_FFBB;
 
 /// Bit 7 of [`DEFENCE_SIDE`]: the unit is an Oozium (no CO's defence).
 const DEFENCE_OOZIUM: u8 = 0x80;
@@ -421,6 +423,7 @@ fn defence_army(core: &mut Core) {
         let (army, t) = (cpu.gpr(0) as u8, cpu.gpr(1) as u8);
         let v = if t == crate::roster::OOZIUM { army | DEFENCE_OOZIUM } else { army };
         core.raw_write_8(DEFENCE_SIDE, -1, v);
+        core.raw_write_8(DEFENCE_TYPE, -1, t);
     }
 }
 
@@ -440,6 +443,8 @@ fn defence_done(core: &mut Core) {
     if abilities_on(core) && core.raw_read_8(BATTLE_DISTANCE, -1) > 1 {
         add += crate::co_powers::indirect_defence(core, army);
     }
+    let t = core.raw_read_8(DEFENCE_TYPE, -1);
+    add += crate::co_skills::defence(core, army, t, core.raw_read_8(BATTLE_DISTANCE, -1));
     if add != 0 {
         let cpu = core.gba_mut().cpu_mut();
         let r0 = cpu.gpr(0);

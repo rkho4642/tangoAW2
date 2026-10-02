@@ -500,10 +500,14 @@ fn income(core: &mut Core) {
         return;
     }
     let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
-    if army_co(core, army).0 != SASHA {
+    let earners = owned(core, army, &EARNERS);
+    let mut add = crate::co_skills::income_bonus(core, army, earners);
+    if army_co(core, army).0 == SASHA {
+        add += 100 * earners;
+    }
+    if add == 0 {
         return;
     }
-    let add = 100 * owned(core, army, &EARNERS);
     let cpu = core.gba_mut().cpu_mut();
     let r1 = cpu.gpr(1);
     cpu.set_gpr(1, r1 + add);
@@ -522,8 +526,12 @@ fn repair(core: &mut Core) {
     }
     let units = core.raw_read_32(UNITS_POINTER, -1);
     let army = army_of_index(core, u.wrapping_sub(units) / UNIT);
-    if (1..=5).contains(&army) && army_co(core, army).0 == RACHEL {
-        core.gba_mut().cpu_mut().set_gpr(1, hp + 1);
+    if !(1..=5).contains(&army) {
+        return;
+    }
+    let add = (army_co(core, army).0 == RACHEL) as i32 + crate::co_skills::repair_bonus(core, army);
+    if add != 0 {
+        core.gba_mut().cpu_mut().set_gpr(1, hp + add);
     }
 }
 
@@ -564,7 +572,8 @@ fn war_bonds(core: &mut Core) {
     let sides = [(att, BATTLE_ATTACKER, dfd, BATTLE_DEFENDER), (dfd, BATTLE_DEFENDER, att, BATTLE_ATTACKER)];
     for (own, _, foe, foe_record) in sides {
         let army = army_of_index(core, own.wrapping_sub(units) / UNIT);
-        if !(1..=5).contains(&army) || army_co(core, army) != (SASHA, SCOP) {
+        let bonds = army_co(core, army) == (SASHA, SCOP);
+        if !(1..=5).contains(&army) || !(bonds || crate::co_skills::has(core, army, crate::co_skills::COMBAT_PAY)) {
             continue;
         }
         let before = bars(core.raw_read_8(foe + 4, -1) as i32 & 0x7F);
@@ -572,7 +581,10 @@ fn war_bonds(core: &mut Core) {
         let lost = (before - after).max(0) as u32;
         let t = core.raw_read_8(foe, -1) as u32;
         let cost = core.raw_read_16(crate::roster::table(core) + 0x5C * t + 6, -1) as u32 * 10;
-        let pay = lost * cost / 10 / 2;
+        let pay = if bonds { lost * cost / 10 / 2 } else { 0 } + crate::co_skills::combat_pay(core, army, lost, cost);
+        if pay == 0 {
+            continue;
+        }
         let p = player(core, army);
         let funds = core.raw_read_32(p, -1);
         core.raw_write_32(p, -1, (funds + pay).min(MAX_FUNDS));

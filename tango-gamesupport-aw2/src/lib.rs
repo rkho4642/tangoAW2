@@ -41,6 +41,7 @@ pub mod co_grid;
 pub mod co_new;
 pub mod cpu_tactics;
 pub mod co_powers;
+pub mod co_skills;
 pub mod co_roster;
 pub mod heal_effect;
 pub mod lz77;

@@ -132,6 +132,54 @@ class Side:
     temp_defence: int = 0
     dived: bool = False
     co_abilities: bool = True
+    # Dual Strike's CO skills on for the unit's army (ids 0x20..0x4A), and the
+    # weather (0 clear, 1 snow, 2 rain, 3 sandstorm) for the weather skills.
+    skills: frozenset = frozenset()
+    weather: int = 0
+
+
+# Dual Strike's skill effects (its code: attack 0x020E646C / 0x020E68D0 /
+# 0x020E6AE4, defence 0x020E61D8 / 0x020E63B0), by unit class: indirect
+# (Artillery, Rockets, Missiles, Piperunner, Battleship, Carrier), no weapon
+# (APC, T Copter, Lander, Black Boat), neither (Black Bomb, Oozium), direct
+# (the rest, a dived Sub and a hidden Stealth too).
+SKILL_INDIRECT = {10, 11, 15, 9, 21, 26}
+SKILL_TRANSPORT = {7, 20, 23, 18}
+SKILL_NEITHER = {13, 27}
+
+
+def skill_attack(s):
+    """Attack (percentage points) side `s`'s skills give it."""
+    k = s.skills
+    if not k:
+        return 0
+    v = 0
+    direct = s.type not in SKILL_INDIRECT | SKILL_TRANSPORT | SKILL_NEITHER
+    if direct:
+        v += 5 * (0x20 in k) + 8 * (0x21 in k)
+    if s.type in SKILL_INDIRECT:
+        v += 5 * (0x22 in k) + 8 * (0x23 in k)
+    # road, wood, city, mountain, sea (AW2's classes 5, 4, 6, 3, 7)
+    for skill, terrain in ((0x2C, 5), (0x2D, 4), (0x2E, 6), (0x2F, 3), (0x30, 7)):
+        if skill in k and s.terrain == terrain:
+            v += 10
+    if 0x31 in k and s.dived:
+        v += 15
+    for skill, weather in ((0x32, 2), (0x33, 1), (0x34, 3)):
+        if skill in k and s.weather == weather:
+            v += 20
+    return v
+
+
+def skill_defence(s, dist):
+    """Defence side `s`'s skills give it against an attack from `dist`."""
+    k = s.skills
+    if not k:
+        return 0
+    v = 8 * (0x25 in k) + 12 * (0x26 in k) if dist <= 1 else 8 * (0x27 in k) + 12 * (0x28 in k)
+    if 0x29 in k and s.type in SKILL_TRANSPORT:
+        v += 10
+    return v
 
 
 @dataclass
@@ -191,6 +239,7 @@ def total_defence(rules, s: Side, cut=0, dist=1):
     coDef = rules.co_bonus(s.co, s.co_mode, s.type, 1) if s.co_abilities else 0
     if s.co_abilities and dist > 1:
         coDef += rules.indirect_defence(s.co, s.co_mode)
+    coDef += skill_defence(s, dist)
     temp = s.temp_defence
     if rules.chart is not None and s.type == OOZIUM:
         coDef, temp = 0, 0  # nothing from its CO: no power's +10, towers or Javier's
@@ -212,6 +261,7 @@ def strike(rules, a: Side, b: Side, dist, is_attacker, a_hp_now):
         acc += terrain_defence(rules, a)
     if a.co_abilities:
         acc += rules.terrain_firepower(a.co, a.co_mode, a.terrain)
+    acc += skill_attack(a)
     luck = (m["luck"], m["neg_luck"]) if a.co_abilities else (10, 0)
     dmg0 = div(acc * base, 100)
     cut = rules.enemy_terrain_cut(a.co, a.co_mode) if a.co_abilities else 0

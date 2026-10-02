@@ -625,6 +625,14 @@ class DsCampaign:
             p = self.players()
             human = 1 <= army <= 4 and e.u8(p + 0x3C * army + 0x1B) == 1
             if self.in_battle() and human and not self.scripts_running():
+                d = e.u16(DAY)
+                if d != last_day:
+                    # (the day turns over as the player's first army begins)
+                    last_day = d
+                    if log:
+                        log(f"day {d}: {self.state()}")
+                    if d >= start + max_days:
+                        break
                 try:
                     b.play_turn(army)
                 except NavError as ex:
@@ -781,7 +789,11 @@ PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"ru
          23: {"seed": 1, "cos": _V1},
          # Means to an End: bombers and B copters from its airports fly over
          # the Oozium to the crystals and the Grand Bolt's weak points.
-         24: {"build": {0xA: [17, 19, 16]}, "seed": 0}}
+         24: {"build": {0xA: [17, 19, 16]}, "seed": 0},
+         # Ring of Fire: on the attack, every hit counting from day 12, off
+         # the Volcano's eruption cells (Dual Strike's list, ARM9 0x02167F50).
+         21: {"stance": "attack", "finish": 12, "seed": 0,
+              "hazards": [(0, 6), (1, 3), (2, 1), (5, 0), (8, 0), (12, 0), (19, 12), (18, 14), (17, 18), (14, 19), (10, 19), (6, 19)]}}
 STRUCTURE_MISSIONS = {8, 13, 14, 17, 18, 23, 24}
 TIMED_MISSIONS = {12, 21, 22, 24}
 
