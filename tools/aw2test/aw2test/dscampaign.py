@@ -797,6 +797,10 @@ PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"ru
          # Strike's hint: "if we create an opening in the pipe..."), our HQ
          # held, the minicannons beyond them.
          13: {"seams": [(8, 5), (8, 3)], "garrison": True, "seed": 4},
+         # Spiral Garden: the seam into the east corridor broken open (the
+         # player's part of the spiral holds 12 properties at most), the
+         # lab its capturers' goal, the enemy's capturers hunted, our HQ held.
+         27: {"seams": [(13, 16)], "stance": "attack", "hunt": True, "garrison": True, "seed": 1, "cos": _V1},
          # Ring of Fire: on the attack, every hit counting from day 12, off
          # the Volcano's eruption cells (Dual Strike's list, ARM9 0x02167F50).
          21: {"stance": "attack", "finish": 12, "seed": 0,
