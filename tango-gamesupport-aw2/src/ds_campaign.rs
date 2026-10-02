@@ -59,7 +59,7 @@ pub const MISSION: u32 = 0x0203_FD12;
 pub const MENU_LEVEL: u32 = 0x0203_FD13;
 pub const MENU_CHOICE: u32 = 0x0203_FD14;
 /// Real-time countdown (frames), Dual Strike's op 0x5A; 0 off.
-const COUNTDOWN: u32 = 0x0203_FD18;
+pub(crate) const COUNTDOWN: u32 = 0x0203_FD18;
 /// The staff credits after Means to an End: 0 none; 1 due (its ending
 /// scenes play on the map); 2 the map is left for them; 3 they run.
 const CREDITS: u32 = 0x0203_FD17;
@@ -91,7 +91,7 @@ pub const WIN_CAUSE: u32 = 0x0203_FD58;
 /// `EventOp_DefeatOtherTeamsAndEndMatch` (AW2's script op 0x40).
 const SCRIPT_END_MATCH: u32 = 0x0801_8FB4;
 /// The campaign's flags 0x20..0x9F (16 bytes).
-const FLAGS: u32 = 0x0203_FD20;
+pub(crate) const FLAGS: u32 = 0x0203_FD20;
 /// The progress record saved to Flash ([`SAVE_SIZE`] bytes).
 pub const PROGRESS: u32 = 0x0203_FD30;
 const SAVE_SIZE: u32 = 0x20;
@@ -222,8 +222,10 @@ const BG0_BUFFER_PTR: u32 = 0x0849_9578;
 const BG0_SYNC: u32 = 0x0801_3AEC;
 
 /// The map menu's Save item: its hide test (menu table entry 0x0849AB64,
-/// `sub_0802C644`). During a session it points at a magic stub that hides
-/// the item: a suspended DS mission would resume as an AW2 one.
+/// `sub_0802C644`). It once pointed at a magic stub that hid the item
+/// during a session; a DS mission is now saved in its own slot
+/// ([`crate::suspend`]), so the item is AW2's (and the stub is put back to
+/// AW2's test if a state from then has it).
 const SAVE_ITEM_TEST: u32 = 0x0849_AB64;
 const SAVE_ITEM_AW2: u32 = 0x0802_C645;
 /// `GetCampaignResultCountPlusOne`: the mission title's number.
@@ -485,9 +487,10 @@ pub fn tick(core: &mut Core, ds: bool) {
     }
     crate::ds_credits::tick(core, session, campaign(core).and_then(|c| c.model.credits.as_ref()));
     {
-        // The map menu's Save item, hidden during a session.
+        // The map menu's Save item: AW2's own, a session's too (a DS
+        // mission is saved in its own slot, crate::suspend).
         if let Some(c) = campaign(core) {
-            let want = if session { c.hide_stub } else { SAVE_ITEM_AW2 };
+            let want = SAVE_ITEM_AW2;
             let now = core.raw_read_32(SAVE_ITEM_TEST, -1);
             if (now == c.hide_stub || now == SAVE_ITEM_AW2) && now != want {
                 core.raw_write_32(SAVE_ITEM_TEST, -1, want);
@@ -539,6 +542,7 @@ fn progress_valid(core: &Core) -> bool {
 }
 
 fn new_progress(core: &mut Core) {
+    crate::suspend::drop_ds(core);
     let clears = if progress_valid(core) { core.raw_read_8(P_CLEARS, -1) } else { 0 };
     for a in (PROGRESS..PROGRESS + SAVE_SIZE).step_by(4) {
         core.raw_write_32(a, -1, 0);
@@ -730,6 +734,10 @@ fn start(core: &mut Core, new: bool) {
         }
     }
     core.raw_write_8(HARD_REQUEST, -1, 0);
+    // Continue over a mission saved halfway: that mission, resumed
+    // ([`crate::suspend`]).
+    let missions = campaign(core).map_or(0, |c| c.model.missions);
+    let resume = if req == 2 { crate::suspend::ds_saved_mission(core).filter(|&m| (m as usize) < missions) } else { None };
     // A record saved by 0.4.0 kept the lab missions' flags at 0x60..0x62
     // (AW2's Hard Campaign flag among them): they move to 0x90..0x92.
     for k in 0..3u32 {
@@ -750,13 +758,16 @@ fn start(core: &mut Core, new: bool) {
     // lab mission), else the first open one.
     let Some(order) = campaign(core).map(|c| c.model.order.clone()) else { return };
     let at_step = order[next_step(core) as usize];
-    let focus = if open.contains(&at_step) { at_step } else { open.first().copied().unwrap_or(0) };
+    let focus = resume.unwrap_or(if open.contains(&at_step) { at_step } else { open.first().copied().unwrap_or(0) });
     crate::ds_worldmap::write_state(core, &open, &won_list(core), focus);
     core.raw_write_8(ACTIVE, -1, 1);
     core.raw_write_8(MISSION_SET, -1, 0);
     core.raw_write_8(GAME_MODE, -1, CAMPAIGN);
     core.raw_write_8(MAP_ID, -1, data::MAP_ID);
     sync_mission(core);
+    if resume.is_some() {
+        return crate::suspend::resume_ds(core);
+    }
     let Some(c) = campaign(core) else { return };
     proc_start_instead(core, c.start_proc);
 }
@@ -772,6 +783,8 @@ fn end_of_battle(core: &mut Core) {
     }
     let index = core.raw_read_8(MISSION, -1);
     let won = battle_won(core);
+    // A save of this mission made halfway is over with it.
+    crate::suspend::drop_ds(core);
     // The outcome, for the tests and logs: 1 won, 2 lost, and the day.
     core.raw_write_8(LAST_RESULT, -1, if won { 1 } else { 2 });
     core.raw_write_8(LAST_RESULT + 1, -1, index);

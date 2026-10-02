@@ -32,7 +32,9 @@ MAP_TAB_DESIGN = 8
 BATTLE_MAIN = 0x08022049
 # Procs that keep running while the map waits for input (probed: 0x08034F8D
 # runs whenever an air unit is on the map).
-BACKGROUND_PROCS = (0x08034F8D,)
+# 0x08003891 is the Design Room's cursor panel: its record stays in IWRAM
+# after the editor is left (AW2's own, with or without tangoAW2), not run.
+BACKGROUND_PROCS = (0x08034F8D, 0x08003891)
 # Where the battle map's procs live (probed): IWRAM and an EWRAM pool.
 PROC_AREAS = ((0x03000C00, 0x1300), (0x0200C000, 0x2000))          # main-loop callback while the battle map runs
 # The event-script slots (gUnknown_0200C528: 10 x 0x18), in the EWRAM area.

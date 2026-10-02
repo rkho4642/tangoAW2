@@ -36,7 +36,7 @@ USA cartridge `AW2E`, CRC32 `5AD0E571`, 64 KiB Flash save.
 | `0x030033FC` | Title-menu mode: 1 Campaign, 3 Versus, 5 War Room. Kept through the mode's menus and battles. |
 | `0x03000000` | Main-loop callback; `0x08043591` while the full-screen CO page is open (the battle scene is unloaded then). |
 | `0x020232C0 + 0x3C*n` | Player block for army n+1. Colour byte at `+0x1A`: 1 Orange Star, 2 Blue Moon, 3 Green Earth, 4 Yellow Comet, 5 Black Hole. |
-| `0x02028030`, `0x02028031` | Hard Campaign and Sound Room unlocked. |
+| `0x02028030`.. | AW2's campaign flags 0x20.. (a bit each; `IsCampaignCompletionFlagSet`): 0x20 Hard Campaign, 0x28 the Sound Room, 0x21 the campaign won, 0x23..0x26 set by its missions; 0x60.. from `0x02028038`. |
 | `0x02028040`..`0x02028059` | Battle Maps bought. |
 | `0x0202805A`..`0x0202805F` | COs available, then CO colour edits. |
 
@@ -45,7 +45,11 @@ current army (odd armies seat 0, even armies seat 1) reaches the pad.
 Elsewhere both seats' buttons are ORed.
 
 Unlocks: every frame the unlock block is set. The game saves that block,
-so an in-game save keeps it.
+so an in-game save keeps it. Hard Campaign and the Sound Room are campaign
+flags 0x20 and 0x28, bit 0 of `0x02028030` and `0x02028031`: only those bits
+are set, the bytes' other flags (0x21 the campaign won, 0x23..0x26 its
+missions', ...) are kept (until 0.4.0 the whole bytes were written as 1,
+and those flags were lost at every save; `save_keeps_aw2_completion_flags`).
 
 Armies: picked on Versus' Teams screen. SELECT or R moves the highlighted
 army (cursor / 2) to the next colour no other army has, L to the previous
@@ -869,7 +873,13 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
   `0x08087C6C`, `0x080177E4`) read a zeroed block of ours; `SetMapPlayed`
   (`0x0803CA28`) skips Survival's ids (its bits stop at 0xBF). The map menu
   hides Save on a Survival map (`0x0802C646`): a suspended map would come back
-  without its run.
+  without its run. The War Room's end of a map asks its save question with
+  the War Room's suspend slot (`sub_0803D73C(3, ..)`), which clears the
+  profile's "War Room game saved" flag and deletes slot 3 when it saves; a
+  Survival map asks with slot 6 instead (the prompt's "profile only", as
+  `sub_0803D960` uses it; trap `0x0803D746`), so a War Room game saved
+  halfway survives a Survival run (until this, the first Survival map ended
+  took it away; `save_survival_keeps_war_room_suspend`).
 - **Records** in the profile the game saves (so the save's own checksum covers
   them): `0x0200C435..0x0200C43E`, ten of the eleven bytes between
   `0x0200C420`'s +0x14 and +0x20 that no code of the game reads or writes
@@ -1163,19 +1173,42 @@ overlay 1, the campaign's code, at `0x02350560`).
   campaign over, difficulty, campaigns cleared, missions won (bits), flags
   0x20..0x9F) and the records (0xE0 bytes) are written at each
   mission start through AW2's own save writer (`sub_0801A7D8`) into Flash
-  slot 15 (AW2: 0 profile, 2..4 suspends, 5..7 design maps), so AW2's
+  slot 15 (AW2: 0 profile, 2..4 suspends, 5..7 design maps, 8 the design
+  map a suspended Versus game is on), so AW2's
   profile and its checksum are untouched; read back from the newest slot-15
-  sector. The map menu's Save item is hidden in a DS mission (its test word
-  `0x0849AB64` points at a stub): a suspended mission would come back as an
-  AW2 one.
+  sector.
+- **A mission saved halfway** (Dual Strike's campaign has the map menu's
+  Save: "Save over Mission / Day data"): the map menu's Save is AW2's in a
+  DS mission too, and saves it in Flash slot 14, not AW2's campaign slot 2,
+  so an AW2 mission saved halfway and its mark in the profile
+  (`0x0200C429`) stay (`crate::suspend`: `sub_08016D30` trapped past its
+  prologue, `0x08016D3A`, and at its writer call, `0x08016D8E`: the slot made
+  14 and AW2's mark put back before the profile is serialized). The block's
+  tail carries the session (after "DS" at +0xE04: the mission, the op 0x5A
+  countdown, the flags 0x20..0x9F with Hard's 0x60, Means to an End's state). DS CAMPAIGN's Continue, with slot 14 in
+  AW2's sector directory, sets the session up as for the world map (the
+  cursor and the map table's entry on the saved mission) and then resumes
+  it with AW2's own `sub_08017688(14)`. Slot 14 leaves the directory (as
+  AW2's delete, `sub_0801ABF8`, without its write: the next save writes
+  it) when the mission ends, won or lost, and on a new DS Campaign; turned
+  off before any save after a loss, Continue resumes the saved mission, as
+  AW2's own does. Until this the item was hidden in a DS mission (the stub
+  at `0x0849AB64`, put back to AW2's test now): a suspended mission would
+  have come back as an AW2 one, in AW2's slot. Tests:
+  `save_ds_campaign_mission_suspend`,
+  `save_ds_campaign_new_drops_mission_suspend`.
 - **Hook points** (for merging other work): traps `0x08016BA0` (the profile
   serializer's end), `0x0807703C`, `0x0803B83C`, `0x0806BC84` (the credits),
   `0x0803BA4C`,
   `0x0803BA88`, `0x08038484`, `0x0803CBA0`, `0x0803CBD8`, `0x0803BC7C`
   (`GetCampaignSaveFlag`: the DS box's Continue), `0x0803840C`, `0x0803CC5E`
   (the stubs' landing); `SetMapPlayed` (`0x0803CA28`, Survival's trap) also
-  skips map id 0xF0 in a session. RAM `0x0203FD10..0x0203FD5F`; ROM
-  `0x08F00000..0x08FFFFFF`; text ids 0x7400..0x7FFF; map id 0xF0.
+  skips map id 0xF0 in a session; `crate::suspend`'s `0x08016D3A`,
+  `0x08016D8E`, `0x08016D88`, `0x08016DD0` (a mission saved halfway; its
+  hooks in `ds_campaign.rs`: `start`'s Continue, `end_of_battle`,
+  `new_progress`). RAM `0x0203FD10..0x0203FD5F` (`0x0203FFAD`: a DS
+  mission being saved, `crate::suspend`); ROM `0x08F00000..0x08FFFFFF`;
+  text ids 0x7400..0x7FFF; map id 0xF0; Flash slots 15 and 14.
 
 **Compromises.**
 
@@ -1333,6 +1366,77 @@ Dual Strike's CO skills, as the player's decisions set them (found in the
 - **Tests.** EXP per mode, unlocks, the panel, each skill's effect against
   the damage calculator, the Versus rule on and off, netplay sync, AW2's
   campaign unchanged with no skills equipped.
+
+## Suspended games (`suspend.rs`)
+
+The map menu's Save (`sub_08016D30`) writes the 0xE28-byte block
+`CaptureBattleSaveState` (`sub_08016F38`) fills at `0x02000000`: day, army,
+gPlaySt, the weather block, players, units, the tiles changed from the
+map's own, the inventions; up to +0xDAC. The rest of the block goes to
+Flash but is never read back (`sub_08017208`). With the Dual Strike pack,
+tangoAW2's own battle state that lasts past a turn rides there: a mark
+("TAW2", version 1) at +0xDAC, the Rules' fog flag kept while rain forces
+fog on (`ds_weather`) at +0xDB1, Ex Machina's stun bits (`co_powers`,
+pending then held, 40 bytes each) from +0xDB4. Traps: `0x08016D88`
+(`sub_08016D30` after the capture, before the write) and `0x08016DD0`
+(Continue, `sub_08016DB8` after `sub_08017208`, before a design map's own
+slot is loaded over the buffer). Before this, a game continued after
+Ex Machina had every marked unit free, and one saved while rain was coming
+kept fog on for good once the rain stopped. The sandstorm and the map's
+look are in the weather block (`0x03004490` +3), which AW2 saves itself;
+Com Towers are counted on the map. Without the pack nothing is written.
+Tests: `save_versus_suspend_keeps_ex_machina_stun`,
+`save_versus_suspend_in_rain_keeps_fog_rule`.
+
+## Saves
+
+AW2's 64 KiB Flash is 16 sectors of 0x1000 bytes. A sector is one part of a
+slot (save tag): "2ars", 0x55/0xAA at +4 and its opposite at +0xFFF, 0x0F
+at +5, the sector's 8-bit sum at +6 and its complement at +7 (AW2's check,
+`sub_0801B09C`), the generation at +8, the part at +0xC, the slot at +0xD,
+the payload's place at +0xE and length at +0x50, the payload from +0x52.
+The newest profile's +0xFEF lists every sector's slot (the directory,
+`sub_0801B2FC`). The writer (`sub_0801A7D8`) puts a slot's new copy in free
+sectors, then a new profile serialized from RAM (`sub_08016B2C`), whose
+directory drops the old copy; a delete (`sub_0801ABF8`) only drops the slot
+from the directory.
+
+| Slot | What | Written by |
+| --- | --- | --- |
+| 0 | profile, 0x5CC: unlocks and campaign flags (`0x02028030`), War Room scores (`0x0200C078`, 30 maps), campaign scores (`0x0200C2D0`), options (`0x0200C420`: points, save count, suspend marks +9..+B, options, results; tangoAW2's Survival records +0x15..+0x1E), AW2's world map (`0x0202FDFC`) | every write |
+| 2 / 3 / 4 | Campaign / War Room / Versus game saved halfway, 0xE28 (tangoAW2's tail: `suspend.rs`) | map menu Save |
+| 5..7 | design maps 1..3, 0x724 (tangoAW2: +0x4C4 the five-army mark, +0x723 the look) | Design Room Save |
+| 8 | the design map a saved Versus game is on (its current terrain and units) | map menu Save on a design map |
+| 14 | a DS Campaign mission saved halfway (tangoAW2) | map menu Save in a DS mission |
+| 15 | the DS Campaign's record, 0x20 (tangoAW2) | DS Campaign New, mission start, after a win |
+
+Ten slots at most; a write needs two free sectors. The Design Room has no
+delete for one map: saving over a slot replaces it. The Battle Maps points
+(options +0x00, +0x04) grow with every map won, a DS mission's and a
+Survival map's too (as the War Room's). A netplay match runs
+on player 1's save on both consoles and never writes either player's file
+(only single-player sessions persist their save: `tango/src/session/launch.rs`).
+
+**Tests** (`tools/aw2test/tests/test_save_integrity*.py`, `-k save_`; the
+Flash read with `aw2test/saveimg.py`, AW2's own rules): every step exports
+the Flash before and after and checks that every sector the directory lists
+passes AW2's check and that only the expected slots and profile bytes
+changed (AW2's save counter aside), then reboots a fresh console from the
+written save: Versus saved and continued on 2P, 4P and design maps,
+tangoAW2's maps (Wasteland in a sandstorm, Com Towers, Obelisk maps),
+a Wasteland design with Dual Strike's units and COs, after Ex Machina, in
+rain; Save hidden and nothing written on five-army maps; the Design Room's
+three slots (normal and Wasteland, five armies, Black Hole's inventions,
+towers of every owner, Dual Strike's units, a full design of 250 units),
+every record byte for byte through save, load and reboot, played and saved
+in Versus; AW2's campaign (a win, a mission saved and continued, the pack's
+profile byte for byte AW2's own); the DS Campaign over an AW2 campaign in
+progress (wins, a lab flag, the prologue flag, a mission saved halfway and
+continued, a loss, New), AW2's data untouched; the War Room (a score, a
+map saved and continued; its list only AW2's maps); Survival (each kind's
+record, nothing of the War Room's, a War Room game saved halfway kept);
+AW2's completion flags; every mode in one boot; every slot in use at once;
+a game saved over netplay the same on both peers.
 
 ## Known limits
 

@@ -62,6 +62,7 @@ pub mod power_anim;
 pub mod mode_menu;
 pub mod survival;
 pub mod survival_maps;
+pub mod suspend;
 pub mod pvp;
 mod volcano;
 

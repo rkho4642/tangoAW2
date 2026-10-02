@@ -414,6 +414,13 @@ fn turn_ended(core: &Core) -> bool {
     core.raw_read_8(MAP_MENU_STATE, -1) == 5 && core.raw_read_8(MAP_MENU_CURSOR, -1) == 4
 }
 
+fn set_bit0(core: &mut Core, at: u32) {
+    let v = core.raw_read_8(at, -1);
+    if v & 1 == 0 {
+        core.raw_write_8(at, -1, v | 1);
+    }
+}
+
 fn set_bits(core: &mut Core, (start, len): (u32, u32)) {
     for a in start..start + len {
         core.raw_write_8(a, -1, 0xff);
@@ -459,8 +466,12 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         // Everything unlocked: every CO (Sturm and Hachi included), every
         // CO colour edit, every Battle Map, Hard Campaign and the Sound
         // Room. The game saves this block, so a save made here keeps it.
-        core.raw_write_8(HARD_CAMPAIGN, -1, 1);
-        core.raw_write_8(SOUND_ROOM, -1, 1);
+        // Hard Campaign and the Sound Room are campaign flags 0x20 and 0x28,
+        // bit 0 of bytes whose other bits are AW2's flags 0x21..0x27 and
+        // 0x29..0x2F (the campaign won, the flags its missions set): only
+        // those two bits are set, the others kept.
+        set_bit0(core, HARD_CAMPAIGN);
+        set_bit0(core, SOUND_ROOM);
         set_bits(core, BATTLE_MAPS);
         set_bits(core, COS_AND_EDITS);
 

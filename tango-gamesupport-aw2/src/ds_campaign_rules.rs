@@ -335,14 +335,18 @@ fn unit_id_at(core: &Core, x: u32, y: u32) -> u8 {
 
 /// Means to an End's state (EWRAM the game never writes, past the DS
 /// Campaign's records): the crystals shattered so far told, and each weak
-/// point's hit points while its crystal stands.
-const MTE_TOLD: u32 = 0x0203_F700;
+/// point's hit points while its crystal stands ([`MTE_LEN`] bytes, kept
+/// with a mission saved halfway, `crate::suspend`).
+pub(crate) const MTE_TOLD: u32 = 0x0203_F700;
 const MTE_HP: u32 = 0x0203_F701;
 /// Ring of Fire: its Volcano stilled (Dual Strike's rule: Black Hole's
 /// unit hiding in the city found).
 const VOLCANO_STILL: u32 = 0x0203_F704;
+/// The mission's state kept with a mission saved halfway (`crate::suspend`):
+/// Means to an End's and Ring of Fire's, from [`MTE_TOLD`].
+pub(crate) const MTE_LEN: u32 = 5;
 /// The mission's state above, cleared when a mission starts (0x0203F710..
-/// holds the Volcano's eruption cells: [`eruption`]).
+/// holds the Volcano's eruption cells: [`eruption`], written before each use).
 const MISSION_STATE: (u32, u32) = (0x0203_F700, 0x10);
 
 /// Crystal `k` of Means to an End still stands.
