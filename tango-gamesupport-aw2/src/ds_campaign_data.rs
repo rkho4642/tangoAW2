@@ -38,6 +38,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use mgba::core::Core;
+
+pub use crate::campaign_model::{stub, Built, Magic, MissionInfo, Story, LANDING, MAP_ID, TEXT_FIRST, TEXT_LAST, TEXT_TABLE};
+
 pub const OV0: u32 = 0x022A_D560;
 pub const OV1: u32 = 0x0235_0560;
 const RECORDS: u32 = 0x022D_BD28;
@@ -48,11 +52,6 @@ pub const SECOND_FRONTS: usize = 5;
 const TEXT_GROUPS: u32 = OV0 + 0x49690;
 const MAP_NAMES_BASE: u32 = 0x022F_6BF8; // the 0xC0 bank (general texts)
 
-/// The AW2 map id a DS mission is played on: its header is written into
-/// the map table's entry for it when the mission starts (tangoAW2's map
-/// table with room for 0x100 ids, [`crate::survival::TABLE`]; Survival
-/// uses 0xC9..0xEC).
-pub const MAP_ID: u8 = 0xF0;
 
 /// A view of Dual Strike's memory from the pack.
 #[derive(Clone, Copy)]
@@ -592,38 +591,6 @@ pub fn plain(t: &[u8]) -> Vec<u8> {
 
 // --- Events --------------------------------------------------------------------
 
-/// What a magic function stands for (Rust runs it: [`crate::ds_campaign`]).
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Magic {
-    /// A Dual Strike predicate (`u8 f(void)`), by its address.
-    Predicate(u32),
-    /// Script op 0x4E: army's (CO, tag CO) is (a, b) (AW2 ids; 0xFF any).
-    CoPair { army: u8, a: u8, b: u8 },
-    /// A Dual Strike function called by a script (op 0x00/0x52/0x55/0x57).
-    Call(u32, u32),
-    /// Op 0x5A: a real-time countdown (frames); 0x5B clears it.
-    Countdown(u32),
-    /// Op 0x41/0x43/0x44: an army's units shown or hidden (Dual Strike's
-    /// flag 0x80 on every unit of the army).
-    ArmyFlag { op: u8, army: u8 },
-    /// A Dual Strike op AW2 has nothing for (kept for the documentation).
-    Unhandled(u8),
-    /// The DS Campaign's own flow (crate::ds_campaign): its id.
-    Flow(u8),
-}
-
-/// Dual Strike's story outside the battles (overlay 5, started by the
-/// game's flow after a won battle: ARM9 0x020D63B0 by map record id), as
-/// AW2 event scripts: the prologue (narration, bank 0x21 texts 0..2), the
-/// narration after Victory or Death! (record 0xE8: text 3), the victory
-/// party after Crystal Calamity (0xF2: its three scenes) and the ending
-/// after Means to an End (0xF8: five scenes). Addresses of AW2 scripts.
-#[derive(Clone, Debug, Default)]
-pub struct Story {
-    pub prologue: u32,
-    /// (mission index, script) to play on the world map after its win.
-    pub after_win: Vec<(usize, u32)>,
-}
 
 /// The story's scenes as overlay 5 runs them: its proc scripts' steps
 /// (0x023682E0 the party, 0x02368AF8 the ending) in order, each one
@@ -713,76 +680,6 @@ fn convert_story_scenes<'a>(cx: &mut Ctx<'a>, ds: &Ds<'a>) -> Story {
     Story { prologue, after_win }
 }
 
-#[derive(Clone, Debug)]
-pub struct Built {
-    pub story: Story,
-    /// The ROM blob, to be written at [`Built::base`].
-    pub blob: Vec<u8>,
-    pub base: u32,
-    /// AW2 text ids and their strings' addresses (in the blob).
-    pub texts: Vec<(u16, u32)>,
-    /// Map headers (0x5C bytes) by record index (missions, then fronts).
-    pub headers: Vec<(u8, [u8; 0x5C])>,
-    /// Magic functions by id (the stub's r3).
-    pub magic: Vec<Magic>,
-    /// Stubs: id -> address of its Thumb stub.
-    pub stubs: Vec<u32>,
-    pub missions: Vec<MissionInfo>,
-    /// Dual Strike script ops seen and not converted, with counts.
-    pub unhandled: BTreeMap<u8, u32>,
-}
-
-impl Built {
-    /// Appends a magic function's stub to the blob; its Thumb address.
-    pub fn add_magic(&mut self, m: Magic) -> u32 {
-        while self.blob.len() % 4 != 0 {
-            self.blob.push(0);
-        }
-        let id = self.magic.len() as u32;
-        self.magic.push(m);
-        let at = self.base + self.blob.len() as u32;
-        self.blob.extend_from_slice(&stub(id));
-        self.stubs.push(at);
-        at | 1
-    }
-
-    /// Appends bytes (word-aligned); their address.
-    pub fn add(&mut self, b: &[u8]) -> u32 {
-        while self.blob.len() % 4 != 0 {
-            self.blob.push(0);
-        }
-        let at = self.base + self.blob.len() as u32;
-        self.blob.extend_from_slice(b);
-        at
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct MissionInfo {
-    pub index: usize,
-    pub name: String,
-    /// The world map's mission panel text: the mission's objective (the
-    /// first text of its objective script), two lines.
-    pub info_text: u16,
-    /// The record index of its second front (not played: see docs/AW2.md).
-    pub second_front: Option<u8>,
-    pub number: u8,
-    pub cos: [(u8, u8); 4],
-    pub colours: [u8; 4],
-    pub teams: [u8; 4],
-    pub armies: u8,
-    pub pool: Vec<u8>,
-    pub day_limit: u16,
-    pub width: u8,
-    pub height: u8,
-    pub look: u8,
-    pub weather: u8,
-    pub fog: bool,
-    /// Dual Strike's research labs on the map (its Lab tiles, 0x1D9..0x1DD;
-    /// its Com Towers 0x1B9..0x1BD become the same AW2 tiles).
-    pub labs: Vec<(u8, u8)>,
-}
-
 /// The cells of a Dual Strike map whose tile is a Lab (0x1D9..0x1DD).
 fn lab_cells(ds: &Ds, at: u32) -> Vec<(u8, u8)> {
     let Some(head) = ds.u32(at) else { return Vec::new() };
@@ -822,34 +719,6 @@ impl Blob {
         self.bytes[o..o + 4].copy_from_slice(&v.to_le_bytes());
     }
 }
-
-/// The landing every magic stub jumps to: dead code in `sub_0803CC3C`
-/// (no callers; [`crate::five_map`] made its start a helper), trapped by
-/// [`crate::ds_campaign`]. r3 = the magic id, lr = the caller's return.
-pub const LANDING: u32 = 0x0803_CC5E;
-
-fn stub(id: u32) -> [u8; 16] {
-    let mut s = [0u8; 16];
-    let h: [u16; 4] = [
-        0x4B01, // ldr r3, [pc, #4] (id)
-        0x4A02, // ldr r2, [pc, #8] (landing)
-        0x4710, // bx r2
-        0x46C0, // nop
-    ];
-    for (k, v) in h.iter().enumerate() {
-        s[2 * k..2 * k + 2].copy_from_slice(&v.to_le_bytes());
-    }
-    s[8..12].copy_from_slice(&id.to_le_bytes());
-    s[12..16].copy_from_slice(&(LANDING | 1).to_le_bytes());
-    s
-}
-
-/// AW2 text ids for the campaign's strings: read from the text table's
-/// free tail (`0x08610A38 + 4 * id`, free ROM from 0x0862DA38; ids are
-/// read signed, so at most 0x7FFF).
-pub const TEXT_FIRST: u16 = 0x7400;
-pub const TEXT_LAST: u16 = 0x7FFF;
-pub const TEXT_TABLE: u32 = 0x0861_0A38;
 
 struct Ctx<'a> {
     ds: Ds<'a>,
@@ -1235,6 +1104,50 @@ fn trigger_scripts(ds: &Ds, at: u32) -> Vec<u32> {
         p += 8;
     }
     out
+}
+
+/// The campaign's order: Dual Strike's 25 story missions, with its three
+/// research-lab side missions (records 25..27). Dual Strike opens a side
+/// mission on its world map when the player captures the city hiding the
+/// lab's map in the mission before it (campaign flags 0x60..0x62, set by
+/// the mission's own script): The Long March after Black Boats Ahoy! (flag
+/// 0x60), Lash's Test after Frozen Fortress (0x61), Spiral Garden after
+/// Snow Hunters (0x62). Here a side mission is played next when its flag
+/// is set, and skipped otherwise ([`SIDE_MISSIONS`]).
+pub const ORDER: [u8; MISSIONS] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 25, 10, 11, 26, 12, 13, 27, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+];
+/// The side missions and the campaign flag that opens each.
+pub const SIDE_MISSIONS: [(u8, u32); 3] = [(25, 0x90), (26, 0x91), (27, 0x92)];
+
+/// Means to an End: the campaign's last mission.
+pub const FINAL_MISSION: u8 = 24;
+
+/// AW2's font widths (for re-wrapping Dual Strike's dialogue).
+const FONT_WIDTHS: u32 = 0x084C_36E4;
+
+/// Dual Strike's campaign as a [`crate::campaign_model::Model`] (the
+/// source's `load`): its missions converted from the pack into the blob
+/// at [`crate::ds_campaign::DATA`], its order, its story pictures and staff
+/// roll.
+pub fn load(core: &Core) -> Option<crate::campaign_model::Model> {
+    let pack = crate::ds_pack::pack()?;
+    let ds = Ds::from_pack(pack)?;
+    let mut widths = vec![0u8; 256];
+    core.raw_read_range(FONT_WIDTHS, -1, &mut widths);
+    let mut built = build(&ds, crate::ds_campaign::DATA + 0x100, &widths)?;
+    let credits = crate::ds_credits::build(core, &ds, &mut built);
+    Some(crate::campaign_model::Model {
+        label: crate::campaign_model::SOURCES[0].label,
+        built,
+        missions: MISSIONS,
+        order: ORDER.to_vec(),
+        side_missions: SIDE_MISSIONS.to_vec(),
+        final_mission: FINAL_MISSION,
+        credits,
+        pictures: crate::ds_story_art::narration_pictures(),
+        source: &crate::campaign_model::SOURCES[0],
+    })
 }
 
 /// Builds everything for the ROM blob at `base`. `widths` is AW2's font

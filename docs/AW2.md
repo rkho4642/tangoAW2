@@ -592,7 +592,7 @@ table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
 0x0862DA38..0x08630A37 (the DS Campaign's text ids 0x7400..0x7FFF),
 0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used),
 0x08E80000..0x08EDFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow).
-Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F600..0x0203F6DF (the DS
+Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F600..0x0203F6FF (the DS
 Campaign's records; 0x0203E000..0x0203F73F was found unwritten at the title, Select Mode, in AW2 and DS battles), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
@@ -911,6 +911,26 @@ read back after a reboot, every army a CPU for days on six maps, nothing of it
 without the pack).
 
 ## DS Campaign (`ds_campaign.rs`, `ds_campaign_data.rs`, `ds_campaign_rules.rs`, `campaign_menu.rs`)
+
+**The campaign model** (`campaign_model.rs`). The engine (`ds_campaign.rs`:
+sessions, the map table entry, flags, saves, the world map's flow, the
+mission end, the staff roll's flow, Hard and records) plays a `Model`, not
+Dual Strike: the missions compiled for AW2 (`Built`: map headers, maps,
+deployments, AW2 event scripts and trigger lists, texts, magic stubs, per
+mission its `MissionInfo`), how many missions there are (at most 32), the
+play order, the side missions with the flag that opens each, the last
+mission, the story (prologue, scenes after wins), the staff roll, the
+narration pictures, and the rules (`Source::rules`: what the scripts' magic
+functions answer). A `Source` (label, available, load, rules) loads its
+campaign into a model; `SOURCES` lists them, and the Campaign sub-menu
+lists AW2's own campaign and then each source whose campaign is there, any
+number of them (two rows show at a time; UP and DOWN go through them all,
+wrapping, the window following the cursor). Dual Strike's is today's only
+source (`ds_campaign_data::load`, with `ds_worldmap.rs`, `ds_story_art.rs`,
+`ds_credits.rs`, `ds_music.rs`). A custom campaign is another source: its
+missions laid out with `Built::add`/`Built::add_magic` in AW2's event
+format, its order and rules its own (it shares the engine's flows: the
+save, the world map, the staff roll, Hard, records).
 
 Dual Strike's story campaign, played in AW2's own campaign engine, with the
 Dual Strike pack, offline. Everything of Dual Strike's is read from the

@@ -113,16 +113,14 @@ fn help_lines(core: &mut Core) {
 }
 
 /// The chooser's entries: AW2's own campaign first, then every campaign
-/// the engine has a source for ([`crate::ds_campaign`]: today Dual
+/// whose source has it ([`crate::campaign_model::SOURCES`]: today Dual
 /// Strike's, with its pack). The box shows two at a time ([`TOP`] the
 /// first shown); UP and DOWN go through all of them (wrapping), the two
 /// shown following the cursor. A on the first opens AW2's own box (level
 /// 1), on another that campaign's box (level 2).
 pub fn entries(core: &Core) -> Vec<&'static str> {
     let mut v = vec![LABELS[0]];
-    if crate::ds_weather::is_on(core) {
-        v.push(LABELS[1]);
-    }
+    v.extend(crate::campaign_model::SOURCES.iter().filter(|s| (s.available)(core)).map(|s| s.label));
     v
 }
 
@@ -443,7 +441,8 @@ mod tests {
 
     #[test]
     fn labels_fit() {
-        for t in LABELS.iter().chain(DIFFICULTY_LABELS.iter()) {
+        let sources = crate::campaign_model::SOURCES.iter().map(|s| s.label);
+        for t in LABELS.iter().copied().chain(DIFFICULTY_LABELS).chain(sources) {
             let w: usize = t.chars().map(|c| glyph(c)[0].len() + 1).sum::<usize>() - 1;
             assert!(w + 6 <= LABEL_W, "{t}");
             assert_eq!(label_tiles(t).len(), LABEL_TILES as usize * 32);

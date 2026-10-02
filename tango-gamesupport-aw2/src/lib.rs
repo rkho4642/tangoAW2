@@ -21,6 +21,7 @@ pub mod ds_battle;
 pub mod ds_campaign;
 pub mod ds_campaign_data;
 pub mod ds_campaign_rules;
+pub mod campaign_model;
 pub mod ds_credits;
 pub mod ds_story_art;
 pub mod ds_worldmap;
