@@ -526,15 +526,15 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         // Dual Strike's Survival (offline: its War Room is single-player).
         keys = crate::survival::tick(core, ds && mode.is_none(), keys, prev);
 
-        // Army colours are picked on Versus' own Teams screen: SELECT/R and
-        // L cycle the highlighted army through the five armies, Black Hole
-        // included. Campaign and War Room never reach this screen, so their
+        // Army colours are picked on Versus' own Teams screen: R and L
+        // cycle the highlighted army through the five armies, Black Hole
+        // included (SELECT opens the Set Skills panel: crate::skills_panel). Campaign and War Room never reach this screen, so their
         // story armies are untouched.
         if in_versus(core) && on_teams_screen(core) && !crate::five::active(core) {
             let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
             first_teams_frame(core, armies);
             let pressed = keys & !prev;
-            let step = if pressed & (KEY_SELECT | KEY_R) != 0 {
+            let step = if pressed & KEY_R != 0 {
                 1
             } else if pressed & KEY_L != 0 {
                 -1

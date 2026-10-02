@@ -9,9 +9,10 @@
 //!   0x03005948), editing the set of the mode: the DS Campaign's and AW2's
 //!   campaign's (Campaign), Survival's, the War Room's. On Versus' Teams
 //!   screen (on an army's CO stop: the record `0x02017C50`, cursor `+0x32`
-//!   even, CO list `+0x18`, index `+0x1C + army`), START opens it for that
-//!   army's CO, editing its Versus set; there L turns the Versus rule
-//!   Skills on or off (crate::co_skills::VERSUS_RULE).
+//!   even, CO list `+0x18`, index `+0x1C + army`), SELECT opens it for that
+//!   army's CO, editing its Versus set (R and L there change the army's
+//!   colour, crate::pvp); in the panel L turns the Versus rule Skills on or
+//!   off (crate::co_skills::VERSUS_RULE).
 //! - The panel: the CO's rank and slots (min(rank, 4)), one line per slot,
 //!   the description of the skill on the slot picked. UP/DOWN pick a slot,
 //!   LEFT/RIGHT go through the skills open to the CO (rank, or Means to an
@@ -136,7 +137,6 @@ fn teams(core: &Core) -> Option<u8> {
 const KEY_A: u32 = 1 << 0;
 const KEY_B: u32 = 1 << 1;
 const KEY_SELECT: u32 = 1 << 2;
-const KEY_START: u32 = 1 << 3;
 const KEY_RIGHT: u32 = 1 << 4;
 const KEY_LEFT: u32 = 1 << 5;
 const KEY_UP: u32 = 1 << 6;
@@ -178,7 +178,7 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
         let target = co_select(core)
             .filter(|_| pressed & KEY_SELECT != 0)
             .map(|(co, s)| (co, s, false))
-            .or_else(|| teams(core).filter(|_| pressed & KEY_START != 0).map(|co| (co, Set::Versus(0), true)));
+            .or_else(|| teams(core).filter(|_| pressed & KEY_SELECT != 0).map(|co| (co, Set::Versus(0), true)));
         if let Some((co, set, on_teams)) = target {
             crate::ds_campaign::skills_loaded(core);
             core.raw_write_8(OPEN, -1, 1);

@@ -74,8 +74,8 @@ Both press Ready; the game starts from power-on for both. Go to
   theme.
 - **Everything unlocked:** all COs including Sturm, CO colour edits,
   Battle Maps, Hard Campaign and the Sound Room.
-- **Black Hole as a Versus army:** on the Teams screen press **SELECT**
-  on an army to change its colour, Black Hole included. Give it a Black
+- **Black Hole as a Versus army:** on the Teams screen press **R** (or
+  **L**) on an army to change its colour, Black Hole included. Give it a Black
   Hole CO (Flak, Lash, Adder, Hawke, Sturm) for Black Hole's HQ and units.
 - **Five-army maps:** a **5P Maps** tab in Versus (press LEFT on the tab
   list), five armies at once, any of them human or computer.
@@ -104,8 +104,9 @@ Both press Ready; the game starts from power-on for both. Go to
   Slam Guard, Luck, Gold Rush, ...). Your COs earn EXP by winning in the DS
   Campaign, Survival, the War Room (and AW2's campaign once you use skills);
   a rank every 1,000 EXP opens skills and slots (up to 4). Press **SELECT**
-  on a CO screen to set its skills; on Versus' Teams screen **START** sets
-  them and **L** turns the Skills rule on (off by default) for every army.
+  on a CO screen or on an army's CO on Versus' Teams screen to set its
+  skills; in that panel **L** turns Versus' Skills rule on (off by default)
+  for every army.
 
 <table>
 <tr>

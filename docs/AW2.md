@@ -51,7 +51,7 @@ are set, the bytes' other flags (0x21 the campaign won, 0x23..0x26 its
 missions', ...) are kept (until 0.4.0 the whole bytes were written as 1,
 and those flags were lost at every save; `save_keeps_aw2_completion_flags`).
 
-Armies: picked on Versus' Teams screen. SELECT or R moves the highlighted
+Armies: picked on Versus' Teams screen. R moves the highlighted
 army (cursor / 2) to the next colour no other army has, L to the previous
 one; the game then builds the battle's armies from the Teams record, so
 nothing is forced during play and Campaign and War Room are untouched.
@@ -1395,8 +1395,9 @@ Dual Strike's CO skills, from its code (overlay 0's skill table at
   0x08016E2C, 0x0801AC40, 0x0801AE2E) it is written again if it changed.
 - **The panel.** On the CO screen (War Room, Survival, the campaigns:
   `ProcScr_CoSelect`) SELECT opens it for the CO highlighted; on Versus'
-  Teams screen START (SELECT, L and R there change colours) on an army's
-  CO stop, for its Versus set, and L turns the Skills rule on or off. UP
+  Teams screen SELECT on an army's CO stop, for its Versus set (R and L
+  there change the army's colour), and in the panel L turns the Skills rule
+  on or off. UP
   and DOWN pick a slot, LEFT and RIGHT the skill (none, or one open to the
   CO), A keeps the set, B closes the panel as it was; the game gets no
   button meanwhile. Drawn in AW2's glyph font in OBJ tiles each screen

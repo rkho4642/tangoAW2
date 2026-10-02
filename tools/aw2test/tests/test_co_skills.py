@@ -479,8 +479,8 @@ def shot(ctx, e, name):
 
 @test(modes=("ds",))
 def skills_panel_teams_and_rule(ctx):
-    """Versus' Teams screen: START on an army's CO stop opens the panel for
-    its CO (its Versus set), L turns the Versus rule Skills on; with the
+    """Versus' Teams screen: SELECT on an army's CO stop opens the panel for
+    its CO (its Versus set), L in it turns the Versus rule Skills on; with the
     rule on, every army (the computer's too) has its CO's Versus set on in
     the battle; off (the default), none. (The EXP for rank 1 is a test aid.)"""
     m = ctx.map()
@@ -497,9 +497,9 @@ def skills_panel_teams_and_rule(ctx):
         e.w32(DATA + 4 + CO_LEN * co_slot(c), 1000)
         e.write(DATA + 4 + CO_LEN * co_slot(c) + 16, bytes([0x25, 0, 0, 0]))  # Versus set 0: Slam Guard
     ctx.eq(e.u8(VERSUS_RULE), 0, "the rule: off by default")
-    e.press("START", 4)
+    e.press("SELECT", 4)
     e.wait(10)
-    ctx.eq(e.u8(PANEL), 1, "START: the panel is up")
+    ctx.eq(e.u8(PANEL), 1, "SELECT: the panel is up")
     ctx.eq((e.u8(PANEL + 3), e.u8(PANEL + 8)), (3, 1), "the Versus set, on the Teams screen")
     shot(ctx, e, "teams_panel")
     e.press("L", 4)
@@ -544,7 +544,7 @@ def skills_netplay_versus_rule(ctx):
         a = DATA + 4 + CO_LEN * co_slot(c)
         e.w32(a, 1000)
         e.w32(a + 16, 0x20)  # Versus set 0: Bruiser
-    e.press("START", 4)
+    e.press("SELECT", 4)
     e.wait(10)
     e.press("L", 4)
     e.wait(6)
@@ -660,3 +660,40 @@ def skills_soul_of_hachi(ctx):
     ids = g.buy(5, 5, 1)
     ctx.check(1 in ids, f"the city's build menu ({ids})")
     ctx.check(g.unit_at(5, 5) is not None, "an Infantry built at the city")
+
+
+TEAMS_COLOUR = 0x02017C5D   # the Teams record's colours (+0x0D + army)
+
+
+@test(modes=("ds",))
+def skills_teams_buttons(ctx):
+    """Versus' Teams screen: R and L change the highlighted army's colour
+    (every colour reachable, Black Hole included); SELECT opens the Set
+    Skills panel and leaves the colour as it was."""
+    m = ctx.map()
+    m.unit(1, "tank", 10, 10).unit(2, "tank", 20, 10)
+    save = os.path.join(ctx.out, "map.sav")
+    m.write(paths.base_save(), save)
+    e = Emu(save=save, ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    g.boot_to_teams()
+    e.wait(30)
+    seen = {e.u8(TEAMS_COLOUR)}
+    for _ in range(6):
+        e.press("R", 4)
+        e.wait(10)
+        seen.add(e.u8(TEAMS_COLOUR))
+    ctx.check(5 in seen and len(seen) >= 4, f"R goes through the colours, Black Hole included ({sorted(seen)})")
+    before = e.u8(TEAMS_COLOUR)
+    e.press("L", 4)
+    e.wait(10)
+    ctx.check(e.u8(TEAMS_COLOUR) != before, "L changes it the other way")
+    c = e.u8(TEAMS_COLOUR)
+    e.press("SELECT", 4)
+    e.wait(10)
+    ctx.eq(e.u8(PANEL), 1, "SELECT: the Set Skills panel")
+    ctx.eq(e.u8(TEAMS_COLOUR), c, "SELECT leaves the colour")
+    e.press("B", 4)
+    e.wait(10)
+    ctx.eq(e.u8(PANEL), 0, "B: closed")
