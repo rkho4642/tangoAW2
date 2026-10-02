@@ -196,6 +196,174 @@ pub fn blast(core: &Core, army: u32, hit: i32) -> i32 {
     if has(core, army, MISSILE_GUARD) { (hit - 10).max(0) } else { hit }
 }
 
+// --- EXP (Dual Strike's `0x020EA240`, `0x020E9C24`) ------------------------------
+
+/// EXP a CO gets for a DS Campaign win: the mission's score (AW2's results,
+/// as Dual Strike's total of speed, power and technique), x2 played solo as
+/// AW2 always is (but the first eight missions, Dual Strike's maps
+/// 0xE0..0xE7, x1), and x2 on Hard. (Dual Strike's few extra points for its
+/// own battle counters are left out.)
+pub fn campaign_exp(score: u32, mission: u8, hard: bool) -> u32 {
+    let base = score.min(999) * if hard { 2 } else { 1 };
+    base * if mission < 8 { 1 } else { 2 }
+}
+
+// --- The skill table (Dual Strike's overlay 0, `0x022F5ECC`) ---------------------
+
+/// 12-byte records by id: rank, name text, description text.
+const SKILL_TABLE: u32 = 0x022F_5ECC;
+
+/// Skill `id`'s rank, name and description (Dual Strike's, from the pack).
+pub fn info(id: u8) -> Option<(u8, Vec<u8>, Vec<u8>)> {
+    if !(FIRST..=LAST).contains(&id) || TAG_SKILLS.contains(&id) {
+        return None;
+    }
+    let pack = crate::ds_pack::pack()?;
+    let ds = crate::ds_campaign_data::Ds::from_pack(pack)?;
+    let at = SKILL_TABLE + 12 * id as u32;
+    let rank = ds.u32(at)? as u8;
+    let name = ds.text(ds.u32(at + 4)?)?;
+    let desc = ds.text(ds.u32(at + 8)?)?;
+    Some((rank, name, desc))
+}
+
+/// The ids a player can equip (Dual Strike's, less the tag skills).
+pub fn ids() -> impl Iterator<Item = u8> {
+    (FIRST..=LAST).filter(|id| !TAG_SKILLS.contains(id))
+}
+
+// --- Per CO: EXP and the sets (saved with the DS Campaign's record) ---------------
+
+/// The COs' skill data in RAM: a magic word, then per CO [`CO_LEN`] bytes:
+/// EXP (u32), the Campaign set, the Survival set, the War Room set, the four
+/// Versus sets (4 ids each, 0 = none). Saved in Flash slot 15 after the DS
+/// Campaign's progress and records (crate::ds_campaign).
+pub const DATA: u32 = 0x0203_E000;
+const DATA_MAGIC: u32 = 0x314C_4B53; // "SKL1"
+const CO_LEN: u32 = 32;
+/// AW2's 19 COs (0..18) and Dual Strike's new nine (72..80).
+pub const COS: u32 = 28;
+pub const DATA_LEN: u32 = 4 + CO_LEN * COS;
+/// EXP stops at Dual Strike's cap.
+pub const MAX_EXP: u32 = 100_000;
+
+/// Which set: the DS Campaign (and AW2's), Survival, the War Room, Versus 0..3.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Set {
+    Campaign,
+    Survival,
+    WarRoom,
+    Versus(u8),
+}
+
+impl Set {
+    fn offset(self) -> u32 {
+        4 + 4 * match self {
+            Set::Campaign => 0,
+            Set::Survival => 1,
+            Set::WarRoom => 2,
+            Set::Versus(n) => 3 + (n as u32).min(3),
+        }
+    }
+}
+
+/// The data slot of a CO (AW2's ids; the new COs 72..80).
+pub fn co_slot(co: u8) -> Option<u32> {
+    match co {
+        0..=18 => Some(co as u32),
+        72..=80 => Some(19 + (co - 72) as u32),
+        _ => None,
+    }
+}
+
+fn co_at(co: u8) -> Option<u32> {
+    co_slot(co).map(|k| DATA + 4 + CO_LEN * k)
+}
+
+pub fn data_valid(core: &Core) -> bool {
+    core.raw_read_32(DATA, -1) == DATA_MAGIC
+}
+
+/// The data from a saved record's bytes (a record saved before skills has
+/// none: every CO at 0 EXP, no set).
+pub fn load(core: &mut Core, saved: Option<&[u8]>) {
+    let mut b = vec![0u8; DATA_LEN as usize];
+    if let Some(s) = saved.filter(|s| s.len() >= 4 && u32::from_le_bytes(s[0..4].try_into().unwrap()) == DATA_MAGIC) {
+        let n = s.len().min(b.len());
+        b[..n].copy_from_slice(&s[..n]);
+    }
+    b[0..4].copy_from_slice(&DATA_MAGIC.to_le_bytes());
+    core.raw_write_range(DATA, -1, &b);
+}
+
+/// The data's bytes, as saved.
+pub fn bytes(core: &Core) -> Vec<u8> {
+    let mut b = vec![0u8; DATA_LEN as usize];
+    core.raw_read_range(DATA, -1, &mut b);
+    b
+}
+
+pub fn exp(core: &Core, co: u8) -> u32 {
+    co_at(co).map_or(0, |a| core.raw_read_32(a, -1).min(MAX_EXP))
+}
+
+pub fn add_exp(core: &mut Core, co: u8, n: u32) {
+    if let Some(a) = co_at(co) {
+        let v = core.raw_read_32(a, -1).min(MAX_EXP);
+        core.raw_write_32(a, -1, (v + n).min(MAX_EXP));
+    }
+}
+
+/// A CO's rank: EXP / 1000, up to 100 (Dual Strike's `0x020E5450`).
+pub fn rank(core: &Core, co: u8) -> u32 {
+    (exp(core, co) / 1000).min(100)
+}
+
+/// Skill slots: min(rank, 4).
+pub fn slots(core: &Core, co: u8) -> usize {
+    rank(core, co).min(4) as usize
+}
+
+/// Skill `id` is open to CO `co`: its rank reached; the rank-10 skills need
+/// Means to an End won instead (Eagle Eye, Gear Head, Conquerer on Normal;
+/// Mistwalker and Soul of Hachi on Hard: Dual Strike's flags 0x21 / 0x22).
+pub fn unlocked(core: &mut Core, co: u8, id: u8) -> bool {
+    let Some((r, _, _)) = info(id) else { return false };
+    match id {
+        0x3C | 0x3E | 0x40 => crate::ds_campaign::cleared(core, false),
+        0x49 | 0x4A => crate::ds_campaign::cleared(core, true),
+        _ => rank(core, co) >= r as u32,
+    }
+}
+
+pub fn set_of(core: &Core, co: u8, set: Set) -> [u8; 4] {
+    let mut b = [0u8; 4];
+    if let Some(a) = co_at(co) {
+        core.raw_read_range(a + set.offset(), -1, &mut b);
+    }
+    b
+}
+
+pub fn store_set(core: &mut Core, co: u8, set: Set, ids: [u8; 4]) {
+    if let Some(a) = co_at(co) {
+        core.raw_write_range(a + set.offset(), -1, &ids);
+    }
+}
+
+/// The skills of a set an army gets: the set's ids that are open to its CO,
+/// as many as its slots.
+pub fn usable(core: &mut Core, co: u8, set: Set) -> Vec<u8> {
+    let n = slots(core, co);
+    let ids = set_of(core, co, set);
+    let mut out = Vec::new();
+    for id in ids {
+        if id != 0 && out.len() < n && !out.contains(&id) && unlocked(core, co, id) {
+            out.push(id);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +372,16 @@ mod tests {
     fn ram_fits() {
         assert!(ACTIVE >= 0x0203_F7E0 && ACTIVE + ACTIVE_LEN * 5 <= 0x0203_F800, "between crate::power_anim's and crate::ds_battle's state");
         assert!((LAST - FIRST) as u32 / 8 < ACTIVE_LEN);
+    }
+
+    #[test]
+    fn data_layout() {
+        assert_eq!(co_slot(18), Some(18));
+        assert_eq!(co_slot(72), Some(19));
+        assert_eq!(co_slot(80), Some(27));
+        assert_eq!(co_slot(19), None);
+        assert_eq!(Set::Versus(3).offset() + 4, CO_LEN);
+        assert!(DATA + DATA_LEN <= 0x0203_F600, "below the DS Campaign's records");
     }
 
     #[test]

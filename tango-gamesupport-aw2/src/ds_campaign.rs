@@ -240,9 +240,11 @@ const STAGING: u32 = 0x0200_0000;
 /// writer, `sub_0801A7D8(SAVE_SLOT, buffer, SAVE_SIZE)`, which returns to
 /// the proc.
 fn save(core: &mut Core) {
+    skills_loaded(core);
     let mut b = vec![0u8; (SAVE_SIZE + RECORDS_SIZE) as usize];
     core.raw_read_range(PROGRESS, -1, &mut b[..SAVE_SIZE as usize]);
     core.raw_read_range(RECORDS, -1, &mut b[SAVE_SIZE as usize..]);
+    b.extend_from_slice(&crate::co_skills::bytes(core));
     core.raw_write_range(STAGING, -1, &b);
     let cpu = core.gba_mut().cpu_mut();
     cpu.set_gpr(0, SAVE_SLOT as i32);
@@ -630,6 +632,43 @@ const FLASH: u32 = 0x0E00_0000;
 const SECTOR: u32 = 0x1000;
 const SECTOR_MAGIC: u32 = 0x7372_6132;
 
+/// The payload of the newest sector of [`SAVE_SLOT`] (progress, records,
+/// the COs' skill data), if one is saved.
+fn read_slot(core: &Core) -> Option<Vec<u8>> {
+    let mut best: Option<(u32, u32)> = None;
+    for s in 0..16 {
+        let at = FLASH + SECTOR * s;
+        if core.raw_read_32(at, -1) != SECTOR_MAGIC || core.raw_read_8(at + 0x0D, -1) != SAVE_SLOT {
+            continue;
+        }
+        let generation = core.raw_read_32(at + 8, -1);
+        if best.is_none_or(|(g, _)| generation >= g) {
+            best = Some((generation, at));
+        }
+    }
+    let (_, at) = best?;
+    let len = (core.raw_read_16(at + 0x50, -1) as u32).min(SAVE_SIZE + RECORDS_SIZE + crate::co_skills::DATA_LEN);
+    let mut b = vec![0u8; len as usize];
+    core.raw_read_range(at + 0x52, -1, &mut b);
+    Some(b)
+}
+
+/// The COs' skill data in RAM (crate::co_skills), from the saved record the
+/// first time it is needed.
+pub fn skills_loaded(core: &mut Core) {
+    if crate::co_skills::data_valid(core) {
+        return;
+    }
+    let saved = read_slot(core).filter(|b| b.len() > (SAVE_SIZE + RECORDS_SIZE) as usize);
+    let part = saved.as_ref().map(|b| &b[(SAVE_SIZE + RECORDS_SIZE) as usize..]);
+    crate::co_skills::load(core, part);
+}
+
+/// A campaign (Normal, or Hard) has been cleared in the saved record.
+pub fn cleared(core: &mut Core, hard: bool) -> bool {
+    has_save(core) && core.raw_read_8(P_CLEARS, -1) & if hard { 2 } else { 1 } != 0
+}
+
 /// Reads the progress record from the newest sector of [`SAVE_SLOT`].
 fn load_from_flash(core: &mut Core) {
     let mut best: Option<(u32, u32)> = None;
@@ -848,6 +887,18 @@ fn best_score(core: &mut Core) {
                 core.raw_write_32(at, -1, co | days << 8 | score << 20);
             }
         }
+        // EXP for each of the player's COs (crate::co_skills::battle_exp).
+        skills_loaded(core);
+        let players = core.raw_read_32(0x0849_9598, -1);
+        let hard = hard(core);
+        for a in 1..=4u32 {
+            let p = players + 0x3C * a;
+            if core.raw_read_8(p + 0x1B, -1) == 1 {
+                let co = core.raw_read_8(p + 0x1D, -1);
+                let n = crate::co_skills::campaign_exp(score, index as u8, hard);
+                crate::co_skills::add_exp(core, co, n);
+            }
+        }
         let cpu = core.gba_mut().cpu_mut();
         let lr = cpu.gpr(14) as u32;
         cpu.set_thumb_pc(lr & !1);
@@ -928,6 +979,16 @@ fn set_controllers(core: &mut Core, m: &data::MissionInfo) {
         }
         let human = a == 1 || m.cos[a as usize - 1].0 == 0x1C;
         core.raw_write_8(p, -1, if human { 1 } else { 2 });
+    }
+    // The player's armies: their COs' Campaign sets (crate::co_skills).
+    skills_loaded(core);
+    for a in 1..=4u32 {
+        let p = players + 0x3C * a;
+        if core.raw_read_8(p + 0x1B, -1) == 1 {
+            let co = core.raw_read_8(p + 0x1D, -1);
+            let ids = crate::co_skills::usable(core, co, crate::co_skills::Set::Campaign);
+            crate::co_skills::set(core, a, &ids);
+        }
     }
 }
 

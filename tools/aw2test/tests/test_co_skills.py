@@ -5,7 +5,12 @@ each army has on are written to crate::co_skills::ACTIVE as a test aid (what
 a mode's rules set when its battle starts); with none on, every battle plays
 as it always did (the other suites)."""
 
-from aw2test import damage
+import os
+
+from aw2test import damage, paths
+from aw2test import dscampaign as dc
+from aw2test.emu import Emu
+from aw2test.game import Game
 from aw2test.harness import test
 
 ACTIVE = 0x0203F7E0  # crate::co_skills::ACTIVE: 6 bytes per army
@@ -121,3 +126,76 @@ def skills_off_change_nothing(ctx):
     g = ctx.start(m, ["andy", "andy"])
     ctx.eq(g.e.read(ACTIVE, 30), bytes(30), "no skill on at the battle's start")
     ctx.attack(g, (10, 10), (10, 10), (11, 10))
+
+
+DATA = 0x0203E000      # crate::co_skills::DATA: "SKL1", then 32 bytes per CO
+CO_LEN = 32
+PLAYERS = 0x08499598
+CO_SLOTS = list(range(19)) + list(range(72, 81))
+
+
+def co_slot(co):
+    return co if co <= 18 else 19 + co - 72
+
+
+def co_exp(e, co):
+    return e.u32(DATA + 4 + CO_LEN * co_slot(co))
+
+
+def active(e, army):
+    b = e.read(ACTIVE + 6 * (army - 1), 6)
+    return sorted(FIRST + k for k in range(48) if b[k // 8] >> (k % 8) & 1)
+
+
+def to_world_map(e, d):
+    for _ in range(3000):
+        if d.world_map_up() and e.u8(dc.WM_STATE + 0x10) and not d.scripts_running():
+            break
+        if d.scripts_running() or not d.in_battle():
+            e.press("A", 4)
+        e.wait(10)
+    e.wait(60)
+
+
+@test(modes=("ds",))
+def skills_ds_campaign_exp_and_sets(ctx):
+    """The DS Campaign: a won mission gives the player's CO EXP (the
+    mission's score; x1 for Dual Strike's first eight missions), saved with
+    the campaign's record and back after a reboot; in the next mission the
+    player's CO has its Campaign set on (the skills open to it at its rank,
+    as many as its slots: rank 2, two), the computer's armies none. (The
+    mission is won by a test aid; the sets and EXP for rank 2 are written as
+    test aids for the Set Skills panel.)"""
+    e = Emu(save=paths.base_save(), ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    d = dc.DsCampaign(g)
+    d.start(step=0)
+    d.wait_map()
+    co = e.u8(e.u32(PLAYERS) + 0x3C + 0x1D)
+    ctx.eq(e.u32(DATA), 0x314C4B53, "the skill data in RAM")
+    ctx.eq(co_exp(e, co), 0, "no EXP yet")
+    ctx.eq(active(e, 1), [], "no skills on (no rank)")
+    # Every CO: rank 2, a Campaign set of Bruiser (rank 1), Brawler (rank 8:
+    # not open yet), Slam Guard (rank 1).
+    for c in CO_SLOTS:
+        a = DATA + 4 + CO_LEN * co_slot(c)
+        e.w32(a, 2000)
+        e.write(a + 4, bytes([0x20, 0x21, 0x25, 0]))
+    ctx.require(d.force_win(), "Jake's Trial won (test aid)")
+    to_world_map(e, d)
+    score = e.u32(dc.RECORDS) >> 20
+    ctx.check(score > 0, f"the mission's score {score}")
+    ctx.eq(co_exp(e, co), 2000 + score, "EXP: + the score (x1 in the first eight missions)")
+    save = e.save(os.path.join(ctx.out, "after"))
+    e2 = Emu(save=save, ds=True)
+    g2 = Game(e2, ctx.image)
+    ctx.games.append(g2)
+    d2 = dc.DsCampaign(g2)
+    d2.start(new=False)
+    d2.wait_map()
+    ctx.eq(co_exp(e2, co), 2000 + score, "the EXP after a reboot")
+    co2 = e2.u8(e2.u32(PLAYERS) + 0x3C + 0x1D)
+    ctx.eq(active(e2, 1), [0x20, 0x25], f"the player's CO ({co2}): Bruiser and Slam Guard on (Brawler not open)")
+    for a in (2, 3, 4):
+        ctx.eq(active(e2, a), [], f"army {a}: none")
