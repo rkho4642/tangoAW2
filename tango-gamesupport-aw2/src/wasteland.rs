@@ -48,6 +48,11 @@ pub const NORMAL: u8 = 0;
 pub const WASTELAND: u8 = 1;
 pub const DESERT: u8 = 2;
 pub const SNOW: u8 = 3;
+/// Means to an End's own look: Dual Strike draws its map (0xF8) with
+/// palette `bmap/00b` (arm9 `0x020F92E4`: map 0xF8 -> `0x0216A1DC` "00b")
+/// in place of its look's (Wasteland's, `bmap/009`): Desert's colours but
+/// for its terrain palette 2 (the Grand Bolt's greys).
+pub const GRAND_BOLT_LOOK: u8 = 4;
 
 /// The record's biome byte: [`MAGIC`] | biome, anything else Normal (maps
 /// saved before 0.3.0 hold whatever the game left there).
@@ -135,10 +140,11 @@ const SNOW_SET: u32 = 0x080B_FAC4;
 const RAIN: u32 = 0x080B_F9C4;
 
 /// Each look's source in the pack ([`crate::ds_look`]).
-const SOURCES: [(u8, crate::ds_look::Source); 3] = [
+const SOURCES: [(u8, crate::ds_look::Source); 4] = [
     (WASTELAND, crate::ds_look::Source { tiles: "bmap/001", palette: "bmap/009" }),
     (DESERT, crate::ds_look::Source { tiles: "bmap/001", palette: "bmap/008" }),
     (SNOW, crate::ds_look::Source { tiles: "bmap/000", palette: "bmap/00a" }),
+    (GRAND_BOLT_LOOK, crate::ds_look::Source { tiles: "bmap/001", palette: "bmap/00b" }),
 ];
 
 /// AW2's own colour relations, fitted over its 60 terrain colours (x256,

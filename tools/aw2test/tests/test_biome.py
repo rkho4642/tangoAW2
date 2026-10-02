@@ -61,7 +61,7 @@ def wasteland_colours(ctx):
 def ds_look_data(ctx):
     """Each look's converted data against Dual Strike's own drawing."""
     g = ctx.start(wasteland_map(ctx), ["andy", "andy"])
-    for look in (looks.WASTELAND, looks.DESERT, looks.SNOW):
+    for look in (looks.WASTELAND, looks.DESERT, looks.SNOW, looks.GRAND_BOLT):
         looks.check_data(ctx, g.e, look)
 
 

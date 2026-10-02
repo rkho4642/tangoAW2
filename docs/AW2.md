@@ -457,6 +457,15 @@ converted from the .nds at run time.
   `0x08021DA0`) and every frame. With the pack off nothing is written and
   the game draws its own map. `sub_08035020`'s trap (`sandstorm.rs`) gives
   the look's colour set for the weather.
+- **Means to an End.** Dual Strike draws this one map (its 0xF8) with its own
+  palette, `bmap/00b` (arm9 `0x020F92E4`: map 0xF8 takes `"00b"` at
+  `0x0216A1DC` in place of its look's file), not its look's (Wasteland,
+  `bmap/009`): Desert's colours (green woods, brown mountains) but for
+  terrain palette 2, the Grand Bolt's greys. It has a look of its own here
+  (`wasteland::GRAND_BOLT_LOOK`, tileset `bmap/001` with `bmap/00b`), set by
+  `ds_campaign::map_start`; checked against melonDS frames of the mission.
+  Dual Strike's drifting darker sand on its 3D map (it moves from frame to
+  frame: an effect over the map, not terrain) is not drawn.
 - **The Design Room.** A on the map with the Waste entry switches Normal and
   Wasteland: the next frame the colours, the terrain tiles in VRAM and the
   map's tilemap (`RenderMap` done in Rust) are the new look's.
@@ -597,7 +606,7 @@ Survival and campaign data),
 table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
 0x0862DA38..0x08630A37 (the DS Campaign's text ids 0x7400..0x7FFF),
 0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used),
-0x08E80000..0x08EDFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow).
+0x08E80000..0x08EFFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow and Means to an End's).
 Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F600..0x0203F6FF (the DS
 Campaign's records; 0x0203E000..0x0203F73F was found unwritten at the title, Select Mode, in AW2 and DS battles), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle

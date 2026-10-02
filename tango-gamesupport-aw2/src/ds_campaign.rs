@@ -979,7 +979,12 @@ pub fn map_start(core: &mut Core) {
     core.raw_write_8(WEATHER, -1, w);
     core.raw_write_8(NEXT_WEATHER, -1, w);
     core.raw_write_8(FOG, -1, m.fog as u8);
-    crate::wasteland::set_ds_look(core, m.look);
+    if core.raw_read_8(MISSION, -1) as usize == data::MEANS_TO_AN_END {
+        // Dual Strike's own palette for this map (crate::wasteland).
+        crate::wasteland::set_biome(core, crate::wasteland::GRAND_BOLT_LOOK);
+    } else {
+        crate::wasteland::set_ds_look(core, m.look);
+    }
     set_controllers(core, m);
 }
 

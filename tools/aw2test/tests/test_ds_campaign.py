@@ -14,6 +14,7 @@ from aw2test import survival as sv
 from aw2test.emu import Emu
 from aw2test.game import Game, NavError
 from aw2test.harness import Skip, test
+from aw2test.stitch import stitch
 
 OAM = 0x07000000
 LABEL_TILES = (832, 868)          # campaign_menu::TILES, one label each
@@ -525,6 +526,9 @@ def _every_mission(step):
         if m["weather"] == 3:
             ctx.eq(e.u8(sv.WEATHER_MODE), 3, f"{label}: sandstorm (fixed weather)")
         biome = {0: looks.NORMAL, 1: looks.SNOW, 2: looks.DESERT, 3: looks.WASTELAND}[m["look"]]
+        if index == 24:  # Means to an End (crate::ds_campaign_data::MEANS_TO_AN_END)
+            # Dual Strike's own palette for its map (bmap/00b, crate::wasteland).
+            biome = looks.GRAND_BOLT
         ctx.eq((e.u8(sv.BIOME) >> 4) & 7, biome, f"{label}: the look")
         if biome != looks.NORMAL:
             looks.check_screen(ctx, g, biome, f"{label}: ")
@@ -537,6 +541,12 @@ def _every_mission(step):
             picture = romlib.lz10(e.read(want, 0x1000))
             ctx.check(picture in e.read(0x06010000, 0x8000), f"{label}: the structure's picture is in OBJ VRAM")
         shot(ctx, e, "map")
+        if biome != looks.NORMAL:
+            # The whole map, photographed and checked cell by cell against
+            # Dual Strike's drawing.
+            sweep = looks.Sweep(ctx, g, biome, f"{label}: ")
+            stitch(ctx, g, label, w, h, each=sweep)
+            sweep.done(w, h)
     fn.__name__ = f"ds_campaign_map_{step:02d}"
     test(modes=("ds",))(fn)
 

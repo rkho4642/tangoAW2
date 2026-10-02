@@ -21,12 +21,14 @@ import struct
 from . import paths
 from .rom import DualStrike, lz10
 
-NORMAL, WASTELAND, DESERT, SNOW = 0, 1, 2, 3
-NAMES = {WASTELAND: "Wasteland", DESERT: "Desert", SNOW: "Snow"}
-SOURCES = {WASTELAND: ("bmap/001", "bmap/009"), DESERT: ("bmap/001", "bmap/008"), SNOW: ("bmap/000", "bmap/00a")}
+NORMAL, WASTELAND, DESERT, SNOW, GRAND_BOLT = 0, 1, 2, 3, 4
+NAMES = {WASTELAND: "Wasteland", DESERT: "Desert", SNOW: "Snow", GRAND_BOLT: "Grand Bolt (Means to an End)"}
+SOURCES = {WASTELAND: ("bmap/001", "bmap/009"), DESERT: ("bmap/001", "bmap/008"), SNOW: ("bmap/000", "bmap/00a"),
+           GRAND_BOLT: ("bmap/001", "bmap/00b")}
 # Dual Strike's building colours (sub-palettes 6-8) per look (arm9 0x02167E24..: one
 # record per look, the sixth word): only for pictures, buildings being sprites in AW2.
-BUILDING_COLOURS = {NORMAL: 0x02147F40, SNOW: 0x02148060, DESERT: 0x02147FA0, WASTELAND: 0x02148000}
+BUILDING_COLOURS = {NORMAL: 0x02147F40, SNOW: 0x02148060, DESERT: 0x02147FA0, WASTELAND: 0x02148000,
+                    GRAND_BOLT: 0x02147FA0}
 LOOK_DATA, LOOK_SIZE = 0x08E80000, 0x20000
 AT_METATILES, AT_TILES, AT_SEA, AT_RIVER = 0, 0x2000, 0x9000, 0x11000
 AT_CLEAR, AT_RAIN, AT_SNOW, AT_SAND = 0x17000, 0x17100, 0x17200, 0x17300
@@ -48,6 +50,9 @@ WOODS = (0x86, 0x87)
 TALL = MOUNTAINS + WOODS
 AS = {0x13: 0x15, 0x14: 0x15, 0x36: 0x16, 0x03: PLAIN, 0x43: PLAIN, 0x106: PLAIN, 0x107: PLAIN, 0x126: PLAIN, 0x127: PLAIN}
 SEA0, RIVER0 = 0x100, 0x200
+# Means to an End's Grand Bolt (its underlay, weak points and the Crystals on it), drawn by
+# crate::grand_bolt with Dual Strike's own textures: not terrain metatiles.
+BOLT_TILES = (0x1A4, 0x194, 0x192)
 ROAD = 5
 
 
@@ -382,8 +387,11 @@ def terrain_cells(e, look, max_err=MAX_ERROR):
     tangoAW2 draws with AW2's own tiles, which are left out), or None when the
     map's colours are none of the look's sets."""
     data = Look(e, look)
-    now = e.read(PAL_BUFFER, 256)
-    weather = {data.clear: "clear", data.rain: "rain", data.snow: "snow", data.sand: "sand"}.get(now)
+    # Palettes 0-3 tell the weather (4-7 are their fogged copies; the Grand
+    # Bolt draws with palette 7, crate::grand_bolt).
+    now = e.read(PAL_BUFFER, 128)
+    weather = {data.clear[:128]: "clear", data.rain[:128]: "rain", data.snow[:128]: "snow",
+               data.sand[:128]: "sand"}.get(now)
     if weather is None:
         return None
     ref = reference(look)
@@ -420,7 +428,7 @@ def terrain_cells(e, look, max_err=MAX_ERROR):
     for y in ys:
         for x in xs:
             d = ids[(x, y)]
-            if d is None:
+            if d is None or (look == GRAND_BOLT and tiles[y * w + x] in BOLT_TILES):
                 aw2 += 1
                 continue
             below = ids.get((x, y + 1))
