@@ -1795,8 +1795,11 @@ stay out.
 - **Versus**: the Rules screen's **CO Tag** row (default OFF, beside
   **Skills**; `versus_rules.rs`). The partners are picked on Teams: START
   on an army's CO stop, UP/DOWN through the COs and None, START again
-  ("Choose a partner CO."). Humans and the computer alike; five-army games
-  have no pairs. In netplay both seats' buttons reach both screens, so
+  ("Choose a partner CO."). Humans and the computer alike; a computer
+  army left at None gets the CO of the Teams list that pairs best with its
+  CO (the highest compatibility, the list's first on a tie: the list is
+  kept at state +0xD0 while Teams is up; Dual Strike's Versus leaves the
+  computer's partner to the player). Five-army games have no pairs. In netplay both seats' buttons reach both screens, so
   both peers start with the same pairs.
 - **The DS Campaign**: a mission's record names each army's two COs
   (+0x56; `0x1C` the player picks, `0x80 | id` a clone): the computer's
@@ -1824,7 +1827,10 @@ stay out.
 - **Tests:** `tools/aw2test/tests/test_tag.py`: the rule's rows and
   defaults, Teams picks and the boxes, Change, meters, the Tag Power against
   the damage calculator (both halves, Max and Andy's 110), the computer,
-  a Versus suspend, netplay replay, the DS Campaign's pairs, pack off.
+  a Versus suspend, netplay replay, the DS Campaign's pairs, pack off;
+  the computer: its own partner with the rule on (none with it off),
+  Change to the CO further from its Super Power, the new CO's CO Power the
+  turn after, the Tag Power in Versus and in the DS Campaign's Tag Battle.
 
 ## Suspended games (`suspend.rs`)
 

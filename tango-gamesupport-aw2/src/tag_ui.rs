@@ -189,6 +189,16 @@ pub fn teams_tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
         }
         return keys;
     }
+    // The list a computer army's partner is picked from (crate::tag::auto_partner).
+    let list = teams_list(core);
+    let n = list.len().min(tag::TEAMS_LIST_MAX as usize);
+    let mut want = vec![n as u8];
+    want.extend_from_slice(&list[..n]);
+    let mut now = vec![0u8; want.len()];
+    core.raw_read_range(tag::TEAMS_LIST, -1, &mut now);
+    if now != want {
+        core.raw_write_range(tag::TEAMS_LIST, -1, &want);
+    }
     let pressed = keys & !prev;
     let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
     let stop = co_stop(core).filter(|&a| a < armies);

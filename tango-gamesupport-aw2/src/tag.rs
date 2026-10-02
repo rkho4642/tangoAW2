@@ -74,7 +74,8 @@ pub const P_SHOW: u32 = 0x0F;
 const ARMIES: u32 = 5;
 
 /// The Versus rule "CO Tag" (1 on). In RAM: off at every boot, set on
-/// Versus' Teams screen (shared by both netplay seats).
+/// Versus' Rules screen (crate::versus_rules; shared by both netplay
+/// seats).
 pub const RULE: u32 = STATE + 0xA0;
 /// The partner each army picked on Versus' Teams screen (a CO id, 0xFF
 /// none), armies 1..4.
@@ -89,6 +90,10 @@ pub const PANEL: u32 = STATE + 0xAC;
 const PENDING: u32 = STATE + 0xB4;
 /// Teams-screen bookkeeping ([`crate::tag_ui`]): STATE + 0xC0..0xCF.
 pub const UI: u32 = STATE + 0xC0;
+/// The Teams screen's CO list as last seen (a count, then the ids; up to
+/// 40): the COs a computer army's partner is picked from.
+pub const TEAMS_LIST: u32 = STATE + 0xD0;
+pub const TEAMS_LIST_MAX: u32 = 40;
 pub const STATE_END: u32 = STATE + 0x100;
 
 const NONE: u8 = 0xFF;
@@ -110,6 +115,8 @@ const AI_STATE: u32 = 0x0300_4780;
 // Player block.
 const PLAYER: u32 = 0x3C;
 const PL_HUMAN: u32 = 0x1B;
+/// The controller byte of a computer army (1 a human, 0 none).
+const CPU: u8 = 2;
 const PL_CO: u32 = 0x1D;
 const PL_MODE: u32 = 0x1E;
 const PL_CHARGE: u32 = 0x20;
@@ -405,8 +412,11 @@ pub fn map_start(core: &mut Core) {
             if core.raw_read_8(player(core, a) + PL_HUMAN, -1) == 0 {
                 continue;
             }
-            let b = core.raw_read_8(TEAMS_PARTNER + a - 1, -1);
+            let mut b = core.raw_read_8(TEAMS_PARTNER + a - 1, -1);
             let main = army_co(core, a);
+            if (b == NONE || b == main) && core.raw_read_8(player(core, a) + PL_HUMAN, -1) == CPU {
+                b = auto_partner(core, main).unwrap_or(NONE);
+            }
             if b != NONE && b != main {
                 pairs.push((a, main, b));
             }
@@ -435,6 +445,27 @@ pub fn map_start(core: &mut Core) {
         }
         form_pair(core, a, b, 0);
     }
+}
+
+/// A computer army's partner in Versus with CO Tag on when none was picked
+/// for it on Teams (Dual Strike's Versus leaves that to the player): the CO
+/// of the Teams list that makes the best pair with its CO (the highest
+/// compatibility, so the strongest Tag Power), the earliest in the list
+/// on a tie. The list is the one both netplay seats saw.
+pub fn auto_partner(core: &Core, main: u8) -> Option<u8> {
+    let n = core.raw_read_8(TEAMS_LIST, -1).min(TEAMS_LIST_MAX as u8) as u32;
+    let mut best: Option<(u8, u8)> = None;
+    for k in 0..n {
+        let c = core.raw_read_8(TEAMS_LIST + 1 + k, -1);
+        if c == main || c == NONE {
+            continue;
+        }
+        let v = compatibility(main, c);
+        if best.map_or(true, |(_, bv)| v > bv) {
+            best = Some((c, v));
+        }
+    }
+    best.map(|(c, _)| c)
 }
 
 // --- The DS Campaign's CO screen: the player's partners ------------------------------
@@ -970,6 +1001,7 @@ mod tests {
         assert!(STATE + REC * ARMIES <= RULE);
         assert!(PENDING + 2 * ARMIES <= UI);
         assert!(UI + 0x10 <= STATE + 0xFC);
+        assert!(UI + 0x10 <= TEAMS_LIST && TEAMS_LIST + 1 + TEAMS_LIST_MAX <= STATE + 0xFC);
         assert!(STATE >= 0x0203_F400 && STATE_END <= 0x0203_F600, "below the DS Campaign's records");
     }
 

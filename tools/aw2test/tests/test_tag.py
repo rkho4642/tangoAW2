@@ -360,6 +360,132 @@ def tag_cpu(ctx):
     ctx.eq((g2.player(2)["co"], tag.partner(e2, 2)["co"]), (sami, max_), "the computer Changed to Sami")
 
 
+def watch_cpu(g, army, frames=30000, talk=False):
+    """The computer army's turn, from its start until it ends: the
+    (active CO, power mode, phase) states it went through (`talk`: A now
+    and then, for a mission's dialogue)."""
+    e = g.e
+    seen = []
+    n = 0
+    while g.current_army() == army and n < frames:
+        p, t = g.player(army), tag.partner(e, army)
+        st = (p["co"], p["co_mode"], (t or {}).get("phase"))
+        if not seen or seen[-1] != st:
+            seen.append(st)
+        if talk and n % 60 == 0:
+            e.press("A", 2)
+        e.wait(10)
+        n += 10
+    return seen
+
+
+def end_and_watch(ctx, g, army=2):
+    g.open_map_menu()
+    g.choose("End", g.MAP_MENU)
+    ctx.require(g.e.wait_until(lambda: g.current_army() == army, 900, step=8), "the computer's turn")
+    seen = watch_cpu(g, army)
+    ctx.log(f"computer states {seen}")
+    ctx.require(g.e.wait_until(lambda: g.current_army() == 1, 30000, step=30), "the turn comes back")
+    g.wait_for_input()
+    return seen
+
+
+@test(modes=("ds",))
+def tag_cpu_versus_partner(ctx):
+    """Versus with CO Tag on: a computer army left without a partner on
+    Teams gets the CO of the Teams list that pairs best with its CO (the
+    highest Dual Strike compatibility, the list's first on a tie); with
+    the rule off it gets none."""
+    m = ctx.map()
+    g = ctx.boot_teams(m)
+    e = g.e
+    g.set_teams(["andy", "max"], {1})
+    lst = g.teams()["co_list"]
+    ds = romlib.DualStrike()
+    max_ = romlib.co_id("max")
+    best = None
+    for c in lst:
+        if c == max_:
+            continue
+        v = tag.compatibility(ds, max_, c)
+        if best is None or v > best[1]:
+            best = (c, v)
+    ctx.log(f"Max's best partner in the list: {best}")
+    g.teams_to_rules()
+    g.set_rules()
+    g.set_extra_rules(tag=True)
+    g.start_battle()
+    g.wait_for_input()
+    ctx.eq(tag.partner(e, 1), None, "the human army picked no partner: none")
+    ctx.eq((tag.partner(e, 2) or {}).get("co"), best[0], "the computer's partner: the best pair with Max")
+    g.open_map_menu()
+    g.choose("End", g.MAP_MENU)
+    ctx.require(e.wait_until(lambda: g.current_army() == 2, 900, step=8), "the computer's turn")
+    e.wait(90)
+    ctx.shot(g, "cpu_pair_panel")
+    g2 = tag_battle(ctx, ["andy", "max"], [None, None], rule=False)
+    ctx.eq(tag.partner(g2.e, 2), None, "rule off: the computer has no partner")
+    ctx.eq(g2.e.u32(tag.MENU_POOL), 0x0849AAC0, "rule off: AW2's map menu")
+
+
+@test(modes=("ds",))
+def tag_cpu_change_and_powers(ctx):
+    """The computer's Change as Dual Strike's AI (0x02099BA0): with the
+    active CO nearer its Super Power than the partner it Changes at its
+    turn's end; then the partner, now active, uses its own CO Power when
+    its meter allows (AW2's AI deciding, the pair's rules on top)."""
+    units = [(1, "tank", 10, 10), (2, "tank", 13, 10), (2, "infantry", 20, 15), (2, "mech", 21, 15)]
+    g = tag_battle(ctx, ["andy", "max"], [None, "sami"], units=units)
+    e = g.e
+    max_, sami = romlib.co_id("max"), romlib.co_id("sami")
+    p = g.player(2)
+    mcop, mscop = g.co_stars(max_)
+    scop_s = g.co_stars(sami)
+    # Max: 40% of his Super Power (under his CO Power); Sami: past her CO
+    # Power, far from her Super Power.
+    e.w32(p["addr"] + ram.P_CHARGE, tag.star_cost(0) * mscop * 2 // 5)
+    e.w32(tag.rec(2) + tag.P_CHARGE, tag.star_cost(0) * scop_s[0] + 1000)
+    seen = end_and_watch(ctx, g)
+    ctx.check(all(st[1] == 0 for st in seen), "no power this turn (Max short of his, Sami not active)")
+    ctx.eq((g.player(2)["co"], tag.partner(e, 2)["co"]), (sami, max_), "the computer Changed to Sami (Max nearer his Super Power)")
+    g.open_map_menu()
+    g.choose("End", g.MAP_MENU)
+    ctx.require(e.wait_until(lambda: g.current_army() == 2, 900, step=8), "the computer's turn")
+    e.wait(60)
+    ctx.shot(g, "cpu_after_change")
+    seen = watch_cpu(g, 2)
+    ctx.log(f"computer states {seen}")
+    ctx.check((sami, 1, 0) in seen, "Sami's CO Power on the computer's next turn")
+
+
+@test(modes=("ds",))
+def tag_cpu_ds_mission(ctx):
+    """A DS Campaign tag mission (Tag Battle: the computer's Jugger and
+    Lash): with both its meters full the computer fires the Tag Power, both
+    Super Powers in one turn."""
+    data = dc.DsData()
+    step = 7
+    e = Emu(save=paths.base_save(), ds=True)
+    g = Game(e)
+    ctx.games.append(g)
+    d = dc.DsCampaign(g)
+    d.start(step=step)
+    d.choose_cos(1, dc.CO_PREFS)
+    d.wait_control()
+    army = next((a for a in range(2, 5) if tag.partner(e, a) is not None), None)
+    ctx.require(army is not None, "the computer has a pair")
+    a_co, b_co = g.player(army)["co"], tag.partner(e, army)["co"]
+    fill(g, army)
+    g.open_map_menu()
+    g.choose("End", g.MAP_MENU)
+    ctx.require(e.wait_until(lambda: g.current_army() == army, 3000, step=8), "the computer's turn")
+    seen = watch_cpu(g, army, 40000, talk=True)
+    ctx.log(f"states {seen}")
+    ctx.check((a_co, 2, 1) in seen, "the Tag Power: the active CO's Super Power first")
+    ctx.check((b_co, 2, 2) in seen, "then the partner's, in the same turn")
+    ctx.shot(g, "after_cpu_tag")
+
+
 @test(modes=("ds",))
 def tag_save_versus(ctx):
     """A Versus game saved in a Tag Power's first half and continued after a
