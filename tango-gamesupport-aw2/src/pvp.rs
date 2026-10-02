@@ -528,13 +528,16 @@ impl tango_backend_mgba::SharedGame for Aw2 {
 
         // Army colours are picked on Versus' own Teams screen: R and L
         // cycle the highlighted army through the five armies, Black Hole
-        // included (SELECT opens the Set Skills panel: crate::skills_panel). Campaign and War Room never reach this screen, so their
-        // story armies are untouched.
+        // included. SELECT does as R without the Dual Strike pack (as in
+        // 0.4.0); with it, SELECT opens the Set Skills panel
+        // (crate::skills_panel). Campaign and War Room never reach this
+        // screen, so their story armies are untouched.
         if in_versus(core) && on_teams_screen(core) && !crate::five::active(core) {
             let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
             first_teams_frame(core, armies);
             let pressed = keys & !prev;
-            let step = if pressed & KEY_R != 0 {
+            let forward = if ds { KEY_R } else { KEY_R | KEY_SELECT };
+            let step = if pressed & forward != 0 {
                 1
             } else if pressed & KEY_L != 0 {
                 -1

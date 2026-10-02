@@ -697,3 +697,31 @@ def skills_teams_buttons(ctx):
     e.press("B", 4)
     e.wait(10)
     ctx.eq(e.u8(PANEL), 0, "B: closed")
+
+
+@test(modes=("aw2",))
+def skills_none_without_pack(ctx):
+    """Without the Dual Strike pack there are no skills: on Versus' Teams
+    screen SELECT changes the highlighted army's colour as in 0.4.0 (as R
+    does), and no Set Skills panel opens there or on the CO screen."""
+    m = ctx.map()
+    m.unit(1, "tank", 10, 10).unit(2, "tank", 20, 10)
+    save = os.path.join(ctx.out, "map.sav")
+    m.write(paths.base_save(), save)
+    e = Emu(save=save, ds=False)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    g.boot_to_teams()
+    e.wait(30)
+    seen = [e.u8(TEAMS_COLOUR)]
+    for _ in range(5):
+        e.press("SELECT", 4)
+        e.wait(10)
+        seen.append(e.u8(TEAMS_COLOUR))
+        ctx.eq(e.u8(PANEL), 0, "SELECT: no panel")
+    ctx.check(all(a != b for a, b in zip(seen, seen[1:])) and 5 in seen,
+              f"SELECT changes the colour each press, Black Hole included ({seen})")
+    before = e.u8(TEAMS_COLOUR)
+    e.press("R", 4)
+    e.wait(10)
+    ctx.check(e.u8(TEAMS_COLOUR) != before, "R as well")

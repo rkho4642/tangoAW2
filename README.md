@@ -75,7 +75,8 @@ Both press Ready; the game starts from power-on for both. Go to
 - **Everything unlocked:** all COs including Sturm, CO colour edits,
   Battle Maps, Hard Campaign and the Sound Room.
 - **Black Hole as a Versus army:** on the Teams screen press **R** (or
-  **L**) on an army to change its colour, Black Hole included. Give it a Black
+  **L**; without the Dual Strike pack, **SELECT** too) on an army to change
+  its colour, Black Hole included. Give it a Black
   Hole CO (Flak, Lash, Adder, Hawke, Sturm) for Black Hole's HQ and units.
 - **Five-army maps:** a **5P Maps** tab in Versus (press LEFT on the tab
   list), five armies at once, any of them human or computer.

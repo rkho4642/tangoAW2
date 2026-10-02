@@ -53,8 +53,10 @@ and those flags were lost at every save; `save_keeps_aw2_completion_flags`).
 
 Armies: picked on Versus' Teams screen. R moves the highlighted
 army (cursor / 2) to the next colour no other army has, L to the previous
-one; the game then builds the battle's armies from the Teams record, so
-nothing is forced during play and Campaign and War Room are untouched.
+one (without the Dual Strike pack SELECT does as R, as in 0.4.0; with it
+SELECT opens the Set Skills panel); the game then builds the battle's
+armies from the Teams record, so nothing is forced during play and
+Campaign and War Room are untouched.
 Black Hole's emblem (sprite `0x42`) is not
 loaded on that screen, so while an army is Black Hole its emblem is drawn
 into the tiles of a standard emblem no army uses, and all standard
