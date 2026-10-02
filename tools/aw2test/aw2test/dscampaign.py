@@ -764,10 +764,24 @@ CO_PREFS = [6, 14, 2, 76, 17, 1, 79, 80, 18, 0, 77, 4, 78, 73, 74, 72]
 # Infantry, Black Boats Ahoy!'s Lander), missions won on their structures
 # (a Black Crystal, minicannons, Black Obelisks, the Grand Bolt's weak
 # points), and those against the clock (always on the attack).
+# Test players' CO preferences tried (the first that the mission's pool has).
+_V1 = [14, 6, 17, 18] + CO_PREFS
+_V2 = [18, 17, 14, 6] + CO_PREFS
 PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"rush": True}, 16: {"rush": True},
+         # Tag Battle: the game's CPU plays the player's side.
+         7: {"player": "cpu"},
+         # The Long March, Omens and Signs, Into the Woods, Crystal Calamity,
+         # Surrounded!, For the Future!: the test player's style (seed) and CO
+         # found to win them (a seed search over styles and COs).
+         25: {"seed": 2, "cos": _V2},
+         14: {"seed": 5, "cos": _V1},
+         15: {"rush": True, "seed": 2, "cos": _V2},
+         18: {"seed": 0},
+         22: {"player": "cpu", "cos": _V1},
+         23: {"seed": 1, "cos": _V1},
          # Means to an End: bombers and B copters from its airports fly over
-         # the Oozium to the Grand Bolt's weak points.
-         24: {"build": {0xA: [17, 19, 16]}}}
+         # the Oozium to the crystals and the Grand Bolt's weak points.
+         24: {"build": {0xA: [17, 19, 16]}, "seed": 0}}
 STRUCTURE_MISSIONS = {8, 13, 14, 17, 18, 23, 24}
 TIMED_MISSIONS = {12, 21, 22, 24}
 

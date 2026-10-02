@@ -300,12 +300,13 @@ class DualStrike:
         return self.ov0[o:o + DS_RECORD]
 
     def damage_row(self, t, weapon):
-        """As AW2's row: index = AW2 defender type 0..25 (25 = dived Sub)."""
+        """As AW2's row: index = AW2 defender type 0..27 (25 = dived Sub;
+        tangoAW2's 26 Carrier and 27 Oozium are Dual Strike's 25 and 26)."""
         r = self.record(t)
         base = 0x24 if weapon == 0 else 0x44
         out = []
-        for d in range(26):
-            slot = DS_SUBMERGED_SUB if d == 25 else d
+        for d in range(28):
+            slot = DS_SUBMERGED_SUB if d == 25 else d - 1 if d in (26, 27) else d
             out.append(0 if slot == 0 else r[base + slot - 1])
         return out
 
