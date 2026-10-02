@@ -1061,7 +1061,16 @@ overlay 1, the campaign's code, at `0x02350560`).
   +3.2; `ds_campaign_world_map_picture`), with Dual Strike's mission points (ARM9 `0x0215BA04`). AW2's
   mission table (`0x08615194`) and reveal table (`0x0861500C`) get DS copies
   (ROM `0x08FC0000..`), and while a session is on, the literal-pool words
-  that point at AW2's art and tables point at the copies. Open missions have
+  that point at AW2's art and tables point at the copies. New shows Jake's
+  Trial's flag alone; a mission's flag appears once it opens (the next
+  story mission after a win, a lab mission once its map is found) and stays,
+  cleared, once won (`ds_campaign_win_*` check every flag after each win
+  and after Continue). Beside LEVEL under the cursor are AW2's difficulty
+  stars (the table's +3 Normal, +4 Hard): Dual Strike has no difficulty
+  value (none in its mission records or map points, none on its map), so
+  they follow the mission's place in the campaign over AW2's ranges:
+  Normal 1 + step x 7 / 28 (1..7), Hard Normal + 1 + step x 3 / 28 (2..10)
+  (`ds_worldmap::stars`, `ds_campaign_world_map_stars`). Open missions have
   AW2's flag; A opens the mission's panel (its objective, AW2's info window),
   A again starts it (the CO screen when the player picks). Back on the map
   after a win the mission is cleared and the missions it opens are revealed

@@ -287,7 +287,8 @@ def ds_campaign_win_and_continue(ctx):
     d.start(new=True, pick=False)
     d.wait_world_map()
     flags = d.map_flags()
-    ctx.eq((flags[0], flags[1], flags[2]), (1, 0, 0), "New: Jake's Trial shown, the others not")
+    ctx.eq(flags, [1] + [0] * 27, "New: Jake's Trial's flag alone, every other mission hidden")
+    ctx.eq(map_flags_expected(e), flags, "New: the flags Dual Strike shows")
     shot(ctx, e, "world_map_new")
     d.pick_mission()
     d.wait_map()
@@ -308,6 +309,7 @@ def ds_campaign_win_and_continue(ctx):
     e.wait(60)
     flags = d.map_flags()
     ctx.eq((flags[0] & 2, flags[1] & 1, flags[2]), (2, 1, 0), "Jake's Trial cleared, The New Black shown, Max Attacks hidden")
+    ctx.eq(flags, [2, 1] + [0] * 26, "after the win: Jake's Trial cleared, The New Black open, nothing else")
     ctx.eq(d.map_mission(), 1, "the cursor on The New Black")
     ctx.eq(len(d.cleared_flags()), 1, "a starred flag on Jake's Trial's point")
     p = d.progress()
@@ -768,6 +770,57 @@ def ds_campaign_world_map_edges(ctx):
     ctx.check(70 <= y <= 80, f"the camera at its bottom edge, no further ({y})")
 
 
+STAR_TILE = 76   # AW2's world map LEVEL star (OBJ tile)
+
+
+def ds_stars(index):
+    """ds_worldmap::stars: a mission's (Normal, Hard) stars by its place in
+    the campaign (Dual Strike has none of its own)."""
+    step = dc.ORDER.index(index)
+    normal = 1 + step * 7 // len(dc.ORDER)
+    return normal, min(10, normal + 1 + step * 3 // len(dc.ORDER))
+
+
+def level_stars(e):
+    oam = e.read(0x07000000, 0x400)
+    return sum(1 for i in range(128) if (oam[8 * i + 1] >> 0) & 3 != 2 and (oam[8 * i + 4] | oam[8 * i + 5] << 8) & 0x3FF == STAR_TILE)
+
+
+@test(modes=("ds",))
+def ds_campaign_world_map_stars(ctx):
+    """The DS world map shows stars beside LEVEL under the cursor's mission
+    as AW2's does (AW2's own code, from the DS mission table's +3 Normal /
+    +4 Hard): Dual Strike has no difficulty of its own, so a mission's stars
+    follow its place in the campaign over AW2's ranges (Normal 1..7, Hard up
+    to 10). Normal at three points of the campaign, and Hard."""
+    for step in (0, 12, 24):
+        e, g, d = boot(ctx)
+        d.start(step=step, pick=False)
+        d.wait_world_map()
+        e.wait(120)
+        want = ds_stars(dc.ORDER[step])[0]
+        ctx.eq(level_stars(e), want, f"step {step}: {want} stars beside LEVEL")
+        shot(ctx, e, f"stars_{step}.png")
+        e.close()
+    e, g, d = boot(ctx)
+    to_ds_box(e, d, cleared=True)
+    e.press("A", 8)
+    e.wait(20)
+    e.press("DOWN", 6)
+    e.wait(20)
+    e.press("A", 8)
+    for _ in range(40):
+        if e.wait_until(d.active, 30, step=5):
+            break
+        e.press("A", 8)
+    ctx.require(d.active() and session_hard(e), "a Hard campaign")
+    d.wait_world_map()
+    e.wait(120)
+    want = ds_stars(dc.ORDER[0])[1]
+    ctx.eq(level_stars(e), want, f"Hard, the first mission: {want} stars")
+    shot(ctx, e, "stars_hard.png")
+
+
 @test(modes=("ds",))
 def ds_campaign_property_win(ctx):
     """Spiral Garden's "Whoever captures 15 properties wins" (Dual
@@ -865,6 +918,47 @@ def ds_campaign_victory_or_death_bomb(ctx):
     ctx.check(1 in seen, f"the unit at {near[0]} left with 1 HP by the Black Arc ({hp0} -> {sorted(set(seen))[:4]})")
 
 
+def map_flags_expected(e):
+    """The world map's flags Dual Strike shows for the record in RAM: a won
+    mission cleared (2); open (1) the first story mission not won, and each
+    lab mission whose map was found (its campaign flag) and not won; every
+    other mission hidden (0)."""
+    won = e.u32(dc.P_WON)
+    flags = e.read(dc.P_FLAGS, 16)
+    out = [2 if won >> m & 1 else 0 for m in range(28)]
+    story = [m for m in dc.ORDER if m not in dc.LAB_FLAGS and not won >> m & 1]
+    if story:
+        out[story[0]] = 1
+    for m, f in dc.LAB_FLAGS.items():
+        if not won >> m & 1 and flags[(f - 0x20) // 8] >> ((f - 0x20) % 8) & 1:
+            out[m] = 1
+    return out
+
+
+def continue_after_reboot(ctx, e, name):
+    """The record saved, the game rebooted, DS CAMPAIGN's Continue: the
+    world map's flags. Returns them (and the new Emu)."""
+    save = e.save(os.path.join(ctx.out, name))
+    e.close()
+    e, g, d = boot(ctx, save)
+    d.open_campaign_box()
+    d.chooser_row(1)
+    e.press("A", 8)
+    e.wait(30)
+    d.box_row(0)
+    e.press("A", 8)
+    ctx.require(e.wait_until(d.active, 900, step=10), "Continue starts")
+    d.wait_world_map()
+    e.wait(30)
+    return shown_cleared(d.map_flags()), e, d
+
+
+def shown_cleared(flags):
+    """The flags' shown (1) and cleared (2) bits (AW2 keeps more of its own
+    in the byte: 4 on a mission revealed or cleared since, 8 on the last)."""
+    return [f & 3 for f in flags]
+
+
 # Every mission won as a player wins it: picked on the world map, COs picked
 # on the CO screen, the battle played through the pad only (aw2test.bot with
 # the mission's plan in dscampaign.PLANS; no unit, funds or flag is written),
@@ -899,7 +993,15 @@ def _win(step):
             shown = [m for m in range(28) if r["flags"][m] & 1 and not p["won"] >> m & 1]
             ctx.check(bool(shown), f"a next mission is open on the map ({shown})")
             ctx.check(p["next"] > step, f"the record moves on (next step {p['next']})")
+        want = map_flags_expected(e)
+        ctx.eq(shown_cleared(r["flags"]), want, "the map's flags: the won missions cleared, the ones the win opened, nothing locked")
+        ctx.check(len(d.cleared_flags()) <= bin(p["won"]).count("1"), "starred flags only on won missions")
         shot(ctx, e, "world_map")
+        if step + 1 < len(dc.ORDER):
+            # (After the last, the campaign is over: the credits.)
+            flags, e, d = continue_after_reboot(ctx, e, "after_win")
+            ctx.eq(flags, want, "Continue after a reboot: the same flags")
+            shot(ctx, e, "world_map_continue")
     fn.__name__ = f"ds_campaign_win_{step:02d}"
     test(modes=("ds",))(fn)
 

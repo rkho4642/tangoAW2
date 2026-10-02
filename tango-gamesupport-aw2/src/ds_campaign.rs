@@ -840,7 +840,6 @@ fn end_of_battle(core: &mut Core) {
     core.raw_write_8(LAST_RESULT, -1, if won { 1 } else { 2 });
     core.raw_write_8(LAST_RESULT + 1, -1, index);
     core.raw_write_16(LAST_RESULT + 2, -1, core.raw_read_16(0x0300_4080, -1));
-    let before = available(core);
     if won {
         let w = core.raw_read_32(P_WON, -1) | (1 << index);
         core.raw_write_32(P_WON, -1, w);
@@ -850,7 +849,14 @@ fn end_of_battle(core: &mut Core) {
         flags_from_record(core);
     }
     let after = available(core);
-    let newly: Vec<u8> = after.iter().copied().filter(|m| !before.contains(m)).collect();
+    // Revealed: the open missions the map does not show yet. (Not the
+    // ones open before the battle: a lab's flag is set in the battle, by
+    // capturing the city that hides its map, so it is open already then.)
+    let newly: Vec<u8> = after
+        .iter()
+        .copied()
+        .filter(|&m| core.raw_read_8(crate::ds_worldmap::S_FLAGS + m as u32, -1) & crate::ds_worldmap::SHOWN == 0)
+        .collect();
     // The progress's step: the next story mission (or, when every mission
     // is won, the campaign is over).
     let (order, last) = campaign(core).map_or((Vec::new(), u8::MAX), |c| (c.model.order.clone(), c.model.final_mission));

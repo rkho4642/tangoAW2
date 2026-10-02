@@ -546,8 +546,10 @@ pub fn install(core: &mut Core, cos_pick: &[bool], co_setup: u32, info_texts: &[
         r[0..2].copy_from_slice(&(crate::ds_campaign_data::MAP_ID as u16).to_le_bytes());
         // Marker style: Dual Strike's lab missions and its last stand out.
         r[2] = if flags & 2 != 0 { 8 } else if flags & 1 != 0 { 4 } else { 0 };
-        r[3] = 0;
-        r[4] = 0;
+        // The stars beside LEVEL (Normal, Hard): [`stars`].
+        let (normal, hard) = stars(i);
+        r[3] = normal;
+        r[4] = hard;
         r[6..8].copy_from_slice(&x.to_le_bytes());
         r[8..10].copy_from_slice(&y.to_le_bytes());
         // The mission panel's text (its +0x10 is a text id).
@@ -575,6 +577,21 @@ pub fn install(core: &mut Core, cos_pick: &[bool], co_setup: u32, info_texts: &[
     core.raw_write_range(ZEROS, -1, &[0; 0x400]);
     core.raw_write_32(BASE, -1, MAGIC);
     true
+}
+
+/// A mission's difficulty stars beside LEVEL (AW2's mission table +3
+/// Normal, +4 Hard). Dual Strike has none (no field in its mission records
+/// or map points, and its map shows none), so they follow the mission's
+/// place in the campaign, over AW2's own ranges (its campaign: Normal 1..7,
+/// Hard 1..10): Normal one more every four missions (1..7), Hard one to
+/// three more than Normal, further in (up to 10).
+pub fn stars(mission: usize) -> (u8, u8) {
+    let order = &crate::ds_campaign_data::ORDER;
+    let step = order.iter().position(|&m| m as usize == mission).unwrap_or(0);
+    let n = order.len().max(1);
+    let normal = 1 + (step * 7 / n) as u8;
+    let hard = (normal + 1 + (step * 3 / n) as u8).min(10);
+    (normal, hard)
 }
 
 fn set32(core: &mut Core, at: u32, v: u32) {
@@ -976,6 +993,16 @@ fn profile_serialized(core: &mut Core) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stars_rise_with_the_campaign() {
+        assert_eq!(stars(0), (1, 2));
+        assert_eq!(stars(24), (7, 10));
+        let order = crate::ds_campaign_data::ORDER;
+        for w in order.windows(2) {
+            assert!(stars(w[0] as usize).0 <= stars(w[1] as usize).0);
+        }
+    }
 
     #[test]
     fn layout_fits() {

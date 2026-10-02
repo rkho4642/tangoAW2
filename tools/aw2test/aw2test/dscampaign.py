@@ -778,8 +778,8 @@ _V2 = [18, 17, 14, 6] + CO_PREFS
 _V3 = [76, 2, 6, 14] + CO_PREFS
 PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]},
          # Verdant Hills (15 days): the HQ the capturers' only goal, every
-         # hit counting from day 9.
-         12: {"rush": True, "finish": 9, "seed": 7, "cos": _V3},
+         # hit counting from day 9 (won on day 9 of 15).
+         12: {"rush": True, "finish": 9, "seed": 24},
          # Muck Amok!: army 3's HQ (14, 1) taken (Dual Strike's way: its
          # Ooziums vanish), the units that capture keeping clear of them.
          16: {"goals": [(14, 1)], "ooze": True, "seed": 2, "cos": _V2},
