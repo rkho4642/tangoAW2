@@ -1173,19 +1173,42 @@ overlay 1, the campaign's code, at `0x02350560`).
   campaign over, difficulty, campaigns cleared, missions won (bits), flags
   0x20..0x9F) and the records (0xE0 bytes) are written at each
   mission start through AW2's own save writer (`sub_0801A7D8`) into Flash
-  slot 15 (AW2: 0 profile, 2..4 suspends, 5..7 design maps), so AW2's
+  slot 15 (AW2: 0 profile, 2..4 suspends, 5..7 design maps, 8 the design
+  map a suspended Versus game is on), so AW2's
   profile and its checksum are untouched; read back from the newest slot-15
-  sector. The map menu's Save item is hidden in a DS mission (its test word
-  `0x0849AB64` points at a stub): a suspended mission would come back as an
-  AW2 one.
+  sector.
+- **A mission saved halfway** (Dual Strike's campaign has the map menu's
+  Save: "Save over Mission / Day data"): the map menu's Save is AW2's in a
+  DS mission too, and saves it in Flash slot 14, not AW2's campaign slot 2,
+  so an AW2 mission saved halfway and its mark in the profile
+  (`0x0200C429`) stay (`crate::suspend`: `sub_08016D30` trapped past its
+  prologue, `0x08016D3A`, and at its writer call, `0x08016D8E`: the slot made
+  14 and AW2's mark put back before the profile is serialized). The block's
+  tail carries the session (after "DS" at +0xE04: the mission, the op 0x5A
+  countdown, the flags 0x20..0x9F with Hard's 0x60, Means to an End's state). DS CAMPAIGN's Continue, with slot 14 in
+  AW2's sector directory, sets the session up as for the world map (the
+  cursor and the map table's entry on the saved mission) and then resumes
+  it with AW2's own `sub_08017688(14)`. Slot 14 leaves the directory (as
+  AW2's delete, `sub_0801ABF8`, without its write: the next save writes
+  it) when the mission ends, won or lost, and on a new DS Campaign; turned
+  off before any save after a loss, Continue resumes the saved mission, as
+  AW2's own does. Until this the item was hidden in a DS mission (the stub
+  at `0x0849AB64`, put back to AW2's test now): a suspended mission would
+  have come back as an AW2 one, in AW2's slot. Tests:
+  `save_ds_campaign_mission_suspend`,
+  `save_ds_campaign_new_drops_mission_suspend`.
 - **Hook points** (for merging other work): traps `0x08016BA0` (the profile
   serializer's end), `0x0807703C`, `0x0803B83C`, `0x0806BC84` (the credits),
   `0x0803BA4C`,
   `0x0803BA88`, `0x08038484`, `0x0803CBA0`, `0x0803CBD8`, `0x0803BC7C`
   (`GetCampaignSaveFlag`: the DS box's Continue), `0x0803840C`, `0x0803CC5E`
   (the stubs' landing); `SetMapPlayed` (`0x0803CA28`, Survival's trap) also
-  skips map id 0xF0 in a session. RAM `0x0203FD10..0x0203FD5F`; ROM
-  `0x08F00000..0x08FFFFFF`; text ids 0x7400..0x7FFF; map id 0xF0.
+  skips map id 0xF0 in a session; `crate::suspend`'s `0x08016D3A`,
+  `0x08016D8E`, `0x08016D88`, `0x08016DD0` (a mission saved halfway; its
+  hooks in `ds_campaign.rs`: `start`'s Continue, `end_of_battle`,
+  `new_progress`). RAM `0x0203FD10..0x0203FD5F` (`0x0203FFAD`: a DS
+  mission being saved, `crate::suspend`); ROM `0x08F00000..0x08FFFFFF`;
+  text ids 0x7400..0x7FFF; map id 0xF0; Flash slots 15 and 14.
 
 **Compromises.**
 

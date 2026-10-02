@@ -311,9 +311,11 @@ fn unit_id_at(core: &Core, x: u32, y: u32) -> u8 {
 
 /// Means to an End's state (EWRAM the game never writes, past the DS
 /// Campaign's records): the crystals shattered so far told, and each weak
-/// point's hit points while its crystal stands.
-const MTE_TOLD: u32 = 0x0203_F700;
+/// point's hit points while its crystal stands ([`MTE_LEN`] bytes, kept
+/// with a mission saved halfway, `crate::suspend`).
+pub(crate) const MTE_TOLD: u32 = 0x0203_F700;
 const MTE_HP: u32 = 0x0203_F701;
+pub(crate) const MTE_LEN: u32 = 4;
 
 /// Crystal `k` of Means to an End still stands.
 pub fn crystal_alive(core: &Core, k: usize) -> bool {
