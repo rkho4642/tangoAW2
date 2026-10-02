@@ -100,6 +100,12 @@ Both press Ready; the game starts from power-on for both. Go to
   AW2 CAMPAIGN or DS CAMPAIGN. The DS one is Dual Strike's story campaign,
   its 25 missions and 3 lab missions with their maps, dialogue and portraits,
   played in AW2's campaign; its progress is saved apart from AW2's.
+- **CO skills** (with the Dual Strike ROM): Dual Strike's 40 skills (Bruiser,
+  Slam Guard, Luck, Gold Rush, ...). Your COs earn EXP by winning in the DS
+  Campaign, Survival, the War Room (and AW2's campaign once you use skills);
+  a rank every 1,000 EXP opens skills and slots (up to 4). Press **SELECT**
+  on a CO screen to set its skills; on Versus' Teams screen **START** sets
+  them and **L** turns the Skills rule on (off by default) for every army.
 
 <table>
 <tr>

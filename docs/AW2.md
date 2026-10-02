@@ -1242,7 +1242,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   sixth day. Tests: `ds_campaign_means_to_an_end`, `ds_campaign_map_27`.
 - AW2 armies have one CO: a tag pair is its first CO, the "CO pair" tests
   check that CO only, and there are no tag or Dual Strike powers. CO skills
-  are not converted.
+  are tangoAW2's (below); the computer's Hard skill lists of Dual Strike's
+  records (+0x60) are empty in the missions read and are not used.
 - The world map is Dual Strike's bottom screen only (no top-screen
   displays); a won mission is not played again (its rank shows beside its
   flag).
@@ -1264,8 +1265,7 @@ overlay 1, the campaign's code, at `0x02350560`).
     `0x020EEE1C(13, 5, 100, 0)`, on each of Black Hole's turns while its
     trigger holds): every unit within 2 spaces of (13, 5), but Black
     Hole's team's, Ooziums and loaded units, is left with 1 HP (no
-    explosion drawn). (Dual Strike's skill 0x2A, 90 damage, comes with CO
-    skills.)
+    explosion drawn; Missile Guard takes 10 off, as Dual Strike's 0x2A).
   - Ring of Fire's Volcano: Dual Strike's structure kind 2 (4x4, anchor
     0x1A2 on its third row, at (8, 8)) becomes AW2's own Volcano (anchor
     0x1A7, rim 0x1A5; invention kind 2). It erupts as AW2's does (the
@@ -1343,35 +1343,73 @@ buffer gets it from there, so the profile in Flash stays AW2's
 and New's notice in the same boot and after a reboot, with and without
 the pack).
 
-## CO skills (design, not built yet)
+## CO skills (`co_skills.rs`, `skills_panel.rs`)
 
-Dual Strike's CO skills, as the player's decisions set them (found in the
-.nds: overlay 0's skill table at `0x022F5ECC`, records of {rank, name text
-`0x7C<<24|i`, description `0x7B<<24|i`}; the save's per-CO record at
-`0x02290750 + 0x1C*co`):
+Dual Strike's CO skills, from its code (overlay 0's skill table at
+`0x022F5ECC`: 12-byte records by id, {rank, name `0x7C<<24|i`, description
+`0x7B<<24|i`}; its per-CO bitmap test `0x020E7EE0`):
 
-- **Skills.** Dual Strike's 43 player skills (ids 0x20..0x4A) less its
-  three tag skills (0x35..0x37: no tag pairs here). Ids 1..16 are the COs'
-  own hidden abilities, already in tangoAW2's CO code.
+- **Skills.** Its 43 player skills (ids 0x20..0x4A) less the three tag
+  skills (0x35..0x37: no tag pairs here). Each takes a slot; their effects
+  stack. Names, ranks and descriptions come from the pack.
+- **In battle.** Each army's skills are a bitmap in RAM (`ACTIVE`,
+  `0x0203F7E0`, 6 bytes an army), cleared at every map start and set by
+  the mode (`battle_start`): the player's armies get their CO's set of the
+  mode (DS Campaign and AW2's campaign: Campaign; Survival; War Room);
+  Versus with its Skills rule on gives every army, the computer's too, its
+  CO's Versus set. A set gives only the skills open to the CO, as many as
+  its slots. Everything reads that bitmap: with no skill on a battle plays
+  as it always did.
+- **Effects** (Dual Strike's numbers; its functions in the module's docs):
+  attack (direct/indirect +5/+8, terrain +10, Backstab +15, weather +20),
+  defence (direct/indirect +8/+12, APC Guard +10) through the firepower
+  and defence hooks the CO code already has; funds (Gold Rush +100 per
+  earning property, Combat Pay 2% of the value hit), repairs (+1/+2),
+  Missile Guard (silo blasts and the Black Arc 10 less), Cannon Guard
+  (structure shots 20 less, `0x0803ED12`); and traps in AW2's code: move
+  (`GetUnitMovementWithCoBonus` 0x08042D42, APC Boost), vision
+  (0x08042DA6), capture points (0x0804269A), price (`GetCoPriceMultiplier`
+  0x08042CC0; not for the power meter, as Dual Strike), luck (0x08042E64 /
+  0x08042E7A), the meter (0x080440E0, Star Power x1.1), hidden fuel (with
+  crate::ds_weather's fuel trap), move costs (`CacheUnitMovementCosts`'
+  end 0x0801F91E), and the special-ability bits in a Super Power
+  (`GetPlayerSpecialAbilities` 0x08043050 / 0x08043066: Mistwalker
+  strikes first, Soul of Hachi deploys from cities; the computer never
+  builds at cities).
 - **Rank and slots.** A CO's rank is its EXP / 1000 (up to 100); a skill
-  unlocks at its rank; slots = min(rank, 4). The rank-10 skills also need
-  Means to an End won (Normal; the Hard ones once Hard Campaign is in).
-- **EXP.** Humans only, as Dual Strike: the DS Campaign (x2 playing solo,
-  x1 for the first eight missions, Hard doubles), War Room (x1..x2.5),
-  Survival (x1); AW2's own campaign earns it by the same campaign rules;
-  Versus none.
-- **Where they apply.** DS Campaign, Survival and War Room as Dual Strike
-  has them; AW2's campaign when a set is equipped. Versus Rules gets
-  "Skills: On/Off" (default Off): On, each army (the CPU's too) uses its
-  CO's saved Versus set, shown on the Teams screen; the rule and the sets
-  are part of the netplay settings both peers check.
-- **Choosing.** A Set Skills panel on AW2's CO screens (per army, human
-  and CPU): the Campaign/Survival set of 4 and the four Versus sets.
-- **Save.** Per CO: EXP and the sets, in tangoAW2's own Flash slot 15
-  beside the DS Campaign's progress (AW2's profile untouched).
-- **Tests.** EXP per mode, unlocks, the panel, each skill's effect against
-  the damage calculator, the Versus rule on and off, netplay sync, AW2's
-  campaign unchanged with no skills equipped.
+  opens at its rank; slots = min(rank, 4). The rank-10 skills open with
+  Means to an End won instead (Eagle Eye, Gear Head, Conquerer on Normal;
+  Mistwalker and Soul of Hachi on Hard), as Dual Strike's flags 0x21/0x22.
+- **EXP** (a won battle; the humans' COs): the DS Campaign the mission's
+  score, x2 (x1 in Dual Strike's first eight missions), x2 on Hard
+  (`ds_campaign`'s best-score trap); at `EndOfGame_Finish` (0x0803832C):
+  Survival half the score, the War Room x2.5 (x2 with skills on), AW2's
+  campaign as the DS Campaign's but only once the player has set skills
+  for some CO (until then it stays AW2's own); Versus none. Dual Strike's
+  few extra points for its battle counters are left out.
+- **Save.** Per CO (AW2's 19 and the nine new): EXP and seven sets
+  (Campaign, Survival, War Room, four Versus), 32 bytes, at `0x0203E000`
+  after a magic word; saved in Flash slot 15 after the DS Campaign's
+  progress and records (one 0x4A4-byte record). The DS Campaign's save
+  writes it; after any profile write (`sub_0801A7D8(0, ..)` returning at
+  0x08016E2C, 0x0801AC40, 0x0801AE2E) it is written again if it changed.
+- **The panel.** On the CO screen (War Room, Survival, the campaigns:
+  `ProcScr_CoSelect`) SELECT opens it for the CO highlighted; on Versus'
+  Teams screen START (SELECT, L and R there change colours) on an army's
+  CO stop, for its Versus set, and L turns the Skills rule on or off. UP
+  and DOWN pick a slot, LEFT and RIGHT the skill (none, or one open to the
+  CO), A keeps the set, B closes the panel as it was; the game gets no
+  button meanwhile. Drawn in AW2's glyph font in OBJ tiles each screen
+  leaves unused while it is up (CO screen 0x1EC.., Teams 0x090..), OBJ
+  palette 14, put first in the sprite list.
+- **Netplay.** The console boots from seat 0's save and both seats' buttons
+  reach the Teams screen: both peers have the same sets and rule (the
+  host's skill data).
+- **Tests:** `tools/aw2test/tests/test_co_skills.py`: each effect against
+  the damage calculator (its `skill_attack`/`skill_defence`) or the game's
+  numbers (move, capture, price, income, repair, meter), EXP and sets in
+  the DS Campaign (across a reboot) and the War Room (in Flash), the panel
+  on both screens, the Versus rule.
 
 ## Suspended games (`suspend.rs`)
 
