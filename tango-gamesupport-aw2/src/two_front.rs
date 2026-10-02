@@ -1092,6 +1092,11 @@ fn setup_second(core: &mut Core, b: &Battle) {
 /// The front has been restored (or set up): its own tangoAW2 state, its
 /// controllers and the units sent to it.
 fn arrive(core: &mut Core, b: &Battle) {
+    // Its look (before the map's graphics are loaded, the swap's next
+    // steps): each front its own (crate::ds_campaign::set_look).
+    if let Some(m) = live_info(core) {
+        crate::ds_campaign::set_look(core, m);
+    }
     // The battle's flags, shared by both fronts.
     let mut flags = [0u8; LOCAL_LEN as usize];
     core.raw_read_range(LOCAL_KEEP, -1, &mut flags);

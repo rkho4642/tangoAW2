@@ -1398,7 +1398,12 @@ record id the map hands on, `0x02183CC0`):
   state per front (`[[0x027C027C] + 4 * front + 0x48]`, the front by
   `0x027C0284`); Dual Strike's palette function (`0x020F92B8`) gives only
   Means to an End's main front a palette of its own, every other front its
-  look's.
+  look's (`0x02167DD4`: bmap/006 Normal, 00a Snow, 008 Desert, 009
+  Wasteland). The second front is drawn in the Normal look whatever its
+  record says (its record copies its main mission's look byte, +0x1A: 3 for
+  Means to an End, whose second front is green): poked in melonDS, the main
+  record's byte changes the bottom screen (Lightning Strikes in Snow) and
+  neither record's changes the top one.
 - **Turns.** Day 1: the main front's armies in order (the player, then Black
   Hole), then the second front's (in order), then day 2 on the main front;
   both fronts count the same day. The second front plays on the top screen
@@ -1451,7 +1456,11 @@ player's armies there (`control`: `Cpu` or `Manual`), what may be sent
 (`powers`). The second front's header carries its own event lists (for
 Dual Strike's missions: its records of the shared list,
 `ds_campaign_data::convert_triggers` with front 1), its map, deployment,
-colours, teams and 4x4 structure's picture, and no day limit. Dual
+colours, teams and 4x4 structure's picture, and no day limit; its
+`MissionInfo` has the Normal look (above) and its record's weather and
+fog. The look is set at every swap and view (`ds_campaign::set_look` from
+`two_front::arrive`, before the map's graphics load; the biome is in the
+weather block, so the suspend block carries it too). Dual
 Strike's source fills it from the record (`ds_campaign_data::two_front`: a
 front whose deployment is aircraft only is in the sky). Nothing in
 `two_front.rs` is Dual Strike's: a custom campaign's mission describes its
@@ -1609,7 +1618,10 @@ the rest of RAM.
 **Tests** (`tools/aw2test/tests/test_two_fronts.py`, no bot play: the
 units and structures are set up directly): `two_front_rounds`,
 `two_front_view_round_trip`, `two_front_menus_only_there`,
-`two_front_send`, `two_front_cpu_directs`, `two_front_saved_halfway`, and
+`two_front_send`, `two_front_cpu_directs`, `two_front_saved_halfway`,
+`two_front_looks_and_deployments` (each front's look on its rounds, in the
+view and back; each second front's units per army as Dual Strike's
+record), and
 one per mission above (each condition of each front triggered through the
 game's state); `ds_campaign_data`'s `two_fronts_are_dual_strikes` and
 `day_limits_are_dual_strikes` (with the .nds).

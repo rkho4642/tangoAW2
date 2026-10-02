@@ -983,14 +983,22 @@ pub fn map_start(core: &mut Core) {
     core.raw_write_8(WEATHER, -1, w);
     core.raw_write_8(NEXT_WEATHER, -1, w);
     core.raw_write_8(FOG, -1, m.fog as u8);
+    set_look(core, m);
+    set_controllers(core, m);
+    crate::two_front::map_start(core);
+}
+
+/// The map's look (crate::wasteland): the mission's, or a second front's
+/// (crate::two_front sets it at every swap, before the map's graphics are
+/// loaded).
+pub fn set_look(core: &mut Core, m: &data::MissionInfo) {
     if m.index == data::MEANS_TO_AN_END {
-        // Dual Strike's own palette for this map (crate::wasteland).
+        // Dual Strike's own palette for this map (its palette function
+        // 0x020F92B8 gives the main front of map 0xF8 bmap/00b).
         crate::wasteland::set_biome(core, crate::wasteland::GRAND_BOLT_LOOK);
     } else {
         crate::wasteland::set_ds_look(core, m.look);
     }
-    set_controllers(core, m);
-    crate::two_front::map_start(core);
 }
 
 /// Who plays each army (player +0x1B: 1 the player, 2 the computer): in

@@ -1424,7 +1424,12 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
             day_limit: rec.day_limit.0,
             width: w,
             height: h,
-            look: rec.look,
+            // A second front is drawn in the Normal look: Dual Strike's top
+            // screen does not read the look byte (the second front's record
+            // has its main mission's, 3 for Means to an End's, drawn green;
+            // poked in melonDS, neither record's byte changes the top screen
+            // while the main record's changes the bottom one).
+            look: if front == 0 { rec.look } else { 0 },
             weather: rec.weather,
             fog: rec.fog,
             labs: lab_cells(ds, rec.maps.0),
@@ -1609,6 +1614,7 @@ mod tests {
         for &(i, second, _) in &fronts {
             let t = b.missions[i].two_front.clone().unwrap();
             assert_eq!(t.control, FrontControl::Cpu, "the campaign's second front is the computer's");
+            assert_eq!(b.missions[second as usize].look, 0, "mission {i}: the second front in the Normal look (Dual Strike's top screen)");
             assert!(!t.powers);
             let rec = record(&ds, i).unwrap();
             assert_eq!(t.cos[0] == PICK, rec.cos[0].1 == 0x1C, "mission {i}: the player's tag CO is picked");

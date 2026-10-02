@@ -248,6 +248,48 @@ def two_front_cpu_directs(ctx):
     ctx.check(len(after) < 6 or any(u[4] < hp for u in after), f"the enemy Fighter attacked by the computer ({after})")
 
 
+# Each front's look (crate::wasteland's biome, in the weather block): the
+# main front's its mission's (Means to an End's its own palette, 4), every
+# second front Normal (0), as Dual Strike's top screen draws them; and each
+# second front's deployment, its units per army as Dual Strike's record.
+LOOK = 0x03004493
+LOOKS = {VICTORY_OR_DEATH: 2, LIGHTNING_STRIKES: 0, OMENS_AND_SIGNS: 0, RING_OF_FIRE: 0, MEANS_TO_AN_END: 4}
+DEPLOYED = {
+    VICTORY_OR_DEATH: {1: 3, 2: 6},
+    LIGHTNING_STRIKES: {1: 8, 2: 10},
+    OMENS_AND_SIGNS: {1: 4, 2: 8},
+    RING_OF_FIRE: {1: 9, 2: 16},
+    MEANS_TO_AN_END: {1: 10, 2: 22},
+}
+
+
+def look(e):
+    return e.u8(LOOK) >> 4 & 7
+
+
+@test(modes=("ds",))
+def two_front_looks_and_deployments(ctx):
+    """Each front is drawn in its own look, set at every swap and the view
+    and put back; each second front starts with Dual Strike's deployment."""
+    for m in (VICTORY_OR_DEATH, MEANS_TO_AN_END, LIGHTNING_STRIKES, OMENS_AND_SIGNS, RING_OF_FIRE):
+        e, g, d = start(ctx, m)
+        ctx.eq(look(e), LOOKS[m], f"mission {m}: the main front's look")
+        g.wait_for_input()
+        tf.look_at_other_front(e, g)
+        ctx.eq(look(e), 0, f"mission {m}: the second front looked at: Normal")
+        tf.come_back(e, g)
+        ctx.eq(look(e), LOOKS[m], f"mission {m}: back: the main front's look")
+        d.end_turn()
+        ctx.check(tf.until(e, d, lambda: e.u8(tf.LIVE) == 1 and e.u8(tf.BUSY) == 0), f"mission {m}: the second front's round")
+        ctx.eq(look(e), 0, f"mission {m}: the second front's round: Normal")
+        ctx.eq({a: n for a in (1, 2, 3, 4) if (n := len(g.units(a)))}, DEPLOYED[m], f"mission {m}: the second front's deployment")
+        if m == MEANS_TO_AN_END:
+            shot(ctx, e, "means_to_an_end_second_front")
+        ctx.check(tf.until(e, d, lambda: tf.player_turn(e) and e.u8(tf.LIVE) == 0), f"mission {m}: back to the main front")
+        ctx.eq(look(e), LOOKS[m], f"mission {m}: the main front's look again")
+        e.close()
+
+
 @test(modes=("ds",))
 def two_front_saved_halfway(ctx):
     """A mission saved halfway (map menu > Save) keeps both fronts: after a
