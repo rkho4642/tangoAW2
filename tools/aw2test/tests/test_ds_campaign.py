@@ -748,6 +748,27 @@ def ds_campaign_ring_of_fire_volcano(ctx):
 
 
 @test(modes=("ds",))
+def ds_campaign_world_map_edges(ctx):
+    """The DS world map scrolls to Dual Strike's picture's edges (480x240 in
+    AW2's 512x256 layer): the camera reaches x 240 (AW2 stops its own at
+    191, which hid the picture's right side) and stops short of y 81 (AW2's
+    95 showed blank rows under it)."""
+    e, g, d = boot(ctx)
+    d.start(step=24, pick=False)
+    d.wait_world_map()
+    e.wait(60)
+    cam = lambda: (e.s16(0x0202FDFC), e.s16(0x0202FDFE))
+    for key in ("RIGHT", "DOWN"):
+        for _ in range(40):
+            e.hold(key, 20)
+            e.wait(4)
+    x, y = cam()
+    shot(ctx, e, "corner.png")
+    ctx.eq(x, 240, "the camera at the picture's right edge")
+    ctx.check(70 <= y <= 80, f"the camera at its bottom edge, no further ({y})")
+
+
+@test(modes=("ds",))
 def ds_campaign_property_win(ctx):
     """Spiral Garden's "Whoever captures 15 properties wins" (Dual
     Strike's record +0x34, tested by its engine, not a script): the player

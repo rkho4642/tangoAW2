@@ -80,8 +80,59 @@ pub const CLEARED: u8 = 2;
 const MAX_TILES: usize = 768;
 const MISSION_RECORD: u32 = 0x30;
 const AW2_MISSIONS: u32 = 0x2A;
-const MAP_WIDTH: i32 = 512;
-const MAP_HEIGHT: i32 = 256;
+/// Dual Strike's picture (two 240x240 halves) in AW2's 512x256 map layer.
+const MAP_WIDTH: i32 = 480;
+const MAP_HEIGHT: i32 = 240;
+
+/// AW2's world map camera stops at (192, 96) (its picture, 432x256): two
+/// clamping helpers, each tests the x then the y against it (`cmp rN,
+/// #0xC0` / `#0x60`, then `movs rN` of the limit). On the DS map they stop
+/// at Dual Strike's picture's edges ([`MAP_WIDTH`], [`MAP_HEIGHT`]): the
+/// value is clamped here and the game's test skipped.
+const CAMERA_CLAMPS: [(u32, u32, usize, i32); 4] = [
+    (0x0807_4C0A, 0x0807_4C10, 2, MAP_WIDTH - 240),
+    (0x0807_4C4A, 0x0807_4C50, 2, MAP_HEIGHT - 160),
+    (0x0807_4C68, 0x0807_4C6E, 0, MAP_WIDTH - 240),
+    (0x0807_4C7C, 0x0807_4C82, 0, MAP_HEIGHT - 160),
+];
+/// AW2's cursor moves (`sub_08076CAC` across, `sub_08076D68` up and down,
+/// delta in r4): the cursor's map position may not pass 415 x 239 (`cmp r1`
+/// with the literal 0x19F, `cmp r1, #0xEF`), the camera 191 x 95 (`cmp r1,
+/// #0xBF` / `#0x5F` before scrolling it). On the DS map: Dual Strike's
+/// picture's (463 x 223, 240 x 80); the tests are worked out here and the
+/// game's branch taken.
+const CURSOR_X_LIMIT: u32 = 0x0807_6CD4;
+const CAMERA_X_TEST: (u32, u32, u32) = (0x0807_6D02, 0x0807_6D06, 0x0807_6D1A);
+const CURSOR_Y_TEST: (u32, u32, u32) = (0x0807_6D8E, 0x0807_6D92, 0x0807_6DF2);
+const CAMERA_Y_TEST: (u32, u32, u32) = (0x0807_6DBA, 0x0807_6DBE, 0x0807_6DD2);
+fn cursor_x_limit(core: &mut Core) {
+    if crate::ds_campaign::active(core) {
+        core.gba_mut().cpu_mut().set_gpr(0, MAP_WIDTH - 17);
+    }
+}
+/// `cmp r1, #limit` then a branch when r1 is past it (`bgt` signed, `bhi`
+/// unsigned): with the DS map's limit instead.
+fn limit_test(core: &mut Core, (_, within, past): (u32, u32, u32), limit: i32, unsigned: bool) {
+    if !crate::ds_campaign::active(core) {
+        return;
+    }
+    let cpu = core.gba_mut().cpu_mut();
+    let v = cpu.gpr(1);
+    let over = if unsigned { v as u32 > limit as u32 } else { v > limit };
+    cpu.set_thumb_pc(if over { past } else { within });
+}
+
+fn camera_clamp(core: &mut Core, past: u32, reg: usize, max: i32) {
+    if !crate::ds_campaign::active(core) {
+        return;
+    }
+    let cpu = core.gba_mut().cpu_mut();
+    let v = cpu.gpr(reg);
+    if v > max {
+        cpu.set_gpr(reg, max);
+    }
+    cpu.set_thumb_pc(past);
+}
 
 /// AW2's literal-pool words of the world map's art and tables.
 const TILES_POOLS: [u32; 1] = [0x0807_69B4];
@@ -876,7 +927,7 @@ const NATION_PANEL: u32 = 0x0807_639C;
 pub const SAVE_PROMPT: u32 = 0x0803_D92C;
 
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
-    vec![
+    let mut t: Vec<(u32, Box<dyn Fn(&mut Core)>)> = vec![
         (
             RETURN_SWITCH,
             Box::new(|core: &mut Core| {
@@ -889,7 +940,15 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (ALTERNATIVES, Box::new(|core: &mut Core| if crate::ds_campaign::active(core) { ret(core) })),
         (NATION_PANEL, Box::new(|core: &mut Core| if crate::ds_campaign::active(core) { ret(core) })),
         (PROFILE_SERIALIZED, Box::new(profile_serialized)),
-    ]
+    ];
+    for (at, past, reg, max) in CAMERA_CLAMPS {
+        t.push((at, Box::new(move |core: &mut Core| camera_clamp(core, past, reg, max))));
+    }
+    t.push((CURSOR_X_LIMIT, Box::new(cursor_x_limit)));
+    t.push((CAMERA_X_TEST.0, Box::new(|core: &mut Core| limit_test(core, CAMERA_X_TEST, MAP_WIDTH - 240, false))));
+    t.push((CURSOR_Y_TEST.0, Box::new(|core: &mut Core| limit_test(core, CURSOR_Y_TEST, MAP_HEIGHT - 17, true))));
+    t.push((CAMERA_Y_TEST.0, Box::new(|core: &mut Core| limit_test(core, CAMERA_Y_TEST, MAP_HEIGHT - 160, false))));
+    t
 }
 
 /// AW2's profile serializer (`0x08016B2C`, RAM to the save buffer), at its
