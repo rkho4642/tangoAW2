@@ -105,9 +105,10 @@ Both press Ready; the game starts from power-on for both. Go to
   Slam Guard, Luck, Gold Rush, ...). Your COs earn EXP by winning in the DS
   Campaign, Survival, the War Room (and AW2's campaign once you use skills);
   a rank every 1,000 EXP opens skills and slots (up to 4). Press **SELECT**
-  on a CO screen or on an army's CO on Versus' Teams screen to set its
-  skills; in that panel **L** turns Versus' Skills rule on (off by default)
-  for every army.
+  on a CO screen or on an army's CO on Versus' Teams screen for Dual
+  Strike's SET SKILLS screen: **A** puts a skill on or takes it off, **B**
+  keeps the set; on Teams **L** turns Versus' Skills rule on (off by
+  default) for every army.
 
 <table>
 <tr>

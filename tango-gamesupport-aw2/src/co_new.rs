@@ -264,6 +264,12 @@ pub fn wrap_page(t: &[u8], widths: &[u8]) -> Vec<u8> {
     lines.join("\r").into_bytes()
 }
 
+/// A CO's name as Dual Strike writes it (AW2's ids and the new COs), from
+/// the pack.
+pub fn ds_name(co: u8) -> Option<Vec<u8>> {
+    ds_text(record_ref(crate::co_roster::ds_co(co)?, 0x00)).filter(|t| !t.is_empty())
+}
+
 /// A new CO's texts, by [`text_id`] slot.
 fn texts(ds: u8, widths: &[u8]) -> Vec<(u16, Vec<u8>)> {
     let mut out = Vec::new();

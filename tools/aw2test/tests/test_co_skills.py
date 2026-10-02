@@ -405,24 +405,30 @@ def co_select_idle(e):
     return False
 
 
-def panel_sprites(e):
-    """The panel's four sprites at the head of the game's sprites in OAM (its
-    shadow list is copied to OAM 16..): 64x32, OBJ palette 14."""
-    out = []
-    for k in range(4):
-        a0, a1, a2 = e.u16(0x07000080 + 8 * k), e.u16(0x07000082 + 8 * k), e.u16(0x07000084 + 8 * k)
-        out.append((a0 & 0xC000, a1 & 0xC000, a2 >> 12))
-    return out
+DISPCNT = 0x04000000
+BG0_ONLY = 0x0100
+
+
+def layers(e):
+    return e.u16(DISPCNT) & 0x1F00
+
+
+def covered(e):
+    """What the screen covers: BG0's tiles and tilemap (char block 0,
+    screen 14) and the BG palettes."""
+    return e.read(0x06000000, 0x4000) + e.read(0x06007000, 0x800) + e.read(0x05000000, 0x200)
 
 
 @test(modes=("ds",))
 def skills_panel_co_screen(ctx):
-    """The War Room's CO screen: SELECT opens the Set Skills panel for the CO
-    highlighted (rank 2: two slots); RIGHT puts the first open skill on the
-    first slot, DOWN and RIGHT RIGHT the second open skill on the second;
-    while it is up the game's CO screen takes no button; A keeps the set
-    (the CO's War Room set) and closes it; B would close it as it was.
-    (The EXP for rank 2 is a test aid.)"""
+    """The War Room's CO screen: SELECT opens Dual Strike's SET SKILLS screen
+    for the CO highlighted (rank 2: two slots): BG0 alone (the game's layers
+    and sprites off); A puts the skill under the cursor on the set (Bruiser),
+    DOWN and A the next of rank 1 (Sharpshooter), a third does not fit; while
+    it is up the CO screen takes no button; B keeps the set (the CO's War Room
+    set) and closes it, BG0's tiles, tilemap and the palettes as they were,
+    the layers back. A on a skill of the set takes it off. (The EXP for rank 2
+    is a test aid.)"""
     e = Emu(save=paths.base_save(), ds=True)
     g = Game(e, ctx.image)
     ctx.games.append(g)
@@ -441,36 +447,44 @@ def skills_panel_co_screen(ctx):
     e.w32(DATA, 0x314C4B53)
     for c in CO_SLOTS:
         e.w32(DATA + 4 + CO_LEN * co_slot(c), 2000)
+    before, shown = covered(e), layers(e)
     e.press("SELECT", 4)
     e.wait(10)
-    ctx.eq(e.u8(PANEL), 1, "SELECT: the panel is up")
+    ctx.eq(e.u8(PANEL), 1, "SELECT: the screen is up")
     co = e.u8(PANEL + 2)
     ctx.eq(e.u8(PANEL + 3), 2, "the War Room's set")
-    e.wait(4)
-    ctx.eq(panel_sprites(e), [(0x4000, 0xC000, 14)] * 4, "its four 64x32 sprites first in OAM (16..19)")
-    shot(ctx, e, "panel_open")
-    e.press("RIGHT", 4)
+    ctx.eq(layers(e), BG0_ONLY, "BG0 alone (the game's layers and sprites off)")
+    shot(ctx, e, "set_skills")
+    e.press("A", 4)
     e.wait(6)
     e.press("DOWN", 4)
     e.wait(6)
-    e.press("RIGHT", 4)
-    e.wait(6)
-    ctx.eq(list(e.read(PANEL + 4, 4)), [0x20, 0x22, 0, 0], "Bruiser, then Sharpshooter (Bruiser is on slot 1)")
-    shot(ctx, e, "panel_two")
-    ctx.check(co_select_idle(e), "the CO screen did not move under the panel")
     e.press("A", 4)
+    e.wait(6)
+    e.press("DOWN", 4)
+    e.wait(6)
+    e.press("A", 4)
+    e.wait(6)
+    ctx.eq(list(e.read(PANEL + 4, 4)), [0x20, 0x22, 0, 0], "Bruiser, Sharpshooter; Slam Guard does not fit (two slots)")
+    shot(ctx, e, "set_skills_two")
+    ctx.check(co_select_idle(e), "the CO screen did not move under the screen")
+    e.press("B", 4)
     e.wait(10)
-    ctx.eq(e.u8(PANEL), 0, "A: closed")
-    ctx.check(co_select_idle(e), "the A that kept the set did not reach the CO screen")
+    ctx.eq(e.u8(PANEL), 0, "B: closed")
+    ctx.check(co_select_idle(e), "the B that kept the set did not reach the CO screen")
+    ctx.eq(layers(e), shown, "the layers back")
+    ctx.check(covered(e) == before, "BG0's tiles, tilemap and the BG palettes as they were")
     a = DATA + 4 + CO_LEN * co_slot(co)
     ctx.eq(list(e.read(a + 12, 4)), [0x20, 0x22, 0, 0], "the CO's War Room set")
+    e.wait(30)
+    shot(ctx, e, "co_screen_after")
     e.press("SELECT", 4)
     e.wait(10)
-    e.press("LEFT", 4)
+    e.press("A", 4)
     e.wait(6)
     e.press("B", 4)
     e.wait(10)
-    ctx.eq(list(e.read(a + 12, 4)), [0x20, 0x22, 0, 0], "B: closed as it was")
+    ctx.eq(list(e.read(a + 12, 4)), [0x22, 0, 0, 0], "A on Bruiser took it off the set")
 
 
 def shot(ctx, e, name):
@@ -479,8 +493,9 @@ def shot(ctx, e, name):
 
 @test(modes=("ds",))
 def skills_panel_teams_and_rule(ctx):
-    """Versus' Teams screen: SELECT on an army's CO stop opens the panel for
-    its CO (its Versus set), L in it turns the Versus rule Skills on; with the
+    """Versus' Teams screen: SELECT on an army's CO stop opens the SET SKILLS
+    screen for its CO (its Versus set), L on it turns the Versus rule Skills
+    on; Slam Guard taken off the set and Snipe Guard put on; with the
     rule on, every army (the computer's too) has its CO's Versus set on in
     the battle; off (the default), none. (The EXP for rank 1 is a test aid.)"""
     m = ctx.map()
@@ -501,18 +516,20 @@ def skills_panel_teams_and_rule(ctx):
     e.wait(10)
     ctx.eq(e.u8(PANEL), 1, "SELECT: the panel is up")
     ctx.eq((e.u8(PANEL + 3), e.u8(PANEL + 8)), (3, 1), "the Versus set, on the Teams screen")
-    shot(ctx, e, "teams_panel")
     e.press("L", 4)
     e.wait(6)
     ctx.eq(e.u8(VERSUS_RULE), 1, "L: the rule on")
+    shot(ctx, e, "teams_set_skills")
     edited = e.u8(PANEL + 2)
-    e.press("RIGHT", 4)
-    e.wait(6)
-    e.press("A", 4)
+    # Rank 1's column: Bruiser, Sharpshooter, Slam Guard, Snipe Guard, ...
+    for k in ("DOWN", "DOWN", "A", "DOWN", "A"):
+        e.press(k, 4)
+        e.wait(6)
+    e.press("B", 4)
     e.wait(10)
-    ctx.eq(e.u8(PANEL), 0, "A: closed")
+    ctx.eq(e.u8(PANEL), 0, "B: closed")
     a = DATA + 4 + CO_LEN * co_slot(edited)
-    ctx.eq(list(e.read(a + 16, 4)), [0x27, 0, 0, 0], "its CO's Versus set: Snipe Guard (the next one open)")
+    ctx.eq(list(e.read(a + 16, 4)), [0x27, 0, 0, 0], "its CO's Versus set: Snipe Guard")
     g.set_teams(["andy", "max"], {1})
     g.teams_to_rules()
     g.set_rules(fog=False, weather="clear", power=True, visuals="off", capt=None)
@@ -548,7 +565,7 @@ def skills_netplay_versus_rule(ctx):
     e.wait(10)
     e.press("L", 4)
     e.wait(6)
-    e.press("A", 4)
+    e.press("B", 4)
     e.wait(10)
     g.set_teams(["andy", "andy"], {1, 2})
     g.teams_to_rules()

@@ -1403,24 +1403,40 @@ Dual Strike's CO skills, from its code (overlay 0's skill table at
   progress and records (one 0x4A4-byte record). The DS Campaign's save
   writes it; after any profile write (`sub_0801A7D8(0, ..)` returning at
   0x08016E2C, 0x0801AC40, 0x0801AE2E) it is written again if it changed.
-- **The panel.** On the CO screen (War Room, Survival, the campaigns:
-  `ProcScr_CoSelect`) SELECT opens it for the CO highlighted; on Versus'
-  Teams screen SELECT on an army's CO stop, for its Versus set (R and L
-  there change the army's colour), and in the panel L turns the Skills rule
-  on or off. UP
-  and DOWN pick a slot, LEFT and RIGHT the skill (none, or one open to the
-  CO), A keeps the set, B closes the panel as it was; the game gets no
-  button meanwhile. Drawn in AW2's glyph font in OBJ tiles each screen
-  leaves unused while it is up (CO screen 0x1EC.., Teams 0x090..), OBJ
-  palette 14, put first in the sprite list.
+- **The SET SKILLS screen** (`skills_panel.rs`). On the CO screen (War
+  Room, Survival, the campaigns: `ProcScr_CoSelect`) SELECT opens it for the
+  CO highlighted; on Versus' Teams screen SELECT on an army's CO stop, for
+  its Versus set (R and L there change the army's colour), and on it L
+  turns the Skills rule on or off. It is Dual Strike's SET SKILLS screen on
+  one screen, converted at run time from the .nds: its SKILLS RANK board
+  (`ohashi/res_skilledit`'s tilemap and palette, `res_skilledit_lang_E`'s
+  banner and spot tiles; ten rank columns 24 pixels apart, Dual Strike's 32
+  tiles less two filler ones, six rows), its skill icons
+  (`ohashi/res_skill`: a palette and 44 16x16 icons, 0 none, then one per
+  skill from id 0x20), its CO bar (name, rank, the set's icons on its slots)
+  above and its help bar (the skill's icon, name, rank, description) below,
+  in AW2's proportional font (`0x084C32E4` glyph pointers, `0x084C36E4`
+  widths: 16 rows of 4bpp nibbles, `(width + 1) / 2` bytes a row, colour
+  0xA ink, 0xE shade). Skills the CO has not reached are faded, the set's
+  have a red frame, the cursor is Dual Strike's corner brackets. The D-pad
+  moves over the board, A puts the skill on the set (up to the slots) or
+  takes it off, B (or SELECT, START) keeps the set and closes, as Dual
+  Strike's BACK; the game gets no button meanwhile. Drawn on BG0 (char
+  block 0, screen 14 on both screens) with BG palettes 0..2 and the other
+  layers and the sprites off (gDispIo's DISPCNT shadow `0x030030CC`); what
+  it covers is kept in the ROM image's free space (`0x08EF0000..`) and put
+  back when it closes. Comparison: Dual Strike's screen (melonDS,
+  `tango-backend-melonds/examples/ds_script`) beside ours, tests
+  `skills_panel_co_screen`, `skills_panel_teams_and_rule`.
 - **Netplay.** The console boots from seat 0's save and both seats' buttons
   reach the Teams screen: both peers have the same sets and rule (the
   host's skill data).
 - **Tests:** `tools/aw2test/tests/test_co_skills.py`: each effect against
   the damage calculator (its `skill_attack`/`skill_defence`) or the game's
   numbers (move, capture, price, income, repair, meter), EXP and sets in
-  the DS Campaign (across a reboot) and the War Room (in Flash), the panel
-  on both screens, the Versus rule.
+  the DS Campaign (across a reboot) and the War Room (in Flash), the SET
+  SKILLS screen on both screens (and what it covers put back), the Versus
+  rule.
 
 ## Suspended games (`suspend.rs`)
 

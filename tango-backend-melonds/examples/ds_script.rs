@@ -142,6 +142,43 @@ fn main() {
                     solo.side().console().load_state(buf).ok();
                 }
             }
+            "trapjump" => {
+                // Once the ARM9 reaches ADDR, it goes to TARGET instead (an
+                // interworking address): a call replaced by another.
+                let (at, to) = (hex(p[1]), hex(p[2]));
+                let done = std::rc::Rc::new(std::cell::Cell::new(false));
+                let d2 = done.clone();
+                solo.side().console().set_traps(vec![(
+                    at,
+                    Box::new(move |nds: &mut melonds::Nds| {
+                        if !d2.get() {
+                            d2.set(true);
+                            eprintln!("trapjump {at:08x} -> {to:08x} lr {:08x} r0 {:08x} r1 {:08x} r2 {:08x}", nds.reg(14), nds.reg(0), nds.reg(1), nds.reg(2));
+                            nds.jump(to);
+                        }
+                    }),
+                )]);
+            }
+            "readwatch" => {
+                // Print the PC and LR of the first N reads of ADDR (`readwatch
+                // off` removes the watch).
+                if p[1] == "off" {
+                    solo.side().console().set_watches(Vec::new());
+                } else {
+                    let at = hex(p[1]);
+                    let left = std::rc::Rc::new(std::cell::Cell::new(p[2].parse::<u32>().unwrap_or(10)));
+                    solo.side().console().set_watches(vec![(
+                        at,
+                        Box::new(move |nds: &mut melonds::Nds| {
+                            if left.get() > 0 {
+                                left.set(left.get() - 1);
+                                let (pc, lr) = (nds.pc(), nds.reg(14));
+                                eprintln!("read {at:08x} pc {pc:08x} lr {lr:08x}");
+                            }
+                        }),
+                    )]);
+                }
+            }
             "statefile" => {
                 let mut buf = Vec::new();
                 solo.side().console().save_state(&mut buf).ok();
