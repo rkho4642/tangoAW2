@@ -75,8 +75,8 @@ const ARMIES: u32 = 5;
 
 /// The partner each army picked on Versus' Teams screen (a CO id, 0xFF
 /// none; an army with one plays as a pair, as Dual Strike's Versus: no
-/// rule), armies 1..4. (STATE + 0xA0..0xA3 spare.)
-pub const TEAMS_PARTNER: u32 = STATE + 0xA4;
+/// rule), armies 1..5 (five-army games too).
+pub const TEAMS_PARTNER: u32 = STATE + 0xA0;
 /// 1 while the battle has a pair (the map menu's copy is used).
 const BATTLE_ON: u32 = STATE + 0xA9;
 /// The CO panel as the game drew it this frame (`DrawArmyCoPanel`): x
@@ -395,13 +395,13 @@ pub fn map_start(core: &mut Core) {
     clear_pairs(core);
     let versus = core.raw_read_8(GAME_MODE, -1) == VERSUS
         && !crate::survival::on(core)
-        && !crate::ds_campaign::active(core)
-        && !crate::five::active(core);
+        && !crate::ds_campaign::active(core);
     let mut pairs: Vec<(u32, u8, u8)> = Vec::new();
     if versus {
         // Dual Strike's Versus: an army (a human's or the computer's) with
         // a partner picked on Teams is a pair; one without, single.
-        for a in 1..=4u32 {
+        let last = if crate::five::active(core) { 5 } else { 4 };
+        for a in 1..=last {
             if core.raw_read_8(player(core, a) + PL_HUMAN, -1) == 0 {
                 continue;
             }
@@ -944,7 +944,7 @@ pub fn tick(core: &mut Core, on: bool) {
     if core.raw_read_8(STATE + 0xFC, -1) != MAGIC_RAM {
         clear_pairs(core);
         clear_pending(core);
-        core.raw_write_range(TEAMS_PARTNER, -1, &[NONE; 4]);
+        core.raw_write_range(TEAMS_PARTNER, -1, &[NONE; 5]);
     }
     co_screen_partners(core);
     let battle = any(core);

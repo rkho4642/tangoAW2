@@ -218,6 +218,49 @@ def tag_teams_screen(ctx):
 
 
 @test(modes=("ds",))
+def tag_versus_five_armies(ctx):
+    """Five armies (Black Hole the fifth): each army's partner slot on the
+    Teams screen; Orange Star, Green Earth, Yellow Comet and Black Hole
+    with two COs play as pairs, Blue Moon with one plays single. Black
+    Hole's partner picked with the pad."""
+    m = ctx.map(hq=((1, 0, 0), (2, 29, 19), (3, 29, 0), (4, 0, 19)))
+    m.terrain(15, 10, 0x1B4)
+    m.unit(5, "infantry", 16, 10)
+    m.colours = [5, 1, 2, 3, 4]
+    g = ctx.boot_teams(m)
+    e = g.e
+    e.wait(30)
+    ctx.eq(e.u8(ram.FIVE_ON), 1, "a five-army game")
+    boxes = sorted(s[2] & 0x3FF for s in oam(e) if (s[2] & 0x3FF) in (0x100, 0x110, 0x120, 0x130, 0x140))
+    ctx.eq(boxes, [0x100, 0x110, 0x120, 0x130, 0x140], "five partner slots, empty")
+    for _ in range(12):
+        if e.u8(g.teams_addr() + 0x32) == 8:
+            break
+        e.press("RIGHT", 6)
+        e.wait(14)
+    e.press("START", 4)
+    e.wait(10)
+    for _ in range(3):
+        e.press("DOWN", 4)
+        e.wait(10)
+    e.press("START", 4)
+    e.wait(10)
+    bh = e.u8(tag.TEAMS_PARTNER + 4)
+    ctx.check(bh != tag.NONE, "Black Hole's partner picked with the pad")
+    for a, p in ((1, "max"), (3, "eagle"), (4, "drake")):
+        tag.set_teams_partner(e, a, p)
+    e.wait(20)
+    ctx.shot(g, "teams_five")
+    g.teams_to_rules()
+    g.set_rules()
+    g.start_battle()
+    g.wait_for_input()
+    got = [(tag.partner(e, a) or {}).get("co") for a in range(1, 6)]
+    want = [romlib.co_id("max"), None, romlib.co_id("eagle"), romlib.co_id("drake"), bh]
+    ctx.eq(got, want, "pairs for the armies with two COs, Blue Moon single")
+
+
+@test(modes=("ds",))
 def tag_change(ctx):
     """Change: the active CO's power ends, the COs swap (CO, meter, power
     count), the turn ends; the new CO's day-to-day is the army's (an
@@ -532,7 +575,7 @@ def tag_netplay(ctx):
     want = e.read(tag.STATE, 0x40)
     players = e.read(g.players_base + 0x3C, 0x3C * 2)
     identical, values, text = ctx.netplay_replay(g, [(tag.STATE, 0x40), (g.players_base + 0x3C, 0x3C * 2),
-                                                     (g.SKILLS_RULE, 1), (tag.TEAMS_PARTNER, 4)])
+                                                     (g.SKILLS_RULE, 1), (tag.TEAMS_PARTNER, 5)])
     ctx.check(identical, "both peers identical")
     ctx.eq(values.get(g.SKILLS_RULE), bytes([1]), "the Skills rule ON on the peers")
     ctx.eq(values.get(tag.STATE), want, "the pairs as played")

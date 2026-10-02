@@ -90,12 +90,35 @@ fn size(s: u16) -> u16 {
 
 // --- Versus' Teams screen ---------------------------------------------------------------------
 
+/// The Teams/Rules record (AW2's, or crate::five's copy with room for five
+/// armies: the same fields, the per-army CO indices moved to +0xA8).
 const TEAMS: u32 = 0x0201_7C50;
-const TEAMS_ARMIES: u32 = TEAMS + 0x08;
-const TEAMS_CO_COUNT: u32 = TEAMS + 0x17;
-const TEAMS_CO_LIST: u32 = TEAMS + 0x18;
-const TEAMS_CO_INDEX: u32 = TEAMS + 0x1C;
-const TEAMS_CURSOR: u32 = TEAMS + 0x32;
+const TEAMS_FIVE: u32 = 0x0203_0300;
+const ARMIES_AT: u32 = 0x08;
+const CO_COUNT_AT: u32 = 0x17;
+const CO_LIST_AT: u32 = 0x18;
+const CURSOR_AT: u32 = 0x32;
+
+fn record(core: &Core) -> u32 {
+    if crate::five::active(core) {
+        TEAMS_FIVE
+    } else {
+        TEAMS
+    }
+}
+
+fn co_index_at(core: &Core) -> u32 {
+    if crate::five::active(core) {
+        TEAMS_FIVE + 0xA8
+    } else {
+        TEAMS + 0x1C
+    }
+}
+
+fn armies(core: &Core) -> u32 {
+    let max = if crate::five::active(core) { 5 } else { 4 };
+    (core.raw_read_8(record(core) + ARMIES_AT, -1) as u32).clamp(1, max)
+}
 
 /// UI state ([`tag::UI`]): the army whose partner the D-pad edits (0xFF
 /// none), the Teams screen's borrowed tiles and palettes saved (1), a frame
@@ -103,16 +126,17 @@ const TEAMS_CURSOR: u32 = TEAMS + 0x32;
 const EDITING: u32 = tag::UI;
 const BORROWED: u32 = tag::UI + 1;
 const BLINK: u32 = tag::UI + 2;
-/// What the Teams screen's partner boxes borrow, as it was: 64 tiles (16 an
-/// army) and palettes 4..8 (EWRAM tangoAW2 keeps free:
-/// 0x0203E800..0x0203F09F).
+/// What the Teams screen's partner boxes borrow, as it was: 80 tiles (16 an
+/// army, five armies) and six OBJ palettes the Teams screen leaves unused
+/// (a partner's for each army, the empty slot's), in EWRAM tangoAW2 keeps
+/// free (0x0203E800..0x0203F2BF).
 const SAVED: u32 = 0x0203_E800;
 const TEAMS_TILE: u32 = 0x100;
-const TEAMS_TILES: u32 = 64;
+const TEAMS_TILES: u32 = 80;
 const BOX_TILES: u32 = 16;
-const TEAMS_PAL: u32 = 4;
-const TEAMS_PALS: u32 = 5;
-const NONE_PAL: u32 = 8;
+const PARTNER_PALS: [u32; 5] = [5, 6, 7, 8, 12];
+const NONE_PAL: u32 = 13;
+const SAVED_PALS: [u32; 6] = [5, 6, 7, 8, 12, 13];
 
 const KEY_START: u32 = 1 << 3;
 const KEY_UP: u32 = 1 << 6;
@@ -121,28 +145,26 @@ const KEY_DOWN: u32 = 1 << 7;
 /// The Teams stage of Versus' Teams/Rules screen (record +0x30: 1 Teams,
 /// 0 Rules).
 fn teams_on(core: &Core, ds: bool) -> bool {
-    ds && crate::pvp::in_versus(core)
-        && crate::pvp::on_teams_screen(core)
-        && !crate::five::active(core)
-        && core.raw_read_8(TEAMS + 0x30, -1) == 1
+    ds && crate::pvp::in_versus(core) && crate::pvp::on_teams_screen(core) && core.raw_read_8(record(core) + 0x30, -1) == 1
 }
 
 /// On an army's CO stop (the record's state as crate::skills_panel reads it).
 fn co_stop(core: &Core) -> Option<u32> {
-    if core.raw_read_8(TEAMS + 0x30, -1) != 1
-        || core.raw_read_8(TEAMS + 0x26, -1) != 0
-        || core.raw_read_8(TEAMS + 0x2D, -1) != 0
-        || core.raw_read_8(TEAMS + 0x24, -1) != 0
+    let rec = record(core);
+    if core.raw_read_8(rec + 0x30, -1) != 1
+        || core.raw_read_8(rec + 0x26, -1) != 0
+        || core.raw_read_8(rec + 0x2D, -1) != 0
+        || core.raw_read_8(rec + 0x24, -1) != 0
     {
         return None;
     }
-    let c = core.raw_read_8(TEAMS_CURSOR, -1) as u32;
+    let c = core.raw_read_8(rec + CURSOR_AT, -1) as u32;
     (c % 2 == 0).then_some(c / 2)
 }
 
 fn teams_list(core: &Core) -> Vec<u8> {
-    let n = core.raw_read_8(TEAMS_CO_COUNT, -1) as u32;
-    let at = core.raw_read_32(TEAMS_CO_LIST, -1);
+    let n = core.raw_read_8(record(core) + CO_COUNT_AT, -1) as u32;
+    let at = core.raw_read_32(record(core) + CO_LIST_AT, -1);
     if !(0x0200_0000..0x0400_0000).contains(&at) {
         return Vec::new();
     }
@@ -151,7 +173,7 @@ fn teams_list(core: &Core) -> Vec<u8> {
 
 fn army_main(core: &Core, army: u32) -> Option<u8> {
     let list = teams_list(core);
-    list.get(core.raw_read_8(TEAMS_CO_INDEX + army, -1) as usize).copied()
+    list.get(core.raw_read_8(co_index_at(core) + army, -1) as usize).copied()
 }
 
 /// AW2's "Choose a CO." (text 0x9DC), the Teams screen's help line on a
@@ -165,7 +187,7 @@ fn help_line(core: &mut Core, ds: bool) {
     let entry = TEXT_TABLE + 4 * CHOOSE_CO;
     let aw2 = *CHOOSE_CO_AW2.get_or_init(|| core.raw_read_32(entry, -1));
     // Versus only uses it on the Teams screen (set before the screen draws it).
-    let want = if ds && crate::pvp::in_versus(core) && !crate::five::active(core) { tag::CHOOSE_CO_AT } else { aw2 };
+    let want = if ds && crate::pvp::in_versus(core) { tag::CHOOSE_CO_AT } else { aw2 };
     if core.raw_read_32(entry, -1) != want {
         core.raw_write_32(entry, -1, want);
     }
@@ -192,7 +214,7 @@ pub fn teams_tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
         return keys;
     }
     let pressed = keys & !prev;
-    let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
+    let armies = armies(core);
     let stop = co_stop(core).filter(|&a| a < armies);
     let mut editing = core.raw_read_8(EDITING, -1);
     if editing != NONE && stop != Some(editing as u32) {
@@ -238,9 +260,11 @@ fn borrow(core: &mut Core) {
     let mut t = vec![0u8; (32 * TEAMS_TILES) as usize];
     core.raw_read_range(OBJ_VRAM + 32 * TEAMS_TILE, -1, &mut t);
     core.raw_write_range(SAVED, -1, &t);
-    let mut p = vec![0u8; (32 * TEAMS_PALS) as usize];
-    core.raw_read_range(PAL_BUFFER + 0x200 + 32 * TEAMS_PAL, -1, &mut p);
-    core.raw_write_range(SAVED + 32 * TEAMS_TILES, -1, &p);
+    for (k, pal) in SAVED_PALS.iter().enumerate() {
+        let mut p = [0u8; 32];
+        core.raw_read_range(PAL_BUFFER + 0x200 + 32 * pal, -1, &mut p);
+        core.raw_write_range(SAVED + 32 * TEAMS_TILES + 32 * k as u32, -1, &p);
+    }
     core.raw_write_8(BORROWED, -1, 1);
 }
 
@@ -251,12 +275,28 @@ fn restore(core: &mut Core) {
     let mut t = vec![0u8; (32 * TEAMS_TILES) as usize];
     core.raw_read_range(SAVED, -1, &mut t);
     core.raw_write_range(OBJ_VRAM + 32 * TEAMS_TILE, -1, &t);
-    let mut p = vec![0u8; (32 * TEAMS_PALS) as usize];
-    core.raw_read_range(SAVED + 32 * TEAMS_TILES, -1, &mut p);
-    for base in [PAL_BUFFER, PAL_RAM] {
-        core.raw_write_range(base + 0x200 + 32 * TEAMS_PAL, -1, &p);
+    for (k, pal) in SAVED_PALS.iter().enumerate() {
+        let mut p = [0u8; 32];
+        core.raw_read_range(SAVED + 32 * TEAMS_TILES + 32 * k as u32, -1, &mut p);
+        for base in [PAL_BUFFER, PAL_RAM] {
+            core.raw_write_range(base + 0x200 + 32 * pal, -1, &p);
+        }
     }
     core.raw_write_8(BORROWED, -1, 0);
+}
+
+/// The column's emblem (the country's, 16x16, OBJ palette 9, at the
+/// face's lower left): its attr2.
+fn emblem(core: &Core, start: u32, at: u32, fx: i32, fy: i32) -> Option<u16> {
+    let mut e = start;
+    while e + 8 <= at {
+        let (a0, a1, a2) = (core.raw_read_16(e, -1), core.raw_read_16(e + 2, -1), core.raw_read_16(e + 4, -1));
+        if (a0 >> 14) == 0 && (a1 >> 14) == 1 && a2 >> 12 == 9 && (a1 & 0x1FF) as i32 == fx + 2 && (a0 & 0xFF) as i32 == fy + 32 {
+            return Some(a2);
+        }
+        e += 8;
+    }
+    None
 }
 
 /// A sprite of the frame's list: (index, x, y, tile).
@@ -320,36 +360,16 @@ fn partner_box(core: &Core, co: u8) -> (Vec<u8>, [u8; 32]) {
     (tiles_of(&px, BOX_W, 32), pal)
 }
 
-/// The "None" box (picking a partner): the partner box's frame, "None" in
-/// AW2's font in it.
-fn none_box(core: &Core) -> Vec<u8> {
+/// The empty slot (no partner: the army plays single): the partner box's
+/// frame on a light ground, the army's emblem drawn on it (a sprite).
+fn none_box(_core: &Core) -> Vec<u8> {
     let mut px = vec![0u8; BOX_W * 32];
     for y in 0..BOX_H {
         for x in 0..BOX_W {
             let edge = y == 0 || y == BOX_H - 1 || x == 0 || x == BOX_W - 1;
-            px[y * BOX_W + x] = if edge { 3 } else { 1 };
+            let inner = y == 1 || y == BOX_H - 2 || x == 1 || x == BOX_W - 2;
+            px[y * BOX_W + x] = if edge { 3 } else if inner { 2 } else { 1 };
         }
-    }
-    let s = "None";
-    let w = text_width(core, s);
-    let mut x = (BOX_W as i32 - w as i32) / 2;
-    for c in s.bytes() {
-        let cw = core.raw_read_8(WIDTHS + c as u32, -1) as usize;
-        let at = core.raw_read_32(GLYPHS + 4 * c as u32, -1);
-        if (0x0800_0000..0x0A00_0000).contains(&at) {
-            let stride = cw.div_ceil(2);
-            for r in 0..12 {
-                for cx in 0..cw {
-                    let b = core.raw_read_8(at + (stride * (3 + r) + cx / 2) as u32, -1);
-                    let v = (b >> (4 * (cx & 1))) & 15;
-                    let (xx, yy) = (x + cx as i32, 8 + r as i32);
-                    if v == 0xA && (1..BOX_W as i32 - 1).contains(&xx) && (1..BOX_H as i32 - 1).contains(&yy) {
-                        px[yy as usize * BOX_W + xx as usize] = 3;
-                    }
-                }
-            }
-        }
-        x += cw as i32 + 1;
     }
     tiles_of(&px, BOX_W, 32)
 }
@@ -379,8 +399,8 @@ fn tiles_of(px: &[u8], w: usize, h: usize) -> Vec<u8> {
     out
 }
 
-/// The None box's colours: white ground, a grey, the dark line and text.
-const NONE_COLOURS: [u16; 4] = [0, 0x7FFF, 0x5294, 0x1064];
+/// The empty slot's colours: a light ground, a lighter rim, the dark line.
+const NONE_COLOURS: [u16; 4] = [0, 0x6F7B, 0x7FFF, 0x1064];
 
 /// The Teams screen's face sprites: the first column's (32x8) tile 400 + 36k.
 const FACE_TILE: u16 = 400;
@@ -403,7 +423,7 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
     if !teams_on(core, true) || crate::skills_panel::is_open(core) {
         return at;
     }
-    let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
+    let armies = armies(core);
     let editing = core.raw_read_8(EDITING, -1);
     let blink = core.raw_read_8(BLINK, -1);
     let partner_of = |core: &Core, a: u32| {
@@ -430,8 +450,8 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
             Some(p) => {
                 let (tiles, palette) = partner_box(core, p);
                 write_tiles(core, tile, &tiles);
-                write_palette(core, TEAMS_PAL + a, &palette);
-                TEAMS_PAL + a
+                write_palette(core, PARTNER_PALS[a as usize], &palette);
+                PARTNER_PALS[a as usize]
             }
             None => {
                 write_tiles(core, tile, &none_box(core));
@@ -446,6 +466,18 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
         let (x, y) = (fx + 8, fy + BOX_DY);
         if at + 8 > end {
             break;
+        }
+        if pal == NONE_PAL {
+            // The empty slot shows the army's emblem, as Dual Strike's blank
+            // slot its army's: the game's own emblem sprite of the column.
+            if let Some(em) = emblem(core, start, at, fx, fy) {
+                if at + 16 > end {
+                    break;
+                }
+                put(core, at, (y + 6) as u16 & 0xFF, ((x + 8) as u16 & 0x1FF) | size(1), em);
+                core.raw_write_16(at + 6, -1, 0);
+                at += 8;
+            }
         }
         put(core, at, y as u16 & 0xFF, (x as u16 & 0x1FF) | size(2), tile as u16 | (pal as u16) << 12);
         core.raw_write_16(at + 6, -1, 0);

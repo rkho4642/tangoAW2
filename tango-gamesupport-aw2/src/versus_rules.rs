@@ -48,8 +48,8 @@ const SEEN: u32 = crate::tag::UI + 0x09;
 const SOUND: u32 = crate::tag::UI + 0x0A;
 const LAYERS: u32 = crate::tag::UI + 0x0B;
 const BORROWED: u32 = crate::tag::UI + 0x0C;
-/// The labels' OBJ tiles as they were (16 tiles: 0x0203EE00..0x0203EFFF).
-const SAVED: u32 = 0x0203_F100;
+/// The labels' OBJ tiles as they were (16 tiles: 0x0203E600..0x0203E7FF).
+const SAVED: u32 = 0x0203_E600;
 const LABEL_TILE: u32 = 0x140;
 const LABEL_TILES: u32 = 16;
 
@@ -503,7 +503,7 @@ mod tests {
     #[test]
     fn ram_fits() {
         assert!(BORROWED < crate::tag::UI + 0x10);
-        assert!(SAVED + 32 * LABEL_TILES <= crate::tag::STATE);
+        assert!(SAVED + 32 * LABEL_TILES <= 0x0203_E800);
         assert_eq!(pool_of(0xC8), 5);
         assert_eq!(pool_of(0x43), 2);
         for r in &ROWS {
