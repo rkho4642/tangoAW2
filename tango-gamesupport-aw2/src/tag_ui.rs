@@ -1,11 +1,12 @@
 //! CO tag pairs on screen ([`crate::tag`]), with the Dual Strike pack:
 //!
-//! - **Versus' Teams screen** with the CO Tag rule on (the Set Skills
-//!   panel's R, beside its L for the Skills rule): under each army's face
-//!   its partner's face (the CO's HUD face, 32x16), or a "None" plate. START
+//! - **Versus' Teams screen**: under each army's face its partner's face
+//!   (the CO's HUD face, 32x16), or a "None" plate while it is picked. START
 //!   on an army's CO stop switches the D-pad between its CO (the game's own)
 //!   and its partner: the game's arrows move to the partner, UP and DOWN go
-//!   through the Teams list (and None), the army's own CO left out. In
+//!   through the Teams list (and None), the army's own CO left out. The
+//!   pairs play when the Rules screen's CO Tag is ON (crate::versus_rules;
+//!   the Teams screen's help line says so: "START: tag partner"). In
 //!   netplay both seats' buttons reach the Teams screen, as for the rest of
 //!   it. The faces' tiles and colours are borrowed (OBJ tiles 0x100..0x11F,
 //!   palettes 4..8, which the Teams and Rules screens leave unused) and put
@@ -108,8 +109,13 @@ const KEY_START: u32 = 1 << 3;
 const KEY_UP: u32 = 1 << 6;
 const KEY_DOWN: u32 = 1 << 7;
 
+/// The Teams stage of Versus' Teams/Rules screen (record +0x30: 1 Teams,
+/// 0 Rules).
 fn teams_on(core: &Core, ds: bool) -> bool {
-    ds && crate::pvp::in_versus(core) && crate::pvp::on_teams_screen(core) && !crate::five::active(core)
+    ds && crate::pvp::in_versus(core)
+        && crate::pvp::on_teams_screen(core)
+        && !crate::five::active(core)
+        && core.raw_read_8(TEAMS + 0x30, -1) == 1
 }
 
 /// On an army's CO stop (the record's state as crate::skills_panel reads it).
@@ -139,21 +145,34 @@ fn army_main(core: &Core, army: u32) -> Option<u8> {
     list.get(core.raw_read_8(TEAMS_CO_INDEX + army, -1) as usize).copied()
 }
 
+/// AW2's "Choose a CO." (text 0x9DC), the Teams screen's help line on a
+/// CO stop: on Versus' Teams screen with the pack it says START picks a
+/// partner (crate::tag's string); everywhere else it is AW2's.
+const TEXT_TABLE: u32 = 0x0861_0A38;
+const CHOOSE_CO: u32 = 0x9DC;
+static CHOOSE_CO_AW2: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+
+fn help_line(core: &mut Core, ds: bool) {
+    let entry = TEXT_TABLE + 4 * CHOOSE_CO;
+    let aw2 = *CHOOSE_CO_AW2.get_or_init(|| core.raw_read_32(entry, -1));
+    // Versus only uses it on the Teams screen (set before the screen draws it).
+    let want = if ds && crate::pvp::in_versus(core) && !crate::five::active(core) { tag::CHOOSE_CO_AT } else { aw2 };
+    if core.raw_read_32(entry, -1) != want {
+        core.raw_write_32(entry, -1, want);
+    }
+}
+
 /// Every frame, before the game reads the pad: the partner picks.
 pub fn teams_tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
     if !ds {
         return keys;
     }
+    help_line(core, ds);
     if !teams_on(core, ds) || crate::skills_panel::is_open(core) {
         if !teams_on(core, ds) {
             stop_editing(core);
             restore(core);
         }
-        return keys;
-    }
-    if core.raw_read_8(tag::RULE, -1) != 1 {
-        stop_editing(core);
-        restore(core);
         return keys;
     }
     let pressed = keys & !prev;
@@ -317,7 +336,7 @@ const ARROW_UP: u16 = 700;
 const ARROW_DOWN: u16 = 702;
 
 fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
-    if core.raw_read_8(tag::RULE, -1) != 1 || !crate::pvp::on_teams_screen(core) || crate::skills_panel::is_open(core) {
+    if !teams_on(core, true) || crate::skills_panel::is_open(core) {
         return at;
     }
     let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);

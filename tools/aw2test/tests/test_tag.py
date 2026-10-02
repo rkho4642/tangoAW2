@@ -39,19 +39,13 @@ def tag_battle(ctx, cos, partners, humans=(1,), units=(), fog=False, rule=True):
 
 def teams_pick(g, cos, downs, humans=(1,)):
     """On the Teams screen through the pad only (as netplay plays it): the
-    COs, the rule on the Set Skills panel (SELECT, R, B), then each army's
-    partner `downs[a]` DOWNs from None (START, DOWN.., START)."""
+    COs, then each army's partner `downs[a]` DOWNs from None (START,
+    DOWN.., START). The rule is the Rules screen's (Game.set_extra_rules)."""
     e = g.e
     g.set_teams(cos, set(humans))
     for _ in range(2 * (len(cos) - 1)):
         e.press("LEFT", 6)
         e.wait(14)
-    e.press("SELECT", 4)
-    e.wait(30)
-    e.press("R", 4)
-    e.wait(10)
-    e.press("B", 4)
-    e.wait(30)
     for a, n in enumerate(downs):
         if a:
             e.press("RIGHT", 6); e.wait(14); e.press("RIGHT", 6); e.wait(14)
@@ -78,9 +72,9 @@ def fill(g, army, active=True, partner=True):
 
 @test(modes=("ds",))
 def tag_versus_rule_off_by_default(ctx):
-    """Off at boot: no pair, the map menu AW2's (no Change, no Tag); START on
-    the Teams screen does nothing; the Set Skills panel's help bar reads
-    "R Tag OFF"."""
+    """Off at boot: partners picked on the Teams screen make no pair, the map
+    menu is AW2's (no Change, no Tag); on a fresh boot the Rules screen's
+    Skills and CO Tag rows read OFF."""
     g = tag_battle(ctx, ["andy", "olaf"], ["max", "sami"], rule=False)
     e = g.e
     ctx.eq(e.u8(tag.RULE), 0, "the CO Tag rule is off")
@@ -93,18 +87,69 @@ def tag_versus_rule_off_by_default(ctx):
     m = ctx.map()
     g2 = ctx.boot_teams(m)
     ctx.eq(g2.e.u8(tag.RULE), 0, "off on a fresh Teams screen")
-    before = g2.e.read(TEAMS, 0x40)
-    g2.e.press("START", 6)
-    g2.e.wait(20)
-    ctx.check(g2.on_teams(), "START keeps the Teams screen")
-    ctx.eq(g2.e.read(TEAMS, 0x40), before, "START changes nothing on the Teams screen with the rule off")
+    ctx.eq(g2.e.u8(g2.SKILLS_RULE), 0, "Skills off on a fresh Teams screen")
+
+
+@test(modes=("ds",))
+def tag_rules_rows(ctx):
+    """The Rules screen's two rows (crate::versus_rules): RIGHT from Visuals
+    reaches Skills, then CO Tag, then wraps to Fog; LEFT from Fog comes back
+    to CO Tag; UP turns a row ON and DOWN OFF; both start OFF; the game's
+    own rules are unchanged by it."""
+    m = ctx.map()
+    g = ctx.boot_teams(m)
+    e = g.e
+    g.set_teams(["andy", "olaf"], {1})
+    g.teams_to_rules()
+    e.wait(30)
+    cursor = g.teams_addr() + ram.RULES_CURSOR - ram.TEAMS
+    rules = g.teams_addr() + 0x84
+    game_rules = e.read(rules, 8)
+    for _ in range(6):
+        e.press("RIGHT", 6)
+        e.wait(14)
+    ctx.eq(e.u8(cursor), 6, "Visuals")
+    e.press("RIGHT", 6)
+    e.wait(20)
+    ctx.eq((e.u8(g.VRULE_CURSOR), e.u8(cursor)), (1, 6), "RIGHT on Visuals: Skills")
+    ctx.eq(e.u8(g.SKILLS_RULE), 0, "Skills OFF by default")
+    e.press("UP", 6)
+    e.wait(20)
+    ctx.eq(e.u8(g.SKILLS_RULE), 1, "UP: Skills ON")
+    e.press("RIGHT", 6)
+    e.wait(20)
+    ctx.eq(e.u8(g.VRULE_CURSOR), 2, "RIGHT: CO Tag")
+    ctx.eq(e.u8(tag.RULE), 0, "CO Tag OFF by default")
+    e.press("UP", 6)
+    e.wait(20)
+    ctx.eq(e.u8(tag.RULE), 1, "UP: CO Tag ON")
+    ctx.shot(g, "rules_rows_on")
+    e.press("DOWN", 6)
+    e.wait(20)
+    ctx.eq(e.u8(tag.RULE), 0, "DOWN: CO Tag OFF")
+    e.press("UP", 6)
+    e.wait(20)
+    e.press("RIGHT", 6)
+    e.wait(20)
+    ctx.eq((e.u8(g.VRULE_CURSOR), e.u8(cursor)), (0, 0), "RIGHT on CO Tag: Fog")
+    e.press("LEFT", 6)
+    e.wait(20)
+    ctx.eq(e.u8(g.VRULE_CURSOR), 2, "LEFT on Fog: CO Tag")
+    e.press("LEFT", 6)
+    e.wait(20)
+    ctx.eq(e.u8(g.VRULE_CURSOR), 1, "LEFT: Skills")
+    e.press("LEFT", 6)
+    e.wait(20)
+    ctx.eq((e.u8(g.VRULE_CURSOR), e.u8(cursor)), (0, 6), "LEFT: Visuals")
+    ctx.eq(e.read(rules, 8), game_rules, "the game's own rules unchanged")
+    ctx.eq((e.u8(g.SKILLS_RULE), e.u8(tag.RULE)), (1, 1), "both rules ON")
 
 
 @test(modes=("ds",))
 def tag_teams_screen(ctx):
-    """The rule on the Set Skills panel (R), the partners on the Teams screen
-    (START, then UP/DOWN), the battle starting with them; human and computer
-    armies alike."""
+    """The partners on the Teams screen (START, then UP/DOWN), the CO Tag
+    row on the Rules screen, the battle starting with them; human and
+    computer armies alike."""
     m = ctx.map()
     g = ctx.boot_teams(m)
     e = g.e
@@ -113,14 +158,6 @@ def tag_teams_screen(ctx):
         e.press("LEFT", 6)
         e.wait(14)
     ctx.eq(e.u8(TEAMS_CURSOR), 0, "army 1's CO stop")
-    e.press("SELECT", 4)
-    e.wait(30)
-    e.press("R", 4)
-    e.wait(10)
-    ctx.eq(e.u8(tag.RULE), 1, "R on the Set Skills panel turns CO Tag on")
-    ctx.shot(g, "panel_rule_on")
-    e.press("B", 4)
-    e.wait(30)
     e.press("START", 4)
     e.wait(10)
     ctx.eq(e.u8(tag.STATE + 0xC0), 0, "START: the D-pad edits army 1's partner")
@@ -150,6 +187,8 @@ def tag_teams_screen(ctx):
     ctx.shot(g, "teams_pairs")
     g.teams_to_rules()
     g.set_rules()
+    g.set_extra_rules(tag=True)
+    ctx.eq(e.u8(tag.RULE), 1, "the Rules screen's CO Tag row: ON")
     g.start_battle()
     g.wait_for_input()
     ctx.eq(g.player(1)["co"], main1, "army 1's CO")
@@ -319,6 +358,7 @@ def tag_save_versus(ctx):
     saves.compare_snapshots(ctx, snap, saves.snapshot(g2), "continued")
     have = (tag.partner(e2, 1), tag.partner(e2, 2), g2.player(1)["co"], g2.player(1)["co_mode"])
     ctx.eq(have, want, "both pairs, meters, power counts and the phase kept")
+    ctx.eq((e2.u8(tag.RULE), e2.u8(g2.SKILLS_RULE)), (e.u8(tag.RULE), e.u8(g.SKILLS_RULE)), "the Rules screen's rows kept")
     names = g2.open_map_menu()["names"]
     ctx.eq(names, ["CO", "Intel", "Options", "Save", "Change"], "still the first half")
     g2.choose("Change", g2.MAP_MENU)
@@ -337,9 +377,11 @@ def tag_netplay(ctx):
     g = ctx.boot_teams(m)
     e = g.e
     teams_pick(g, ["max", "olaf"], [1, 3])
-    ctx.check(e.u8(tag.RULE) == 1 and e.u8(tag.TEAMS_PARTNER) != tag.NONE, "rule and partners picked with the pad")
     g.teams_to_rules()
     g.set_rules()
+    g.set_extra_rules(skills=True, tag=True)
+    ctx.check(e.u8(tag.RULE) == 1 and e.u8(g.SKILLS_RULE) == 1 and e.u8(tag.TEAMS_PARTNER) != tag.NONE,
+              "rules and partners picked with the pad")
     g.start_battle()
     g.wait_for_input()
     ctx.require(tag.partner(e, 1) is not None, "army 1 has a partner")
@@ -360,8 +402,12 @@ def tag_netplay(ctx):
     g.wait_for_input()
     want = e.read(tag.STATE, 0x40)
     players = e.read(g.players_base + 0x3C, 0x3C * 2)
-    identical, values, text = ctx.netplay_replay(g, [(tag.STATE, 0x40), (g.players_base + 0x3C, 0x3C * 2)])
+    rules = (e.u8(g.SKILLS_RULE), e.u8(tag.RULE))
+    identical, values, text = ctx.netplay_replay(g, [(tag.STATE, 0x40), (g.players_base + 0x3C, 0x3C * 2),
+                                                     (g.SKILLS_RULE, 1), (tag.RULE, 1)])
     ctx.check(identical, "both peers identical")
+    ctx.eq((values.get(g.SKILLS_RULE), values.get(tag.RULE)), (bytes([rules[0]]), bytes([rules[1]])),
+           "both rules ON on the peers")
     ctx.eq(values.get(tag.STATE), want, "the pairs as played")
     ctx.eq(values.get(g.players_base + 0x3C), players, "the players as played")
 
@@ -369,8 +415,9 @@ def tag_netplay(ctx):
 @test(modes=("aw2",))
 def tag_pack_off(ctx):
     """Without the pack nothing of it: START on the Teams screen does
-    nothing, the map menu is AW2's, and tangoAW2's tag RAM is never
-    written."""
+    nothing, the Rules screen has no Skills or CO Tag rows (RIGHT on
+    Visuals goes where AW2's does), the map menu is AW2's, and tangoAW2's
+    tag RAM is never written."""
     m = ctx.map()
     g = ctx.boot_teams(m)
     e = g.e
@@ -380,6 +427,13 @@ def tag_pack_off(ctx):
     ctx.check(g.on_teams(), "START keeps the Teams screen")
     g.set_teams(["andy", "olaf"], {1})
     g.teams_to_rules()
+    e.wait(30)
+    cursor = g.teams_addr() + ram.RULES_CURSOR - ram.TEAMS
+    for _ in range(7):
+        e.press("RIGHT", 6)
+        e.wait(14)
+    ctx.check(e.u8(cursor) != 6, f"RIGHT on Visuals leaves it as in AW2 (cursor {e.u8(cursor)})")
+    ctx.shot(g, "rules_pack_off")
     g.set_rules()
     g.start_battle()
     g.wait_for_input()

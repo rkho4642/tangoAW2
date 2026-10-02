@@ -494,10 +494,11 @@ def shot(ctx, e, name):
 @test(modes=("ds",))
 def skills_panel_teams_and_rule(ctx):
     """Versus' Teams screen: SELECT on an army's CO stop opens the SET SKILLS
-    screen for its CO (its Versus set), L on it turns the Versus rule Skills
-    on; Slam Guard taken off the set and Snipe Guard put on; with the
-    rule on, every army (the computer's too) has its CO's Versus set on in
-    the battle; off (the default), none. (The EXP for rank 1 is a test aid.)"""
+    screen for its CO (its Versus set); Slam Guard taken off the set and
+    Snipe Guard put on; the Rules screen's Skills row (crate::versus_rules)
+    turns the rule on; with it on, every army (the computer's too) has its
+    CO's Versus set on in the battle; off (the default), none. (The EXP for
+    rank 1 is a test aid.)"""
     m = ctx.map()
     m.unit(1, "tank", 10, 10).unit(2, "tank", 20, 10)
     save = os.path.join(ctx.out, "map.sav")
@@ -518,7 +519,7 @@ def skills_panel_teams_and_rule(ctx):
     ctx.eq((e.u8(PANEL + 3), e.u8(PANEL + 8)), (3, 1), "the Versus set, on the Teams screen")
     e.press("L", 4)
     e.wait(6)
-    ctx.eq(e.u8(VERSUS_RULE), 1, "L: the rule on")
+    ctx.eq(e.u8(VERSUS_RULE), 0, "L on the panel no longer turns the rule (it is the Rules screen's)")
     shot(ctx, e, "teams_set_skills")
     edited = e.u8(PANEL + 2)
     # Rank 1's column: Bruiser, Sharpshooter, Slam Guard, Snipe Guard, ...
@@ -533,6 +534,9 @@ def skills_panel_teams_and_rule(ctx):
     g.set_teams(["andy", "max"], {1})
     g.teams_to_rules()
     g.set_rules(fog=False, weather="clear", power=True, visuals="off", capt=None)
+    g.set_extra_rules(skills=True)
+    ctx.eq(e.u8(VERSUS_RULE), 1, "the Rules screen's Skills row: ON")
+    shot(ctx, e, "rules_skills_on")
     g.start_battle()
     g.wait_for_input()
     want1 = [0x27] if e.u8(e.u32(PLAYERS) + 0x3C + 0x1D) == edited else [0x25]
@@ -542,7 +546,7 @@ def skills_panel_teams_and_rule(ctx):
 
 @test(modes=("ds",))
 def skills_netplay_versus_rule(ctx):
-    """Netplay: the Versus rule turned on in the Teams panel and the sets of
+    """Netplay: the Versus rule turned on on the Rules screen and the sets of
     the console's save (seat 0's) play the same on both peers: this run's
     inputs replayed on two rollback peers (aw2_netplay_script) give the same
     skills on and the same battle. (The EXP for rank 1 is a test aid, replayed
@@ -561,15 +565,10 @@ def skills_netplay_versus_rule(ctx):
         a = DATA + 4 + CO_LEN * co_slot(c)
         e.w32(a, 1000)
         e.w32(a + 16, 0x20)  # Versus set 0: Bruiser
-    e.press("SELECT", 4)
-    e.wait(10)
-    e.press("L", 4)
-    e.wait(6)
-    e.press("B", 4)
-    e.wait(10)
     g.set_teams(["andy", "andy"], {1, 2})
     g.teams_to_rules()
     g.set_rules(fog=False, weather="clear", power=True, visuals="off", capt=None)
+    g.set_extra_rules(skills=True)
     g.start_battle()
     g.wait_for_input()
     ctx.eq((active(e, 1), active(e, 2)), ([0x20], [0x20]), "both armies: Bruiser (the rule on)")

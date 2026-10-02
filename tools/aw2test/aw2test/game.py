@@ -234,6 +234,42 @@ class Game:
             e.w8(self.rules_items()[4] + ram.RULES_ITEM_VALUE, capt)
             e.wait(4)
 
+    # The Rules screen's Skills and CO Tag rows (tangoAW2's crate::versus_rules,
+    # with the Dual Strike pack): the row the cursor is on (0 none, 1 Skills,
+    # 2 CO Tag; the game's own cursor stays on Visuals) and the rules' bytes.
+    VRULE_CURSOR = 0x0203F4C8
+    SKILLS_RULE = 0x0203E385
+    TAG_RULE = 0x0203F4A0
+
+    def set_extra_rules(self, skills=None, tag=None):
+        """On the Rules screen, with the pad: Skills and CO Tag ON (True) or OFF
+        (False); None leaves the row. Back on Visuals after."""
+        e = self.e
+        cursor = self.teams_addr() + ram.RULES_CURSOR - ram.TEAMS
+        for _ in range(12):
+            if e.u8(self.VRULE_CURSOR) == 0 and e.u8(cursor) == 6:
+                break
+            e.press("LEFT" if e.u8(self.VRULE_CURSOR) else "RIGHT", 6)
+            e.wait(20)
+        for want, addr, row in ((skills, self.SKILLS_RULE, 1), (tag, self.TAG_RULE, 2)):
+            for _ in range(4):
+                if e.u8(self.VRULE_CURSOR) >= row:
+                    break
+                e.press("RIGHT", 6)
+                e.wait(20)
+            if e.u8(self.VRULE_CURSOR) != row:
+                raise NavError(f"the Rules screen's row {row} not reached")
+            if want is not None and (e.u8(addr) == 1) != want:
+                e.press("UP" if want else "DOWN", 6)
+                e.wait(20)
+            if want is not None and (e.u8(addr) == 1) != want:
+                raise NavError(f"the Rules screen's row {row} not set")
+        for _ in range(4):
+            if e.u8(self.VRULE_CURSOR) == 0:
+                break
+            e.press("LEFT", 6)
+            e.wait(20)
+
     def start_battle(self):
         e = self.e
         e.press("A", 8)

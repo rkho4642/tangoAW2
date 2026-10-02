@@ -520,6 +520,8 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         keys = crate::skills_panel::tick(core, ds, keys, prev);
         // CO tag pairs: the partners picked on the Teams screen (crate::tag_ui).
         keys = crate::tag_ui::teams_tick(core, ds, keys, prev);
+        // The Rules screen's Skills and CO Tag rows (crate::versus_rules).
+        keys = crate::versus_rules::tick(core, ds, keys, prev);
 
         // The Select Mode menu's Campaign sub-menu (AW2 / DS Campaign).
         keys = crate::campaign_menu::tick(core, ds && ds_features && mode.is_none(), keys, prev);

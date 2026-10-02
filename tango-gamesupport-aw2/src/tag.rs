@@ -545,11 +545,15 @@ const MENU: u32 = ROM;
 const STUBS: u32 = ROM + 0x200;
 const STRINGS: u32 = ROM + 0x300;
 const SENTINEL: u32 = ROM + 0xFFFC;
-const MAGIC: u32 = 0x3147_4154; // "TAG1"
+const MAGIC: u32 = 0x3247_4154; // "TAG2"
 /// The labels' text ids (pointers at `0x08610A38 + 4 * id`, free ROM).
 const TEXT_TABLE: u32 = 0x0861_0A38;
 pub const TEXT_TAG: u16 = 0x7300;
 pub const TEXT_CHANGE: u16 = 0x7301;
+/// The Teams screen's help line on an army's CO stop, with the pack
+/// (crate::tag_ui puts it in place of AW2's "Choose a CO.", text 0x9DC).
+pub const CHOOSE_CO_AT: u32 = STRINGS + 0x20;
+const CHOOSE_CO: &[u8] = b"Choose a CO. START: tag partner.\0";
 /// The game's icon glyphs (AW2 has no tag icons): Super's and the CO's.
 const LABEL_TAG: &[u8] = b"\x09\x90Tag\0";
 const LABEL_CHANGE: &[u8] = b"\x09\x94Change\0";
@@ -629,6 +633,7 @@ fn install(core: &mut Core) {
     core.raw_write_range(change_at, -1, LABEL_CHANGE);
     core.raw_write_32(TEXT_TABLE + 4 * TEXT_TAG as u32, -1, tag_at);
     core.raw_write_32(TEXT_TABLE + 4 * TEXT_CHANGE as u32, -1, change_at);
+    core.raw_write_range(CHOOSE_CO_AT, -1, CHOOSE_CO);
     core.raw_write_32(SENTINEL, -1, MAGIC);
 }
 

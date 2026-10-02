@@ -12,8 +12,8 @@
 //!   screen (on an army's CO stop: the record `0x02017C50`, cursor `+0x32`
 //!   even, CO list `+0x18`, index `+0x1C + army`), SELECT opens it for that
 //!   army's CO, editing its Versus set (R and L there change the army's
-//!   colour, crate::pvp); on it L turns the Versus rule Skills on or off
-//!   (crate::co_skills::VERSUS_RULE).
+//!   colour, crate::pvp). The Versus rule Skills (crate::co_skills::VERSUS_RULE)
+//!   is a row of the Rules screen (crate::versus_rules).
 //! - The screen, as Dual Strike's (its bottom screen's SKILLS RANK board,
 //!   its top screen's CO bar and set, its help bar), converted at run time
 //!   from the .nds: the skill icons (`ohashi/res_skill`: a palette and
@@ -30,9 +30,8 @@
 //!   red frame. The cursor is Dual Strike's corner brackets.
 //! - Buttons: the D-pad moves the cursor over the board, A puts the skill on
 //!   the set (as many as the CO's slots, min(rank, 4)) or takes it off, B
-//!   (or SELECT or START) keeps the set and closes (Dual Strike's BACK);
-//!   on Teams, L turns the Versus rule on or off. While it is up the game
-//!   gets no button ([`tick`]).
+//!   (or SELECT or START) keeps the set and closes (Dual Strike's BACK).
+//!   While it is up the game gets no button ([`tick`]).
 //! - Drawn on BG0 (char block and screen as the screen has them: 0 and 14 on
 //!   both screens), the other layers and the game's sprites off while it is
 //!   up (gDispIo's DISPCNT shadow); BG palettes 0..2. What it covers (BG0's tiles and
@@ -165,8 +164,6 @@ const KEY_RIGHT: u32 = 1 << 4;
 const KEY_LEFT: u32 = 1 << 5;
 const KEY_UP: u32 = 1 << 6;
 const KEY_DOWN: u32 = 1 << 7;
-const KEY_L: u32 = 1 << 9;
-const KEY_R: u32 = 1 << 8;
 const ALL_KEYS: u32 = 0x3FF;
 
 fn ids(core: &Core) -> [u8; 4] {
@@ -280,15 +277,6 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
             }
             core.raw_write_range(IDS, -1, &out);
         }
-    }
-    if on_teams && pressed & KEY_L != 0 {
-        let v = core.raw_read_8(co_skills::VERSUS_RULE, -1);
-        core.raw_write_8(co_skills::VERSUS_RULE, -1, (v == 0) as u8);
-    }
-    // R: the Versus rule CO Tag (crate::tag), beside Skills.
-    if on_teams && pressed & KEY_R != 0 {
-        let v = core.raw_read_8(crate::tag::RULE, -1);
-        core.raw_write_8(crate::tag::RULE, -1, (v != 1) as u8);
     }
     draw(core);
     keys & !ALL_KEYS
@@ -625,13 +613,7 @@ fn compose(core: &mut Core, a: &Art) -> Canvas {
             cv.text(core, 24, HELP_Y + 11, &plain(&desc), 158 - (HELP_Y as usize + 11));
         }
     }
-    let hint = if core.raw_read_8(ON_TEAMS, -1) == 1 {
-        let on = core.raw_read_8(co_skills::VERSUS_RULE, -1) == 1;
-        let tag = core.raw_read_8(crate::tag::RULE, -1) == 1;
-        format!("L Skills {}  R Tag {}", if on { "ON" } else { "OFF" }, if tag { "ON" } else { "OFF" })
-    } else {
-        format!("{}/{}", cur.iter().take(n).filter(|&&x| x != 0).count(), n)
-    };
+    let hint = format!("{}/{}", cur.iter().take(n).filter(|&&x| x != 0).count(), n);
     let w = width(core, &hint) as i32;
     cv.text(core, 236 - w, HELP_Y + 1, &hint, LINE);
     for x in 0..240 {

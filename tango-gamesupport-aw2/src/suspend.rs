@@ -62,15 +62,19 @@ pub const CAPTURED: u32 = 0x0801_6D88;
 /// next).
 pub const APPLIED: u32 = 0x0801_6DD0;
 const CURRENT_ARMY: u32 = 0x0300_33EC;
+const GAME_MODE: u32 = 0x0300_3FC1;
+const VERSUS: u8 = 3;
 
-/// CO tag pairs ([`crate::tag`]) ride past the 0xE28-byte block: while a
-/// battle has pairs the block is written longer (the staging buffer is
-/// 0x2000 bytes; AW2's reader takes the slot's whole length back). A mark,
-/// a hash of AW2's part of the block (+0..+0xDAC, so a stale copy from
-/// another save is never taken), then the pairs.
+/// The Versus rules Skills and CO Tag ([`crate::versus_rules`]) and the CO
+/// tag pairs ([`crate::tag`]) ride past the 0xE28-byte block: while a rule
+/// is on or a battle has pairs the block is written longer (the staging
+/// buffer is 0x2000 bytes; AW2's reader takes the slot's whole length back).
+/// A mark, a hash of AW2's part of the block (+0..+0xDAC, so a stale copy
+/// from another save is never taken), the two rules, then the pairs.
 const TAG_AT: u32 = BLOCK + 0xE28;
-const TAG_MARK: u32 = 0x5347_4154; // "TAGS"
-pub const TAG_LEN: u32 = 8 + crate::tag::SAVED_LEN as u32;
+const TAG_MARK: u32 = 0x3247_4154; // "TAG2"
+const RULES: [u32; 2] = [crate::co_skills::VERSUS_RULE, crate::tag::RULE];
+pub const TAG_LEN: u32 = 8 + 4 + crate::tag::SAVED_LEN as u32;
 
 fn block_hash(core: &Core) -> u32 {
     let mut b = vec![0u8; 0xDAC];
@@ -86,10 +90,13 @@ fn captured(core: &mut Core) {
     if !is_on(core) {
         return;
     }
-    if crate::tag::any(core) {
+    let rules = RULES.map(|r| core.raw_read_8(r, -1) & 1);
+    let versus = core.raw_read_8(GAME_MODE, -1) == VERSUS;
+    if crate::tag::any(core) || (versus && rules != [0, 0]) {
         let mut t = Vec::with_capacity(TAG_LEN as usize);
         t.extend_from_slice(&TAG_MARK.to_le_bytes());
         t.extend_from_slice(&block_hash(core).to_le_bytes());
+        t.extend_from_slice(&[rules[0], rules[1], 0, 0]);
         t.extend_from_slice(&crate::tag::saved(core));
         core.raw_write_range(TAG_AT, -1, &t);
     }
@@ -112,8 +119,19 @@ fn applied(core: &mut Core) {
     crate::ds_weather::set_rule_fog(core, if ours { b[AT_RULE_FOG as usize] } else { 0 });
     crate::co_powers::set_stun_state(core, ours.then(|| &b[AT_STUN as usize..]), army);
     if tag_tail_ok(core) {
+        // The rules as the game was saved with them; the skills the armies
+        // had on (crate::co_skills: a map start sets them, and a Continue
+        // has none), then the pairs (their partners' skills).
+        for (k, r) in RULES.iter().enumerate() {
+            let v = core.raw_read_8(TAG_AT + 8 + k as u32, -1);
+            core.raw_write_8(*r, -1, v);
+        }
+        if core.raw_read_8(GAME_MODE, -1) == VERSUS {
+            crate::co_skills::clear(core);
+            crate::co_skills::battle_start(core);
+        }
         let mut t = vec![0u8; crate::tag::SAVED_LEN];
-        core.raw_read_range(TAG_AT + 8, -1, &mut t);
+        core.raw_read_range(TAG_AT + 12, -1, &mut t);
         crate::tag::restore(core, Some(&t));
         // Read once: a later Continue of a game saved without pairs does
         // not take these.
