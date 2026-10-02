@@ -552,11 +552,17 @@ class DsCampaign:
         return "every enemy unit destroyed" if not foes else f"the enemy HQ taken ({len(foes)} enemy units left)"
 
     def state(self):
-        """Units per army and the day (for logs)."""
-        counts = {}
+        """Units per army and the day (for logs); an army's last few units
+        listed."""
+        counts, by = {}, {}
         for u in self.g.units():
             counts[u["army"]] = counts.get(u["army"], 0) + 1
-        return {"day": self.e.u16(DAY), "units": counts, "army": self.e.u8(0x030033EC)}
+            by.setdefault(u["army"], []).append((u["type"], u["x"], u["y"], u["hp"]))
+        out = {"day": self.e.u16(DAY), "units": counts, "army": self.e.u8(0x030033EC)}
+        last = {a: us for a, us in by.items() if a != 1 and len(us) <= 3}
+        if last:
+            out["last"] = last
+        return out
 
     def autoplay(self, max_days=40, log=None, max_frames=600000):
         """The computer plays every army (the player's too) until the

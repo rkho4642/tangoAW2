@@ -63,14 +63,17 @@ def domain(t):
 
 
 class Bot:
-    def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None, build=None):
+    def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None, build=None,
+                 finish=None):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
         `structures`: the mission is won on its structures (they come first
         among targets); `stance`: "attack", "defend" or "auto" (attack when
         the stronger); `rush`: the units that capture go for the enemy HQ
-        only (a mission against the clock)."""
+        only (a mission against the clock); `finish`: from that day on, as
+        `rush` and on the attack (a mission against the clock: win it by
+        the HQ in the last days)."""
         self.d, self.g, self.e = d, d.g, d.e
         self.log = log or (lambda s: None)
         self.protect = set(protect)
@@ -79,6 +82,7 @@ class Bot:
         self.structures_goal = structures
         self.stance = stance
         self.rush = rush
+        self.finish = finish
         # `build`: what a factory kind builds, best first (instead of BUILD).
         self.build_order = {int(k): v for k, v in (build or {}).items()}
         # `seed`: another player's style (how much danger each kind of unit
@@ -180,7 +184,7 @@ class Bot:
         HQ alone)."""
         t = self.team(army)
         out = [(p, k) for p, k, o in (props or self.properties()) if o == 0 or self.team(o) != t]
-        if self.rush:
+        if self.rush or self.late():
             out = [(p, k) for p, k in out if k == HQ]
         out.sort(key=lambda p: p[1] != HQ)
         return out
@@ -400,7 +404,12 @@ class Bot:
         theirs = sum(self.value(u) for u in self.enemies(army) if self.armed(u["type"]))
         return mine, theirs
 
+    def late(self):
+        return self.finish is not None and self.e.u16(DAY) >= self.finish
+
     def aggressive(self, army):
+        if self.late():
+            return True
         if self.stance != "auto":
             return self.stance == "attack"
         mine, theirs = self.strength(army)
@@ -522,6 +531,8 @@ class Bot:
         # Move up on the goal.
         if u["type"] in CAPTURERS:
             goals = self.goals + [p for p, _ in self.targets_for_capture(army, props)][:4]
+            # Nothing left to capture: on the enemy's units like the rest.
+            goals = goals or [(f["x"], f["y"]) for f in foes]
         else:
             goals = [(s["x"], s["y"]) for s in targets if s.get("structure")] if self.structures_goal else []
             goals = goals or self.goals or [(f["x"], f["y"]) for f in foes] or [p for p, _ in self.targets_for_capture(army, props)][:4]

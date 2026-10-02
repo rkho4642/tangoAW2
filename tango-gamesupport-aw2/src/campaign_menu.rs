@@ -112,13 +112,46 @@ fn help_lines(core: &mut Core) {
     }
 }
 
+/// The chooser's entries: AW2's own campaign first, then every campaign
+/// the engine has a source for ([`crate::ds_campaign`]: today Dual
+/// Strike's, with its pack). The box shows two at a time ([`TOP`] the
+/// first shown); UP and DOWN go through all of them (wrapping), the two
+/// shown following the cursor. A on the first opens AW2's own box (level
+/// 1), on another that campaign's box (level 2).
+pub fn entries(core: &Core) -> Vec<&'static str> {
+    let mut v = vec![LABELS[0]];
+    if crate::ds_weather::is_on(core) {
+        v.push(LABELS[1]);
+    }
+    v
+}
+
+/// The chooser's first entry shown (EWRAM, crate::ds_campaign's block).
+const TOP: u32 = 0x0203_FD56;
+
+/// The chooser's window: the first entry shown, the cursor's row in it.
+pub fn window(choice: usize, top: usize, n: usize) -> (usize, usize) {
+    let last = n.saturating_sub(2);
+    let mut top = top.min(last);
+    if choice < top {
+        top = choice;
+    } else if choice > top + 1 {
+        top = choice - 1;
+    }
+    (top, choice - top)
+}
+
 /// The labels showing and the highlighted row.
 fn shown(core: &Core) -> ([&'static str; 2], usize) {
     if core.raw_read_8(LEVEL, -1) == 3 {
-        (DIFFICULTY_LABELS, core.raw_read_8(DIFFICULTY, -1) as usize & 1)
-    } else {
-        (LABELS, core.raw_read_8(CHOICE, -1) as usize & 1)
+        return (DIFFICULTY_LABELS, core.raw_read_8(DIFFICULTY, -1) as usize & 1);
     }
+    let all = entries(core);
+    let n = all.len();
+    let choice = (core.raw_read_8(CHOICE, -1) as usize).min(n.saturating_sub(1));
+    let (top, row) = window(choice, core.raw_read_8(TOP, -1) as usize, n);
+    let label = |k: usize| all.get(k).copied().unwrap_or("");
+    ([label(top), label(top + 1)], row)
 }
 
 /// Every frame, before the game runs: the keys the game gets.
@@ -148,15 +181,20 @@ fn tick_menu(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
     let mut keys = keys;
     match core.raw_read_8(LEVEL, -1) {
         0 => {
-            let mut row = core.raw_read_8(CHOICE, -1) & 1;
-            if pressed & (KEY_UP | KEY_DOWN) != 0 {
-                row ^= 1;
-                core.raw_write_8(CHOICE, -1, row);
+            let n = entries(core).len().max(1);
+            let mut choice = (core.raw_read_8(CHOICE, -1) as usize).min(n - 1);
+            if pressed & KEY_UP != 0 {
+                choice = (choice + n - 1) % n;
+            } else if pressed & KEY_DOWN != 0 {
+                choice = (choice + 1) % n;
             }
+            let (top, row) = window(choice, core.raw_read_8(TOP, -1) as usize, n);
+            core.raw_write_8(CHOICE, -1, choice as u8);
+            core.raw_write_8(TOP, -1, top as u8);
             core.raw_write_16(p + W_CURSOR, -1, ROW0 + row as u16);
             if pressed & KEY_A != 0 {
-                core.raw_write_8(LEVEL, -1, 1 + row);
-                let has = if row == 0 { core.raw_read_8(0x0300_3F31, -1) != 0 } else { crate::ds_campaign::has_save(core) };
+                core.raw_write_8(LEVEL, -1, if choice == 0 { 1 } else { 2 });
+                let has = if choice == 0 { core.raw_read_8(0x0300_3F31, -1) != 0 } else { crate::ds_campaign::has_save(core) };
                 core.raw_write_16(p + W_CURSOR, -1, if has { ROW0 } else { ROW0 + 1 });
             }
             keys &= !(KEY_UP | KEY_DOWN | KEY_A);
@@ -186,9 +224,12 @@ fn tick_menu(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
         }
         level => {
             if pressed & KEY_B != 0 {
-                let row = level - 1;
+                // Back to the chooser on this box's entry.
+                let n = entries(core).len().max(1);
+                let choice = (core.raw_read_8(CHOICE, -1) as usize).min(n - 1);
+                let (top, row) = window(choice, core.raw_read_8(TOP, -1) as usize, n);
                 core.raw_write_8(LEVEL, -1, 0);
-                core.raw_write_8(CHOICE, -1, row);
+                core.raw_write_8(TOP, -1, top as u8);
                 core.raw_write_16(p + W_CURSOR, -1, ROW0 + row as u16);
                 core.raw_write_8(crate::ds_campaign::REQUEST, -1, 0);
                 keys &= !KEY_B;
@@ -310,7 +351,7 @@ pub fn draw(core: &mut Core) {
         return;
     }
     let (labels, _) = shown(core);
-    for (k, t) in labels.iter().enumerate() {
+    for (k, t) in labels.iter().enumerate().filter(|(_, t)| !t.is_empty()) {
         let tiles = label_tiles(t);
         let at = OBJ_VRAM + (TILES + LABEL_TILES * k as u32) * 32;
         let mut now = vec![0u8; tiles.len()];
@@ -387,6 +428,18 @@ const PLAIN_PALETTE: u16 = 10;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_window_follows_the_cursor() {
+        // Two entries: both shown, the cursor's row its entry.
+        assert_eq!(window(0, 0, 2), (0, 0));
+        assert_eq!(window(1, 0, 2), (0, 1));
+        // Four: the window moves down and back up with the cursor.
+        assert_eq!(window(2, 0, 4), (1, 1));
+        assert_eq!(window(3, 1, 4), (2, 1));
+        assert_eq!(window(1, 2, 4), (1, 0));
+        assert_eq!(window(0, 3, 4), (0, 0));
+    }
 
     #[test]
     fn labels_fit() {
