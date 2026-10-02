@@ -873,7 +873,13 @@ Time, `0x022F652C` Money, `0x022F6514` Turn; `sub_020EAC50` picks the list):
   `0x08087C6C`, `0x080177E4`) read a zeroed block of ours; `SetMapPlayed`
   (`0x0803CA28`) skips Survival's ids (its bits stop at 0xBF). The map menu
   hides Save on a Survival map (`0x0802C646`): a suspended map would come back
-  without its run.
+  without its run. The War Room's end of a map asks its save question with
+  the War Room's suspend slot (`sub_0803D73C(3, ..)`), which clears the
+  profile's "War Room game saved" flag and deletes slot 3 when it saves; a
+  Survival map asks with slot 6 instead (the prompt's "profile only", as
+  `sub_0803D960` uses it; trap `0x0803D746`), so a War Room game saved
+  halfway survives a Survival run (until this, the first Survival map ended
+  took it away; `save_survival_keeps_war_room_suspend`).
 - **Records** in the profile the game saves (so the save's own checksum covers
   them): `0x0200C435..0x0200C43E`, ten of the eleven bytes between
   `0x0200C420`'s +0x14 and +0x20 that no code of the game reads or writes

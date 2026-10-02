@@ -682,10 +682,36 @@ fn save_item(core: &mut Core) {
     }
 }
 
+/// The save prompt after a map (`sub_0803D73C(slot, then)`, past its
+/// `adds r4, r0, #0`: r4 the slot): the War Room's end of map
+/// (`sub_08038548`) asks with the War Room's suspend slot, 3, so the
+/// prompt clears the profile's "War Room game saved" flag and, saving,
+/// deletes slot 3 (`sub_08016C70`): the map just finished was the
+/// suspended one, or a new one over it. A Survival map is neither (it has
+/// no Save, and Survival never offers the War Room's Continue), so it asks
+/// with slot 6 instead, the prompt's "profile only" (as `sub_0803D960`
+/// starts it): the records are saved, a War Room game saved halfway is
+/// kept.
+const SAVE_PROMPT_SLOT: u32 = 0x0803_D746;
+const SAVE_PROMPT_START: u32 = 0x0803_D754;
+const WAR_ROOM_SLOT: u32 = 3;
+const PROFILE_ONLY: u32 = 6;
+fn save_prompt_slot(core: &mut Core) {
+    if core.raw_read_8(ON, -1) != 1 || !is_survival_map(core.raw_read_8(MAP_ID, -1)) {
+        return;
+    }
+    let cpu = core.gba_mut().cpu_mut();
+    if cpu.gpr(4) as u32 == WAR_ROOM_SLOT {
+        cpu.set_gpr(4, PROFILE_ONLY as i32);
+        cpu.set_thumb_pc(SAVE_PROMPT_START);
+    }
+}
+
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     vec![
         (CO_SCREEN, Box::new(co_screen)),
         (SAVE_ITEM, Box::new(save_item)),
+        (SAVE_PROMPT_SLOT, Box::new(save_prompt_slot)),
         (DRAW_MAP_LIST, Box::new(draw_map_list)),
         (END_OF_GAME, Box::new(end_of_game)),
         (SET_MAP_PLAYED, Box::new(set_map_played)),
