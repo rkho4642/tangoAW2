@@ -297,8 +297,9 @@ pub struct Campaign {
     pub help: [u32; 2],
 }
 
-/// The help line under the Normal / Hard choice, per row.
-pub const DIFFICULTY_HELP: [&str; 2] = ["Dual Strike's campaign.", "Hard Campaign: stronger enemy forces."];
+/// The help line under the Normal / Hard choice, per row (no longer than
+/// AW2's own help lines: the scrolling line overlaps a longer one).
+pub const DIFFICULTY_HELP: [&str; 2] = ["Dual Strike's campaign.", "Hard: stronger enemy forces."];
 
 /// `Proc_Goto(proc, label)` and the start of the Select Mode menu (what
 /// the world map's "Return to Select Mode" path ends with).
