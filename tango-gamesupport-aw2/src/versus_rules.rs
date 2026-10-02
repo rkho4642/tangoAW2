@@ -48,7 +48,7 @@ const SOUND: u32 = crate::tag::UI + 0x0A;
 const LAYERS: u32 = crate::tag::UI + 0x0B;
 const BORROWED: u32 = crate::tag::UI + 0x0C;
 /// The labels' OBJ tiles as they were (16 tiles: 0x0203EE00..0x0203EFFF).
-const SAVED: u32 = 0x0203_EE00;
+const SAVED: u32 = 0x0203_F100;
 const LABEL_TILE: u32 = 0x140;
 const LABEL_TILES: u32 = 16;
 
@@ -244,6 +244,9 @@ fn help_id(core: &mut Core) {
     let v = core.raw_read_8(VCURSOR, -1);
     if is_on(core) && v != 0 && core.raw_read_8(STAGE, -1) == 0 {
         core.gba_mut().cpu_mut().set_gpr(5, ROWS[v as usize - 1].help as i32);
+    } else if let Some(id) = crate::tag_ui::help_override(core) {
+        // The Teams stage: picking a partner (crate::tag_ui).
+        core.gba_mut().cpu_mut().set_gpr(5, id as i32);
     }
 }
 
@@ -506,7 +509,7 @@ mod tests {
     #[test]
     fn ram_fits() {
         assert!(BORROWED < crate::tag::UI + 0x10);
-        assert!(SAVED + 32 * LABEL_TILES <= 0x0203_F000);
+        assert!(SAVED + 32 * LABEL_TILES <= crate::tag::STATE);
         assert_eq!(pool_of(0xC8), 5);
         assert_eq!(pool_of(0x43), 2);
         for r in &ROWS {

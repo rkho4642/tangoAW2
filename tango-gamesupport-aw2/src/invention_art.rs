@@ -212,7 +212,7 @@ fn tile_of(src: Src, volcano_on_map: bool) -> u32 {
 }
 
 /// GBA BIOS-style LZ77 (type 0x10) decompression, from the ROM.
-fn lz77(core: &Core, addr: u32) -> Vec<u8> {
+pub(crate) fn lz77(core: &Core, addr: u32) -> Vec<u8> {
     let header = core.raw_read_32(addr, -1);
     let size = (header >> 8) as usize;
     let mut out = Vec::with_capacity(size);

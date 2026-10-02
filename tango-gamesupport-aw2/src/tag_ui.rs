@@ -1,23 +1,28 @@
 //! CO tag pairs on screen ([`crate::tag`]), with the Dual Strike pack:
 //!
-//! - **Versus' Teams screen**: under each army's face its partner's face
-//!   (the CO's HUD face, 32x16), or a "None" plate while it is picked. START
-//!   on an army's CO stop switches the D-pad between its CO (the game's own)
-//!   and its partner: the game's arrows move to the partner, UP and DOWN go
-//!   through the Teams list (and None), the army's own CO left out. The
-//!   pairs play when the Rules screen's CO Tag is ON (crate::versus_rules;
-//!   the Teams screen's help line says so: "START: tag partner"). In
-//!   netplay both seats' buttons reach the Teams screen, as for the rest of
-//!   it. The faces' tiles and colours are borrowed (OBJ tiles 0x100..0x11F,
-//!   palettes 4..8, which the Teams and Rules screens leave unused) and put
-//!   back when the screen goes.
-//! - **The CO panel** on the battle map, as Dual Strike's shows the pair:
-//!   the partner's face beside the active CO's, over the panel's free
-//!   right side, and the partner's meter, a row of small stars under the
-//!   panel's (the game's own star tiles). The face's tiles are OBJ tiles
-//!   0x309..0x310 and its colours OBJ palette 5 (no map sprite uses either;
-//!   crate::heal_effect borrows those tiles while it plays: the partner's
-//!   face is left out then).
+//! - **Versus' Teams screen**: under each army's box its partner's box
+//!   (32x28: the CO's Teams portrait drawn at 30 pixels in a dark line), or
+//!   a "None" box while it is picked; with any partner shown the columns
+//!   (frames, faces, emblems, labels, arrows) go up 16 pixels to make room.
+//!   START on an army's CO stop switches the D-pad between its CO (the
+//!   game's own) and its partner: the game's arrows move over and under the
+//!   partner box, UP and DOWN go through the Teams list (and None), the
+//!   army's own CO left out; the help line reads "Choose a partner CO."
+//!   (text 0x7304, through crate::versus_rules's help trap). The pairs play
+//!   when the Rules screen's CO Tag is ON (crate::versus_rules). In netplay
+//!   both seats' buttons reach the Teams screen, as for the rest of it. The
+//!   boxes' tiles and colours are borrowed (OBJ tiles 0x100..0x13F, palettes
+//!   4..8, which the Teams screen leaves unused) and put back when it goes.
+//! - **The CO panel** on the battle map, as Dual Strike's shows the pair (a
+//!   face and a meter a CO): under AW2's panel and its stars, the partner's
+//!   strip: the panel's own plate rows (its tiles, the army's colours; the
+//!   lower half mirrored over the upper), the partner's HUD face in it and
+//!   its meter under it as AW2 draws the active CO's (small stars for the
+//!   CO Power, big ones for the rest of the Super Power; half and full).
+//!   The face's tiles are OBJ tiles 0x309..0x310 and its colours OBJ
+//!   palette 5 (no map sprite uses either while the panel is up;
+//!   crate::heal_effect borrows those tiles while it plays: the face is left
+//!   out then).
 
 use mgba::core::Core;
 
@@ -96,11 +101,13 @@ const TEAMS_CURSOR: u32 = TEAMS + 0x32;
 const EDITING: u32 = tag::UI;
 const BORROWED: u32 = tag::UI + 1;
 const BLINK: u32 = tag::UI + 2;
-/// What the Teams screen's faces borrow, as it was: 32 tiles and palettes
-/// 4..8 (EWRAM tangoAW2 keeps free: 0x0203E800..0x0203EC9F).
+/// What the Teams screen's partner boxes borrow, as it was: 64 tiles (16 an
+/// army) and palettes 4..8 (EWRAM tangoAW2 keeps free:
+/// 0x0203E800..0x0203F09F).
 const SAVED: u32 = 0x0203_E800;
 const TEAMS_TILE: u32 = 0x100;
-const TEAMS_TILES: u32 = 40;
+const TEAMS_TILES: u32 = 64;
+const BOX_TILES: u32 = 16;
 const TEAMS_PAL: u32 = 4;
 const TEAMS_PALS: u32 = 5;
 const NONE_PAL: u32 = 8;
@@ -160,6 +167,13 @@ fn help_line(core: &mut Core, ds: bool) {
     if core.raw_read_32(entry, -1) != want {
         core.raw_write_32(entry, -1, want);
     }
+}
+
+/// The Teams screen's help line while a partner is picked
+/// ("Choose a partner CO."), for crate::versus_rules's help trap.
+pub fn help_override(core: &Core) -> Option<u16> {
+    let on = crate::ds_weather::is_on(core) && teams_on(core, true);
+    (on && core.raw_read_8(EDITING, -1) != NONE).then_some(tag::TEXT_PARTNER)
 }
 
 /// Every frame, before the game reads the pad: the partner picks.
@@ -266,19 +280,57 @@ fn stop_editing(core: &mut Core) {
     }
 }
 
-/// The "None" plate: "None" in AW2's font, white on the dark blue of the
-/// Teams screen's frames, 32x16.
-fn none_plate(core: &Core) -> Vec<u8> {
-    let mut px = [[0u8; 32]; 16];
-    for (y, row) in px.iter_mut().enumerate() {
-        for (x, p) in row.iter_mut().enumerate() {
-            let edge = y == 0 || y == 15 || x == 0 || x == 31;
-            *p = if edge { 2 } else { 1 };
+/// The partner's box: 32x28 (in a 32x32 sprite), a dark line round the
+/// CO's Teams-screen portrait (48x48, presentation row +0x0C, LZ77) drawn
+/// at 30 pixels, its bottom rows (the shoulders) left out; behind the face
+/// the portrait's lightest colour, as the big box's light ground. Pixels
+/// as palette indices of the CO's own palette.
+const BOX_W: usize = 32;
+const BOX_H: usize = 28;
+const FACE_ROW: u32 = 0x0C;
+
+fn partner_box(core: &Core, co: u8) -> (Vec<u8>, [u8; 32]) {
+    let row = core.raw_read_32(PRESENTATION_POOL, -1) + PRESENTATION_ROW * co as u32;
+    let pal = co_palette(core, co);
+    let colour = |i: usize| u16::from_le_bytes([pal[2 * i], pal[2 * i + 1]]);
+    let lum = |c: u16| (c & 31) as u32 * 3 + ((c >> 5) & 31) as u32 * 6 + ((c >> 10) & 31) as u32;
+    let dark = (1..16).min_by_key(|&i| lum(colour(i))).unwrap_or(15) as u8;
+    let light = (1..16).max_by_key(|&i| lum(colour(i))).unwrap_or(1) as u8;
+    let src = crate::invention_art::lz77(core, core.raw_read_32(row + FACE_ROW, -1));
+    // The portrait: 6 rows of 6 tiles (a 32x8 and a 16x8 sprite a row).
+    let face = |x: usize, y: usize| -> u8 {
+        let t = 6 * (y / 8) + x / 8;
+        let b = src.get(32 * t + 4 * (y % 8) + (x % 8) / 2).copied().unwrap_or(0);
+        (b >> (4 * (x & 1))) & 15
+    };
+    let mut px = vec![0u8; BOX_W * 32];
+    for y in 0..BOX_H {
+        for x in 0..BOX_W {
+            let edge = y == 0 || y == BOX_H - 1 || x == 0 || x == BOX_W - 1;
+            px[y * BOX_W + x] = if edge {
+                dark
+            } else {
+                let v = face((x - 1) * 48 / 30, (y - 1) * 48 / 30);
+                if v == 0 { light } else { v }
+            };
+        }
+    }
+    (tiles_of(&px, BOX_W, 32), pal)
+}
+
+/// The "None" box (picking a partner): the partner box's frame, "None" in
+/// AW2's font in it.
+fn none_box(core: &Core) -> Vec<u8> {
+    let mut px = vec![0u8; BOX_W * 32];
+    for y in 0..BOX_H {
+        for x in 0..BOX_W {
+            let edge = y == 0 || y == BOX_H - 1 || x == 0 || x == BOX_W - 1;
+            px[y * BOX_W + x] = if edge { 3 } else { 1 };
         }
     }
     let s = "None";
     let w = text_width(core, s);
-    let mut x = (32 - w as i32) / 2;
+    let mut x = (BOX_W as i32 - w as i32) / 2;
     for c in s.bytes() {
         let cw = core.raw_read_8(WIDTHS + c as u32, -1) as usize;
         let at = core.raw_read_32(GLYPHS + 4 * c as u32, -1);
@@ -288,16 +340,16 @@ fn none_plate(core: &Core) -> Vec<u8> {
                 for cx in 0..cw {
                     let b = core.raw_read_8(at + (stride * (3 + r) + cx / 2) as u32, -1);
                     let v = (b >> (4 * (cx & 1))) & 15;
-                    let (xx, yy) = (x + cx as i32, 2 + r as i32);
-                    if v != 0 && (0..32).contains(&xx) && (0..16).contains(&yy) {
-                        px[yy as usize][xx as usize] = if v == 0xA { 3 } else { 2 };
+                    let (xx, yy) = (x + cx as i32, 8 + r as i32);
+                    if v == 0xA && (1..BOX_W as i32 - 1).contains(&xx) && (1..BOX_H as i32 - 1).contains(&yy) {
+                        px[yy as usize * BOX_W + xx as usize] = 3;
                     }
                 }
             }
         }
         x += cw as i32 + 1;
     }
-    tiles_of(&px.iter().flatten().copied().collect::<Vec<u8>>(), 32, 16)
+    tiles_of(&px, BOX_W, 32)
 }
 
 /// AW2's proportional font (crate::skills_panel's).
@@ -325,8 +377,8 @@ fn tiles_of(px: &[u8], w: usize, h: usize) -> Vec<u8> {
     out
 }
 
-/// The plate's colours: dark blue, white, light blue.
-const NONE_COLOURS: [u16; 4] = [0, 0x7FFF, 0x5084, 0x2C63];
+/// The None box's colours: white ground, a grey, the dark line and text.
+const NONE_COLOURS: [u16; 4] = [0, 0x7FFF, 0x5294, 0x1064];
 
 /// The Teams screen's face sprites: the first column's (32x8) tile 400 + 36k.
 const FACE_TILE: u16 = 400;
@@ -335,53 +387,79 @@ const FACE_STRIDE: u16 = 36;
 const ARROW_UP: u16 = 700;
 const ARROW_DOWN: u16 = 702;
 
+/// With a partner shown the columns (frames, faces, emblems, labels,
+/// arrows: every sprite between these lines) go up, the partner boxes
+/// under them.
+const SHIFT: i32 = 16;
+const COLUMN_TOP: i32 = 36;
+const COLUMN_BOTTOM: i32 = 110;
+/// The partner box under the big one (its face's top + 57), the arrows
+/// over and under it while it is picked.
+const BOX_DY: i32 = 57;
+
 fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
     if !teams_on(core, true) || crate::skills_panel::is_open(core) {
         return at;
     }
     let armies = (core.raw_read_8(TEAMS_ARMIES, -1) as u32).clamp(1, 4);
-    borrow(core);
     let editing = core.raw_read_8(EDITING, -1);
     let blink = core.raw_read_8(BLINK, -1);
-    let mut plate_ready = false;
+    let partner_of = |core: &Core, a: u32| {
+        let p = core.raw_read_8(tag::TEAMS_PARTNER + a, -1);
+        (p != NONE && Some(p) != army_main(core, a)).then_some(p)
+    };
+    let shown: Vec<bool> = (0..armies).map(|a| partner_of(core, a).is_some() || editing as u32 == a).collect();
+    if !shown.iter().any(|&s| s) {
+        return at;
+    }
+    borrow(core);
+    // The columns up.
+    let mut e = start;
+    while e + 8 <= at {
+        let a0 = core.raw_read_16(e, -1);
+        let y = (a0 & 0xFF) as i32;
+        if (a0 >> 8) & 3 != 2 && (COLUMN_TOP..COLUMN_BOTTOM).contains(&y) {
+            core.raw_write_16(e, -1, (a0 & !0xFF) | ((y - SHIFT) as u16 & 0xFF));
+        }
+        e += 8;
+    }
     for a in 0..armies {
+        if !shown[a as usize] {
+            continue;
+        }
         let Some((_, fx, fy)) = find(core, start, at, FACE_TILE + FACE_STRIDE * a as u16, true) else { continue };
-        let partner = core.raw_read_8(tag::TEAMS_PARTNER + a, -1);
-        let tile = TEAMS_TILE + 8 * a;
-        let (x, y) = (fx + 8, fy + 56);
-        let pal;
-        if partner != NONE && Some(partner) != army_main(core, a) {
-            write_tiles(core, tile, &hud_face(core, partner));
-            pal = TEAMS_PAL + a;
-            write_palette(core, pal, &co_palette(core, partner));
-        } else {
-            if !plate_ready {
-                write_tiles(core, TEAMS_TILE + 32, &none_plate(core));
+        let tile = TEAMS_TILE + BOX_TILES * a;
+        let pal = match partner_of(core, a) {
+            Some(p) => {
+                let (tiles, palette) = partner_box(core, p);
+                write_tiles(core, tile, &tiles);
+                write_palette(core, TEAMS_PAL + a, &palette);
+                TEAMS_PAL + a
+            }
+            None => {
+                write_tiles(core, tile, &none_box(core));
                 let mut p = [0u8; 32];
                 for (k, c) in NONE_COLOURS.iter().enumerate() {
                     p[2 * k..2 * k + 2].copy_from_slice(&c.to_le_bytes());
                 }
                 write_palette(core, NONE_PAL, &p);
-                plate_ready = true;
+                NONE_PAL
             }
-            if editing as u32 != a {
-                continue;
-            }
-            pal = NONE_PAL;
-        }
-        let shown_tile = if pal == NONE_PAL { TEAMS_TILE + 32 } else { tile };
+        };
+        let (x, y) = (fx + 8, fy + BOX_DY);
         if at + 8 > end {
             break;
         }
-        put(core, at, (y as u16 & 0xFF) | WIDE, (x as u16 & 0x1FF) | size(2), shown_tile as u16 | (pal as u16) << 12);
+        put(core, at, y as u16 & 0xFF, (x as u16 & 0x1FF) | size(2), tile as u16 | (pal as u16) << 12);
+        core.raw_write_16(at + 6, -1, 0);
         at += 8;
         if editing as u32 == a {
-            // The game's arrows go to the partner, blinking as the game's do.
-            for (tile, dy) in [(ARROW_UP, -9), (ARROW_DOWN, 17)] {
+            // The game's arrows go to the partner box, blinking as the game's do.
+            for (tile, ay) in [(ARROW_UP, y - 9), (ARROW_DOWN, y + BOX_H as i32)] {
                 if let Some((e, _, _)) = find(core, start, at, tile, true) {
                     let a2 = core.raw_read_16(e + 4, -1);
                     let show = blink % 32 < 24;
-                    let yy = if show { (y + dy) as u16 & 0xFF } else { 160 };
+                    let yy = if show { ay as u16 & 0xFF } else { 160 };
                     put(core, e, yy | WIDE, ((x + 8) as u16 & 0x1FF) | size(0), a2);
                 }
             }
@@ -394,14 +472,20 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
 
 const PANEL_FACE_TILE: u32 = 0x309;
 const PANEL_PAL: u32 = 5;
-/// The panel's header (64x32, OBJ tile 0, palette 7) and its star tiles
-/// (small: 32 empty, 34 full).
+/// The panel's header (64x32, OBJ tile 0, palette 7: the army's colours)
+/// and its star tiles (small: 32 empty, 33 half, 34 full; big, 16x16: 35,
+/// 39, 43).
 const HEADER_TILE: u16 = 0;
-const STAR_EMPTY: u16 = 32;
-const STAR_FULL: u16 = 34;
-const PANEL_STAR_PAL: u16 = 7;
+const STAR_SMALL: [u16; 3] = [32, 33, 34];
+const STAR_BIG: [u16; 3] = [35, 39, 43];
+/// The partner's strip, under the panel's stars: its top (outline) at the
+/// panel's y + 34, the face's 16 rows from y + 37, the stars at y + 53.
+const STRIP_Y: i32 = 29;
+const STRIP_FACE_Y: i32 = 37;
+const STRIP_STARS_Y: i32 = 53;
+const VFLIP: u16 = 1 << 13;
 
-fn panel_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
+fn panel_flush(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
     if core.raw_read_8(tag::PANEL + 5, -1) != 1 {
         return at;
     }
@@ -412,23 +496,51 @@ fn panel_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
     let y = core.raw_read_16(tag::PANEL + 2, -1) as i32;
     // The header must be in this frame's list (the panel drawn).
     let Some((header, _, _)) = find(core, start, at, HEADER_TILE, true) else { return at };
+    let header_a2 = core.raw_read_16(header + 4, -1);
+    let base = header_a2 & 0x3FF;
+    let pal = header_a2 & 0xF000;
     let mut sprites: Vec<[u16; 3]> = Vec::new();
+    // The partner's meter, as AW2 draws the active CO's: a small star a
+    // star of its CO Power, a big one a star more of its Super Power;
+    // half-filled and full as the meter is.
+    let uses = tag::partner_uses(core, army);
+    let (cop, scop) = stars_of(core, b);
+    let per = tag::star_cost(uses).max(1);
+    let charge = tag::partner_charge(core, army);
+    for k in (0..scop.min(10)).rev() {
+        let level = if charge >= per * (k + 1) {
+            2
+        } else if charge >= per * k + per / 2 {
+            1
+        } else {
+            0
+        };
+        let sy = (y + STRIP_STARS_Y) as u16 & 0xFF;
+        if k < cop {
+            let sx = x + 6 * k as i32;
+            sprites.push([sy, sx as u16 & 0x1FF, STAR_SMALL[level] | pal]);
+        } else {
+            let sx = x + 6 * k as i32 - 4;
+            sprites.push([sy, (sx as u16 & 0x1FF) | size(1), STAR_BIG[level] | pal]);
+        }
+    }
+    // The partner's face (crate::heal_effect borrows its tiles while it plays).
     if !crate::heal_effect::playing(core) {
         write_tiles(core, PANEL_FACE_TILE, &hud_face(core, b));
         write_palette(core, PANEL_PAL, &co_palette(core, b));
-        sprites.push([((y + 12) as u16 & 0xFF) | WIDE, ((x + 32) as u16 & 0x1FF) | size(2), PANEL_FACE_TILE as u16 | (PANEL_PAL as u16) << 12]);
+        sprites.push([((y + STRIP_FACE_Y) as u16 & 0xFF) | WIDE, ((x + 2) as u16 & 0x1FF) | size(2), PANEL_FACE_TILE as u16 | (PANEL_PAL as u16) << 12]);
     }
-    // The partner's meter: a small star per star of its Super Power,
-    // full when charged, under the panel's.
-    let uses = tag::partner_uses(core, army);
-    let (_, scop) = stars_of(core, b);
-    let per = tag::star_cost(uses);
-    let charge = tag::partner_charge(core, army);
-    let n = scop.min(10);
-    for k in 0..n {
-        let full = charge >= per * (k + 1);
-        let sx = x + 6 * k as i32;
-        sprites.push([((y + 41) as u16) & 0xFF, sx as u16 & 0x1FF, (if full { STAR_FULL } else { STAR_EMPTY }) | PANEL_STAR_PAL << 12]);
+    // The strip: the header's own plate rows (its tiles, its colours), the
+    // lower half mirrored over the upper: rounded at both right corners.
+    for (row, dy, flip) in [(3u16, 0, VFLIP), (2, 8, VFLIP), (2, 16, 0), (3, 24, 0)] {
+        for half in 0..2u16 {
+            let sx = x + 32 * half as i32;
+            sprites.push([
+                ((y + STRIP_Y + dy) as u16 & 0xFF) | WIDE,
+                (sx as u16 & 0x1FF) | flip | size(1),
+                (base + 8 * row + 4 * half) | pal,
+            ]);
+        }
     }
     // In front of the header: inserted before it in the list.
     let n = sprites.len() as u32;

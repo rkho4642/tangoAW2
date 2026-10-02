@@ -59,6 +59,18 @@ def teams_pick(g, cos, downs, humans=(1,)):
             e.wait(10)
 
 
+def oam(e):
+    """The OAM's shown sprites: (attr0, attr1, attr2)."""
+    import struct
+    b = e.read(0x07000000, 0x400)
+    out = []
+    for i in range(128):
+        a0, a1, a2 = struct.unpack_from("<HHH", b, 8 * i)
+        if (a0 >> 8) & 3 != 2:
+            out.append((a0, a1, a2))
+    return out
+
+
 def fill(g, army, active=True, partner=True):
     """Meters to their Super Powers' costs (AW2's units)."""
     e = g.e
@@ -185,6 +197,13 @@ def tag_teams_screen(ctx):
     e.press("START", 4)
     e.wait(10)
     ctx.shot(g, "teams_pairs")
+    # The partner boxes (32x32 sprites, OBJ tiles 0x100 + 16 an army) under
+    # the columns, which go up 16 pixels to make room.
+    boxes = {s[2] & 0x3FF: (s[1] & 0x1FF, s[0] & 0xFF) for s in oam(e) if (s[2] & 0x3FF) in (0x100, 0x110)}
+    ctx.eq(sorted(boxes), [0x100, 0x110], "a partner box for each army")
+    faces = [s for s in oam(e) if s[2] & 0x3FF == 400]
+    ctx.eq([f[0] & 0xFF for f in faces], [36], "army 1's face 16 pixels up")
+    ctx.eq(boxes.get(0x100, (0, 0))[1], 36 + 57, "army 1's partner box under it")
     g.teams_to_rules()
     g.set_rules()
     g.set_extra_rules(tag=True)
@@ -197,6 +216,15 @@ def tag_teams_screen(ctx):
     # The CO panel: the partner's HUD face in its tiles.
     face = e.read(e.u32(0x080437EC) + 0x100 * others[2], 0x100)
     ctx.eq(e.read(0x06010000 + 32 * 0x309, 0x100), face, "the CO panel shows the partner's face (OBJ tiles 0x309..)")
+    # The partner's strip under the panel: its face 37 pixels under the
+    # panel's top, the strip's plate (the header's tiles 16..31, palette 7).
+    sprites = oam(e)
+    header = next(((s[1] & 0x1FF, s[0] & 0xFF) for s in sprites if s[2] & 0x3FF == 0 and s[0] >> 14 == 1), None)
+    pface = next(((s[1] & 0x1FF, s[0] & 0xFF) for s in sprites if s[2] & 0x3FF == 0x309), None)
+    ctx.require(header is not None and pface is not None, "the panel and the partner's face are drawn")
+    ctx.eq((pface[0] - header[0], pface[1] - header[1]), (2, 37), "the partner's face in its strip under the panel")
+    plate = [s for s in sprites if (s[2] & 0x3FF) in (16, 20, 24, 28) and s[0] >> 14 == 1]
+    ctx.eq(len(plate), 8, "the strip's plate: eight 32x8 pieces of the panel's own tiles")
     ctx.shot(g, "battle_panel")
 
 
