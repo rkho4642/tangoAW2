@@ -317,6 +317,17 @@ def tag_power(ctx):
     units = [(1, "tank", 10, 10), (2, "tank", 11, 10), (1, "tank", 10, 12), (2, "infantry", 11, 12), (1, "infantry", 3, 3)]
     g = tag_battle(ctx, ["max", "olaf"], ["andy", None], units=units)
     e = g.e
+    for active, partner, label in ((True, False, "only the active CO's meter full"), (False, True, "only the partner's")):
+        fill(g, 1, active=active, partner=partner)
+        if not active:
+            e.w32(g.player(1)["addr"] + ram.P_CHARGE, 0)
+        else:
+            e.w32(tag.rec(1) + tag.P_CHARGE, 0)
+        names = g.open_map_menu()["names"]
+        ctx.check("Tag" not in names, f"no Tag with {label} ({names})")
+        e.press("B", 4)
+        e.wait(30)
+        g.wait_for_input()
     fill(g, 1)
     names = g.open_map_menu()["names"]
     ctx.eq(names, ["CO", "Intel", "Power", "Super", "Tag", "Options", "Save", "Change", "End"], "Tag Power offered")
