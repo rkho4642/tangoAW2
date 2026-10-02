@@ -1744,8 +1744,20 @@ stay out.
 - **The Tag Power's firepower**: the pair's compatibility (the CO record's
   +0x84 table, by the partner: 65..130) adds compatibility - 100 to
   firepower in both halves (`0x020E5C40` -> `0x020E5508`); defence gets
-  nothing (its callers pass 0). Special pairs (+0x6C) only rename the
-  power ("Power Wrench"; "Dual Strike" otherwise) and add victory lines.
+  nothing (its callers pass 0). Every pair has a compatibility (most 100;
+  Von Bolt 90 with nearly everyone, Koal and Rachel 65, Nell and Rachel
+  130). **Special pairs** (+0x6C: 8 bytes an entry, the partner, a star
+  rating 1..3 at +2, a pointer to five text ids: four victory lines and
+  the pair's Tag Power name, e.g. Andy and Max 1 star "Power Wrench" 110,
+  Sami and Eagle 3 stars "Earth and Sky" 120, Kanbei and Sonja 3 stars
+  "Battle Standard" 130, Hachi and Sensei 2 stars "Grizzled Vets" 100):
+  the stars are the CO page's TAG box rating and do nothing in battle (a
+  2-star pair can be 100, a 1-star 115); the bonus is always the
+  compatibility. 47 entries (both directions, symmetric).
+- **Change** ends the turn: the help line is "Switch COs and end your
+  turn.", the incoming CO says its tag-in line, DS plays "CO★SWAP", the
+  next army moves (checked in melonDS). The swapped-in CO is the active one
+  from then on (its day-to-day, through the enemy's turn too).
 - **The computer** (`0x020995C4`): Tag when both are ready; keeps its
   Super Power while the partner's meter is past half (the threshold is a
   parameter); no CO Power when the partner's Super Power is ready. At its
@@ -1800,7 +1812,11 @@ stay out.
   an army's CO stop, UP/DOWN through the COs and None, START again ("Choose
   a partner CO."). Humans and the computer alike: the player picks the
   computer's partner, as in Dual Strike, and the computer then plays the
-  pair (Change, both powers, the Tag Power). Five-army games have no pairs.
+  pair (Change, both powers, the Tag Power). Five-army games too (Black
+  Hole the fifth: five partner slots, OBJ tiles 0x100..0x14F, the five
+  armies' partners at state +0xA0..+0xA4). A special pair shows its star
+  rating on the partner slot (AW2's own small star tiles, ROM 0x08102C24 /
+  0x08102C64).
   In netplay both seats' buttons reach the Teams screen, so both peers
   start with the same pairs.
 - **The DS Campaign**: a mission's record names each army's two COs
@@ -1808,8 +1824,16 @@ stay out.
   pairs are formed at map start (`ds_campaign::tag_pairs`); where the
   player has two picks the CO screen takes a second CO (pick count
   `0x0803BD42`, `SetArmyCoIdsFromList` `0x0803BCDC`) and the second is the
-  partner. Missions with a second front are left to their own flow.
-- **For the two-front missions** (`ds_campaign`'s second front):
+  partner (the CO screen's partner row shows its army's emblem and
+  badge). **Two fronts** (`two_front.rs`): when the second front is won,
+  its winner's CO joins that army on the main front as its partner
+  (`two_front::second_front_over` calls `tag::form_pair`; the player's
+  army or Black Hole's, as Dual Strike's "The CO will now report back to
+  the main front." / "Return to the main front for tag battle."); the map
+  menu's pool is left to `two_front` unless a pair needs ours, and
+  `SetArmyCoIdsFromList`'s trap is `two_front`'s, which calls
+  `tag::set_cos` first.
+- **API** (`tag.rs`):
   `tag::form_pair(core, army, co, charge)` gives an army a partner (its
   active CO stays; `charge` the partner's meter in AW2's units; its
   skills are the mode's set); `tag::break_pair(core, army)` takes it away;
@@ -1823,9 +1847,12 @@ stay out.
   screens are AW2's and none of this RAM is written (battery and
   `compat_aw2_byte_identical`).
 - **Left out**: Dual Strike's tag intro (both COs, "POWER 110%", the
-  pair's name) and its CO-swap animation: Change and the Tag Power use
-  AW2's own screens; special pairs' victory lines; tag skills. Market
-  Crash and other meter drains reach only the active CO.
+  pair's name) and its CO-swap animation and tag-in line: Change and the
+  Tag Power use AW2's own screens; the CO page's TAG box; special pairs'
+  victory lines; tag skills. Market Crash and other meter drains reach
+  only the active CO. The pad bot (`aw2test/bot.py`) fires Tag Powers, but
+  it no longer wins four missions where the computer now fights as a pair
+  (The Long March, Verdant Hills, Into the Woods, Pincer Strike).
 - **Tests:** `tools/aw2test/tests/test_tag.py`: single by default, the
   Rules screen's Skills row, Teams picks and the boxes, Change, meters, the
   Tag Power against the damage calculator (both halves, Max and Andy's
