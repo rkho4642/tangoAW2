@@ -521,3 +521,44 @@ def skills_panel_teams_and_rule(ctx):
     want1 = [0x27] if e.u8(e.u32(PLAYERS) + 0x3C + 0x1D) == edited else [0x25]
     ctx.eq(active(e, 1), want1, "army 1: its CO's Versus set on")
     ctx.eq(active(e, 2), [0x25], "army 2 (the computer, Max): Max's Versus set, Slam Guard")
+
+
+@test(modes=("ds",))
+def skills_netplay_versus_rule(ctx):
+    """Netplay: the Versus rule turned on in the Teams panel and the sets of
+    the console's save (seat 0's) play the same on both peers: this run's
+    inputs replayed on two rollback peers (aw2_netplay_script) give the same
+    skills on and the same battle. (The EXP for rank 1 is a test aid, replayed
+    on both peers.)"""
+    m = ctx.map()
+    m.unit(1, "tank", 10, 10).unit(2, "tank", 11, 10)
+    save = os.path.join(ctx.out, "map.sav")
+    m.write(paths.base_save(), save)
+    e = Emu(save=save, ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    g.boot_to_teams()
+    e.wait(30)
+    e.w32(DATA, 0x314C4B53)
+    for c in CO_SLOTS:
+        a = DATA + 4 + CO_LEN * co_slot(c)
+        e.w32(a, 1000)
+        e.w32(a + 16, 0x20)  # Versus set 0: Bruiser
+    e.press("START", 4)
+    e.wait(10)
+    e.press("L", 4)
+    e.wait(6)
+    e.press("A", 4)
+    e.wait(10)
+    g.set_teams(["andy", "andy"], {1, 2})
+    g.teams_to_rules()
+    g.set_rules(fog=False, weather="clear", power=True, visuals="off", capt=None)
+    g.start_battle()
+    g.wait_for_input()
+    ctx.eq((active(e, 1), active(e, 2)), ([0x20], [0x20]), "both armies: Bruiser (the rule on)")
+    ctx.skills = {1: {0x20}, 2: {0x20}}
+    ctx.attack(g, (10, 10), (10, 10), (11, 10))
+    units = (g.units_base, 12 * 140)
+    identical, values, text = ctx.netplay_replay(g, [(ACTIVE, 30), units, (VERSUS_RULE, 1)])
+    ctx.check(identical, f"both peers the same ({text.splitlines()[-3:] if text else ''})")
+    ctx.eq(values.get(VERSUS_RULE), bytes([1]), "the rule on, on the peers")
