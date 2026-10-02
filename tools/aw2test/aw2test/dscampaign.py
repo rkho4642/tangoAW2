@@ -789,7 +789,7 @@ PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]},
          # Surrounded!, For the Future!: the test player's style (seed) and CO
          # found to win them (a seed search over styles and COs).
          25: {"seed": 1, "cos": _V1},
-         14: {"seed": 5, "cos": _V1},
+         14: {"seed": 27, "cos": _V3},
          # Into the Woods: the enemy HQ rushed, ours held.
          15: {"rush": True, "garrison": True, "seed": 1, "cos": _V1},
          18: {"seed": 0},
