@@ -166,7 +166,7 @@ pub(crate) fn in_versus(core: &Core) -> bool {
     core.raw_read_8(GAME_MODE, -1) == VERSUS
 }
 
-fn on_teams_screen(core: &Core) -> bool {
+pub fn on_teams_screen(core: &Core) -> bool {
     (TASK_TABLE.0..TASK_TABLE.1)
         .step_by(4)
         .any(|a| core.raw_read_32(a, -1) == TEAMS_TASK)
@@ -506,6 +506,9 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         let held = keys;
         let claimed = core.raw_read_16(CLAIMED_KEYS, -1) as u32 & held;
         let mut keys = keys;
+
+        // The Set Skills panel on the CO screens (crate::co_skills).
+        keys = crate::skills_panel::tick(core, ds, keys, prev);
 
         // The Select Mode menu's Campaign sub-menu (AW2 / DS Campaign).
         keys = crate::campaign_menu::tick(core, ds && ds_features && mode.is_none(), keys, prev);

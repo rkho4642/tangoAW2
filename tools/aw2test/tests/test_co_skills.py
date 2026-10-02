@@ -390,3 +390,134 @@ def skills_war_room_exp(ctx):
     ctx.require(rec is not None, "the DS Campaign's slot written")
     off = 0x20 + 8 * 32 + 4 + CO_LEN * co_slot(co)
     ctx.eq(int.from_bytes(rec[off:off + 4], "little"), 3000 + score * 2, "the EXP in Flash")
+
+
+PANEL = 0x0203E3A0          # crate::skills_panel: open, slot, CO, set, ids[4], on Teams
+VERSUS_RULE = DATA + 4 + CO_LEN * 28 + 1
+CO_SELECT = 0x08616638
+CO_SELECT_IDLE = 0x0807CE5D
+
+
+def co_select_idle(e):
+    for p in range(0x0200D610, 0x0200E418, 0x6C):
+        if e.u32(p) == CO_SELECT and e.u32(p + 0x10) == CO_SELECT_IDLE:
+            return True
+    return False
+
+
+def panel_sprites(e):
+    """The panel's four sprites at the head of the game's sprites in OAM (its
+    shadow list is copied to OAM 16..): 64x32, OBJ palette 14."""
+    out = []
+    for k in range(4):
+        a0, a1, a2 = e.u16(0x07000080 + 8 * k), e.u16(0x07000082 + 8 * k), e.u16(0x07000084 + 8 * k)
+        out.append((a0 & 0xC000, a1 & 0xC000, a2 >> 12))
+    return out
+
+
+@test(modes=("ds",))
+def skills_panel_co_screen(ctx):
+    """The War Room's CO screen: SELECT opens the Set Skills panel for the CO
+    highlighted (rank 2: two slots); RIGHT puts the first open skill on the
+    first slot, DOWN and RIGHT RIGHT the second open skill on the second;
+    while it is up the game's CO screen takes no button; A keeps the set
+    (the CO's War Room set) and closes it; B would close it as it was.
+    (The EXP for rank 2 is a test aid.)"""
+    e = Emu(save=paths.base_save(), ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    saves.to_select_mode(e)
+    saves.wheel_to(e, saves.WAR_ROOM)
+    e.press("A", 8)
+    e.wait(60)
+    saves.box_row(e, 1)
+    e.press("A", 8)
+    if not e.wait_until(lambda: sv.running(e, sv.SELECT_MAP_PROC), 600, step=10):
+        raise NavError("the War Room's SELECT MAP did not open")
+    e.wait(90)
+    e.press("A", 8)
+    ctx.require(e.wait_until(lambda: co_select_idle(e), 900, step=10), "the CO screen at its input stage")
+    e.wait(30)
+    e.w32(DATA, 0x314C4B53)
+    for c in CO_SLOTS:
+        e.w32(DATA + 4 + CO_LEN * co_slot(c), 2000)
+    e.press("SELECT", 4)
+    e.wait(10)
+    ctx.eq(e.u8(PANEL), 1, "SELECT: the panel is up")
+    co = e.u8(PANEL + 2)
+    ctx.eq(e.u8(PANEL + 3), 2, "the War Room's set")
+    e.wait(4)
+    ctx.eq(panel_sprites(e), [(0x4000, 0xC000, 14)] * 4, "its four 64x32 sprites first in OAM (16..19)")
+    shot(ctx, e, "panel_open")
+    e.press("RIGHT", 4)
+    e.wait(6)
+    e.press("DOWN", 4)
+    e.wait(6)
+    e.press("RIGHT", 4)
+    e.wait(6)
+    ctx.eq(list(e.read(PANEL + 4, 4)), [0x20, 0x22, 0, 0], "Bruiser, then Sharpshooter (Bruiser is on slot 1)")
+    shot(ctx, e, "panel_two")
+    ctx.check(co_select_idle(e), "the CO screen did not move under the panel")
+    e.press("A", 4)
+    e.wait(10)
+    ctx.eq(e.u8(PANEL), 0, "A: closed")
+    ctx.check(co_select_idle(e), "the A that kept the set did not reach the CO screen")
+    a = DATA + 4 + CO_LEN * co_slot(co)
+    ctx.eq(list(e.read(a + 12, 4)), [0x20, 0x22, 0, 0], "the CO's War Room set")
+    e.press("SELECT", 4)
+    e.wait(10)
+    e.press("LEFT", 4)
+    e.wait(6)
+    e.press("B", 4)
+    e.wait(10)
+    ctx.eq(list(e.read(a + 12, 4)), [0x20, 0x22, 0, 0], "B: closed as it was")
+
+
+def shot(ctx, e, name):
+    e.shot(os.path.join(ctx.out, name))
+
+
+@test(modes=("ds",))
+def skills_panel_teams_and_rule(ctx):
+    """Versus' Teams screen: START on an army's CO stop opens the panel for
+    its CO (its Versus set), L turns the Versus rule Skills on; with the
+    rule on, every army (the computer's too) has its CO's Versus set on in
+    the battle; off (the default), none. (The EXP for rank 1 is a test aid.)"""
+    m = ctx.map()
+    m.unit(1, "tank", 10, 10).unit(2, "tank", 20, 10)
+    save = os.path.join(ctx.out, "map.sav")
+    m.write(paths.base_save(), save)
+    e = Emu(save=save, ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    g.boot_to_teams()
+    e.wait(30)
+    e.w32(DATA, 0x314C4B53)
+    for c in CO_SLOTS:
+        e.w32(DATA + 4 + CO_LEN * co_slot(c), 1000)
+        e.write(DATA + 4 + CO_LEN * co_slot(c) + 16, bytes([0x25, 0, 0, 0]))  # Versus set 0: Slam Guard
+    ctx.eq(e.u8(VERSUS_RULE), 0, "the rule: off by default")
+    e.press("START", 4)
+    e.wait(10)
+    ctx.eq(e.u8(PANEL), 1, "START: the panel is up")
+    ctx.eq((e.u8(PANEL + 3), e.u8(PANEL + 8)), (3, 1), "the Versus set, on the Teams screen")
+    shot(ctx, e, "teams_panel")
+    e.press("L", 4)
+    e.wait(6)
+    ctx.eq(e.u8(VERSUS_RULE), 1, "L: the rule on")
+    edited = e.u8(PANEL + 2)
+    e.press("RIGHT", 4)
+    e.wait(6)
+    e.press("A", 4)
+    e.wait(10)
+    ctx.eq(e.u8(PANEL), 0, "A: closed")
+    a = DATA + 4 + CO_LEN * co_slot(edited)
+    ctx.eq(list(e.read(a + 16, 4)), [0x27, 0, 0, 0], "its CO's Versus set: Snipe Guard (the next one open)")
+    g.set_teams(["andy", "max"], {1})
+    g.teams_to_rules()
+    g.set_rules(fog=False, weather="clear", power=True, visuals="off", capt=None)
+    g.start_battle()
+    g.wait_for_input()
+    want1 = [0x27] if e.u8(e.u32(PLAYERS) + 0x3C + 0x1D) == edited else [0x25]
+    ctx.eq(active(e, 1), want1, "army 1: its CO's Versus set on")
+    ctx.eq(active(e, 2), [0x25], "army 2 (the computer, Max): Max's Versus set, Slam Guard")

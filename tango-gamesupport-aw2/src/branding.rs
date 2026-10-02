@@ -294,5 +294,6 @@ pub fn flush(core: &mut Core) {
             at += 8;
         }
     }
+    at = crate::skills_panel::flush(core, start, at, end);
     core.raw_write_32(NEXT_SPRITE, -1, at);
 }
