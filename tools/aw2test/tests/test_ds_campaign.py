@@ -432,7 +432,9 @@ def ds_campaign_grand_bolt_blocks(ctx):
     """Means to an End: no unit enters the Grand Bolt's cells (AW2's
     underlay): an infantry put just below the dome reaches none
     of them; the terrain panel on a dome cell reads Dual Strike's "Blocked",
-    on a weak point "G Bolt". (The tank's place is a test aid.)"""
+    on a weak point "G Bolt", each with the cell's picture in OBJ palette 15
+    (the Grand Bolt's colours, put back when the cursor leaves). (The
+    infantry's place is a test aid.)"""
     e, g, d = boot(ctx)
     d.start(step=27)
     d.wait_map()
@@ -467,6 +469,10 @@ def ds_campaign_grand_bolt_blocks(ctx):
     e.wait(30)
     ctx.eq(e.u8(0x0203_0207), 4, "on a weak point: G Bolt")
     shot(ctx, e, "panel_part")
+    ctx.eq(e.u8(0x0203E3C0), 1, "its picture in OBJ palette 15, the Grand Bolt's colours")
+    g.goto(5, 14)
+    e.wait(30)
+    ctx.eq(e.u8(0x0203E3C0), 0, "off the Grand Bolt: palette 15 put back")
 
 
 # Dual Strike's tiles tangoAW2 converts (Com Towers, tall woods, Black

@@ -52,8 +52,6 @@ const PART_NAME_AT: u32 = DATA + 0x500;
 const PART_PICTURE_AT: u32 = DATA + 0x600;
 /// The Grand Bolt's dome cells: Dual Strike's "Blocked".
 const BLOCKED_NAME_AT: u32 = DATA + 0x700;
-/// The panel picture's OBJ palette.
-const PICTURE_PALETTE: u32 = 6;
 pub const OBELISK_NAME_AT: u32 = DATA + 0x200;
 const CRYSTAL_PICTURE_AT: u32 = DATA + 0x300;
 const OBELISK_PICTURE_AT: u32 = DATA + 0x400;
@@ -134,6 +132,11 @@ pub fn install(core: &mut Core) {
     core.raw_write_range(CRYSTAL_PICTURE_AT, -1, art.map_or(&blank[..], |a| &a.crystal));
     core.raw_write_range(OBELISK_PICTURE_AT, -1, art.map_or(&blank[..], |a| &a.obelisk_small));
     core.raw_write_32(DATA_SENTINEL, -1, DATA_MAGIC);
+}
+
+/// The terrain panel is on a Grand Bolt cell (its dome or a weak point).
+pub fn panel_on_grand_bolt(core: &Core) -> bool {
+    core.raw_read_8(PANEL, -1) >= 4
 }
 
 pub(crate) fn tile_at(core: &Core, x: u32, y: u32) -> u16 {
@@ -416,7 +419,7 @@ fn panel_name(core: &mut Core) {
     }
     // The Grand Bolt's cells: Dual Strike's picture of the cell.
     if which >= 4 {
-        let pic = crate::grand_bolt::panel_picture(core, x, y, PICTURE_PALETTE).unwrap_or([0; 256]);
+        let pic = crate::grand_bolt::panel_picture(core, x, y).unwrap_or([0; 256]);
         core.raw_write_range(PART_PICTURE_AT, -1, &pic);
     }
 }

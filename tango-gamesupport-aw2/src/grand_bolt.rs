@@ -164,11 +164,9 @@ pub fn cell_at(core: &Core, x: u32, y: u32) -> Option<(usize, bool, bool)> {
 
 /// The terrain panel's picture for a Grand Bolt cell, as Dual Strike's
 /// panel shows it: a 16x32 picture, its top half clear, its bottom half the
-/// cell's own texture, in the colours of OBJ palette `palette` (the
-/// panel's) closest to its own.
-pub fn panel_picture(core: &Core, x: u32, y: u32, palette: u32) -> Option<[u8; 256]> {
-    let obj: Vec<u16> = (0..16).map(|k| core.raw_read_16(PAL_BUFFER + 0x200 + 32 * palette + 2 * k, -1)).collect();
-    let nearest = |c: u16| (1..16).min_by_key(|&j| crate::ds_look::dist(c, obj[j])).unwrap_or(1) as u8;
+/// cell's own texture, in the Grand Bolt's own colours (OBJ palette 15
+/// while it shows, [`flush_panel`]).
+pub fn panel_picture(core: &Core, x: u32, y: u32) -> Option<[u8; 256]> {
     let b = bolt()?;
     let c = cell_at(core, x, y)?;
     let mut px = [[0u8; 16]; 32];
@@ -178,7 +176,7 @@ pub fn panel_picture(core: &Core, x: u32, y: u32, palette: u32) -> Option<[u8; 2
             for tx in 0..8 {
                 let (sx, sy) = (if flips & 0x400 != 0 { 7 - tx } else { tx }, if flips & 0x800 != 0 { 7 - ty } else { ty });
                 let v = (tile[4 * sy + sx / 2] >> (4 * (sx & 1))) & 15;
-                px[16 + oy + ty][ox + tx] = nearest(b.colours[v as usize]);
+                px[16 + oy + ty][ox + tx] = v;
             }
         }
     }
@@ -189,6 +187,54 @@ pub fn panel_picture(core: &Core, x: u32, y: u32, palette: u32) -> Option<[u8; 2
         }
     }
     crate::ds_art::tiles(&bmp, 16, &[(0, 0, 16, 32)]).try_into().ok()
+}
+
+/// The panel picture's tiles (`0x06013CC0`: OBJ tile 0x1E6) and the OBJ
+/// palette it borrows while it shows the Grand Bolt (15: no map sprite
+/// uses it; crate::heal_effect borrows it during a heal and puts it back).
+const PICTURE_TILE: u16 = 0x1E6;
+const OBJ_PALETTE: u32 = 15;
+/// 1 while palette 15 holds the Grand Bolt's colours, then palette 15 as
+/// it was (32 bytes). EWRAM the game never writes (after crate::skills_panel's).
+const BORROWED: u32 = 0x0203_E3C0;
+const SAVED: u32 = BORROWED + 4;
+
+/// At the sprite flush (crate::branding::flush): while the terrain panel
+/// shows a Grand Bolt cell in Means to an End, its picture's sprite uses
+/// OBJ palette 15 with the Grand Bolt's colours; when it no longer does,
+/// palette 15 is put back.
+pub fn flush_panel(core: &mut Core, start: u32, at: u32) {
+    let showing = on(core) && crate::obelisk::panel_on_grand_bolt(core);
+    let borrowed = core.raw_read_8(BORROWED, -1) == 1;
+    let pal = |base: u32| base + 0x200 + 32 * OBJ_PALETTE;
+    if showing {
+        let Some(b) = bolt() else { return };
+        if !borrowed {
+            let mut p = [0u8; 32];
+            core.raw_read_range(pal(PAL_BUFFER), -1, &mut p);
+            core.raw_write_range(SAVED, -1, &p);
+            core.raw_write_8(BORROWED, -1, 1);
+        }
+        let colours: Vec<u8> = with_ground(core, b.colours).iter().flat_map(|c| c.to_le_bytes()).collect();
+        for base in [PAL_BUFFER, PAL_RAM] {
+            core.raw_write_range(pal(base), -1, &colours);
+        }
+        let mut s = start;
+        while s + 8 <= at {
+            let a2 = core.raw_read_16(s + 4, -1);
+            if a2 & 0x3FF == PICTURE_TILE {
+                core.raw_write_16(s + 4, -1, (a2 & 0x0FFF) | (OBJ_PALETTE as u16) << 12);
+            }
+            s += 8;
+        }
+    } else if borrowed {
+        let mut p = [0u8; 32];
+        core.raw_read_range(SAVED, -1, &mut p);
+        for base in [PAL_BUFFER, PAL_RAM] {
+            core.raw_write_range(pal(base), -1, &p);
+        }
+        core.raw_write_8(BORROWED, -1, 0);
+    }
 }
 
 // --- Weak points ----------------------------------------------------------------
