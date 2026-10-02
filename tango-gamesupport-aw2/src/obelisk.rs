@@ -9,6 +9,12 @@
 //! tells them apart by that tile, stops them firing, draws them with their
 //! own art (five/obelisk_art.py), names them in the terrain panel, and heals.
 //! Real minicannons and Black Cannons keep their own tiles and are untouched.
+//! Both are always breakable: nothing here keeps their hit points.
+//!
+//! The Grand Bolt's weak points ([`crate::grand_bolt`], Means to an End) are
+//! minicannons on their own tile too ([`crate::grand_bolt::PART_TILE`]):
+//! no sprite (the Grand Bolt's picture draws them), no fire, no heal,
+//! "G Bolt" in the terrain panel.
 
 use mgba::core::Core;
 
@@ -41,11 +47,16 @@ const CRYSTAL_DEF: u32 = DATA + 0x20;
 /// A sprite definition with no sprites (see [`sprite`]).
 const EMPTY_DEF: u32 = DATA + 0x40;
 pub const CRYSTAL_NAME_AT: u32 = DATA + 0x100;
+const PART_NAME_AT: u32 = DATA + 0x500;
+/// The weak point's terrain-panel picture: none (the panel shows the name).
+const PART_PICTURE_AT: u32 = DATA + 0x600;
+/// The Grand Bolt's dome cells: Dual Strike's "Blocked".
+const BLOCKED_NAME_AT: u32 = DATA + 0x700;
 pub const OBELISK_NAME_AT: u32 = DATA + 0x200;
 const CRYSTAL_PICTURE_AT: u32 = DATA + 0x300;
 const OBELISK_PICTURE_AT: u32 = DATA + 0x400;
 const DATA_SENTINEL: u32 = DATA + 0xFFC;
-const DATA_MAGIC: u32 = 0x344B_4C42; // "BLK4" (bump when the data changes)
+const DATA_MAGIC: u32 = 0x354B_4C42; // "BLK5" (bump when the data changes)
 
 /// OBJ tiles for the sprites in battle (no screen of the battle map writes
 /// 0x176..0x1A5): the Obelisk's 36 tiles, then the Crystal's 8.
@@ -61,10 +72,16 @@ pub fn install(core: &mut Core) {
         core.raw_write_8(TERRAIN_TABLE + tile as u32, -1, class);
         core.raw_write_8(TERRAIN_RAM + tile as u32, -1, class);
     }
+    // The Grand Bolt's weak point exists with the Dual Strike pack only.
+    if crate::ds_weather::is_on(core) {
+        let (tile, class) = (crate::grand_bolt::PART_TILE, crate::grand_bolt::PART_CLASS);
+        core.raw_write_8(TERRAIN_TABLE + tile as u32, -1, class);
+        core.raw_write_8(TERRAIN_RAM + tile as u32, -1, class);
+    }
     if core.raw_read_32(DATA_SENTINEL, -1) == DATA_MAGIC {
         return;
     }
-    for tile in [CRYSTAL_TILE, OBELISK_TILE] {
+    for tile in [CRYSTAL_TILE, OBELISK_TILE, crate::grand_bolt::PART_TILE] {
         for (i, q) in PLAIN_QUAD.iter().enumerate() {
             core.raw_write_16(METATILES + tile as u32 * 8 + 2 * i as u32, -1, *q);
         }
@@ -103,6 +120,11 @@ pub fn install(core: &mut Core) {
     }
     core.raw_write_range(CRYSTAL_NAME_AT, -1, &CRYSTAL_NAME);
     core.raw_write_range(OBELISK_NAME_AT, -1, &OBELISK_NAME);
+    let part = crate::unit_names::picture(core, "G Bolt").or_else(|| crate::unit_names::picture(core, "Bolt")).unwrap_or([0; 256]);
+    core.raw_write_range(PART_NAME_AT, -1, &part);
+    core.raw_write_range(PART_PICTURE_AT, -1, &[0u8; 256]);
+    let blocked = crate::unit_names::picture(core, "Blocked").unwrap_or([0; 256]);
+    core.raw_write_range(BLOCKED_NAME_AT, -1, &blocked);
     // Their pictures: Dual Strike's, imported; without it they are shown
     // only in someone else's replay, and then as nothing.
     let blank = [0u8; 256];
@@ -125,6 +147,8 @@ pub(crate) fn tile_at(core: &Core, x: u32, y: u32) -> u16 {
 enum Structure {
     Crystal,
     Obelisk,
+    /// The Grand Bolt's weak point.
+    Part,
 }
 
 /// What an invention-list entry is, if it is one of ours.
@@ -133,6 +157,7 @@ fn structure(core: &Core, entry: u32) -> Option<Structure> {
     let kind = (core.raw_read_16(entry + 2, -1) >> 6) & 0xF;
     match kind {
         KIND_MINICANNON if tile_at(core, x, y) == CRYSTAL_TILE => Some(Structure::Crystal),
+        KIND_MINICANNON if tile_at(core, x, y) == crate::grand_bolt::PART_TILE => Some(Structure::Part),
         KIND_CANNON if tile_at(core, x + 1, y + 1) == OBELISK_TILE => Some(Structure::Obelisk),
         _ => None,
     }
@@ -143,6 +168,7 @@ fn structure_at(core: &Core, x: u32, y: u32) -> Option<Structure> {
     match tile_at(core, x, y) {
         CRYSTAL_TILE => return Some(Structure::Crystal),
         OBELISK_TILE => return Some(Structure::Obelisk),
+        crate::grand_bolt::PART_TILE => return Some(Structure::Part),
         _ => {}
     }
     for i in 0..INVENTION_COUNT {
@@ -223,6 +249,7 @@ fn sprite(core: &mut Core) {
     );
     let new = match lr {
         0x0803_FB93 if tile_at(core, x, y) == CRYSTAL_TILE => CRYSTAL_DEF,
+        0x0803_FB93 if tile_at(core, x, y) == crate::grand_bolt::PART_TILE => EMPTY_DEF,
         0x0803_FB77 if crate::com_tower::tower_at(core, x, y) => match crate::com_tower::sprite_def(core, def) {
             Some(d) => d,
             None => return,
@@ -262,13 +289,13 @@ fn no_fire(core: &mut Core) {
     let players = crate::five::players(core);
     let black_hole = (1..=5).contains(&army) && core.raw_read_8(players + 0x3C * army + 0x1A, -1) == 5;
     let alive = core.raw_read_8(entry + 4, -1) != 0;
-    if !(black_hole && alive && crate::heal_effect::available()) {
+    if kind == Structure::Part || !(black_hole && alive && crate::heal_effect::available()) {
         core.gba_mut().cpu_mut().set_thumb_pc(NEXT_ENTRY);
         return;
     }
     let (x, y) = (core.raw_read_8(entry, -1), core.raw_read_8(entry + 1, -1));
     let (effect, centre) = match kind {
-        Structure::Crystal => (crate::heal_effect::Kind::Crystal, (x, y)),
+        Structure::Crystal | Structure::Part => (crate::heal_effect::Kind::Crystal, (x, y)),
         Structure::Obelisk => (crate::heal_effect::Kind::Obelisk, (x + 1, y + 1)),
     };
     crate::heal_effect::install(core);
@@ -314,7 +341,7 @@ fn heal(core: &mut Core) {
         match structure(core, e) {
             Some(Structure::Crystal) => sources.push((x, y, x, y, 2, 20)),
             Some(Structure::Obelisk) => sources.push((x, y, x + 2, y + 2, 4, 20)),
-            None => {}
+            Some(Structure::Part) | None => {}
         }
     }
     if sources.is_empty() {
@@ -376,6 +403,8 @@ fn panel_name(core: &mut Core) {
     let (which, name) = match structure_at(core, x, y) {
         Some(Structure::Crystal) => (1, CRYSTAL_NAME_AT),
         Some(Structure::Obelisk) => (2, OBELISK_NAME_AT),
+        Some(Structure::Part) => (4, PART_NAME_AT),
+        None if crate::grand_bolt::cell_at(core, x, y).is_some() => (5, BLOCKED_NAME_AT),
         None if crate::com_tower::tower_at(core, x, y) => (3, crate::com_tower::NAME_AT),
         None => (0, 0),
     };
@@ -390,6 +419,7 @@ fn panel_picture(core: &mut Core) {
         1 => CRYSTAL_PICTURE_AT,
         2 => OBELISK_PICTURE_AT,
         3 => crate::com_tower::PICTURE_AT,
+        4 | 5 => PART_PICTURE_AT,
         _ => return,
     };
     core.gba_mut().cpu_mut().set_gpr(0, picture as i32);

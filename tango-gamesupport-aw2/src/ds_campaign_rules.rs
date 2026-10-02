@@ -268,8 +268,8 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
             })
         }
         // Means to an End: the Grand Bolt's three weak points all destroyed
-        // (Dual Strike's kinds 0xB..0xD; tangoAW2's Obelisks on them).
-        0x0235_0560 => alive_inventions(core, 0xA) == 0,
+        // (Dual Strike's kinds 0xB..0xD; crate::grand_bolt's parts).
+        0x0235_0560 => !(0..3).any(|k| crate::grand_bolt::part_alive(core, k)),
         // A weak point still standing, and the cell below it (where it
         // spawns an Oozium) not held by the moving army's own unit.
         0x0235_21A4 => weak_point_spawns(core, 0, army),
@@ -315,16 +315,9 @@ fn properties_owned(core: &Core, a: u32) -> u32 {
 #[cfg(test)]
 pub const KNOWN: &[u32] = &[crate::ds_campaign_data::HARD_CAMPAIGN, 0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_07A8, 0x0201_99A4, 0x0235_0560, 0x0235_21A4, 0x0235_20F8, 0x0235_204C, 0x0235_1F34, 0x0235_1EB8, 0x0235_1E3C, 0x0235_2018, 0x0235_1FE4, 0x0235_1FB0, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4, 0x0235_172C, 0x0235_0D44, 0x0235_1988, 0x0235_18CC, 0x0235_1D28, 0x0235_1D3C, 0x0235_16A4, 0x0235_1334, 0x0235_1538, 0x0235_17D4, 0x0235_17E4, 0x0235_1A4C, 0x0235_1AF0, 0x0235_1D50, 0x0235_1D74, 0x0235_1D9C, 0x0235_1DC8, 0x0235_1DD8, 0x0235_1DE8, 0x0235_1E04, 0x0235_1E20, 0x0200_3F8C, 0x0201_993C, 0x0201_9950];
 
-/// The Obelisk standing on weak point `k` ([`GRAND_BOLT_WEAK_POINTS`]: its
-/// bottom row's middle; the inventions list keeps its top-left cell).
+/// Weak point `k` of the Grand Bolt still stands (crate::grand_bolt).
 fn weak_point_alive(core: &Core, k: usize) -> bool {
-    let (x, y) = GRAND_BOLT_WEAK_POINTS[k];
-    (0..16).map(|i| INVENTIONS + 8 * i).take_while(|&a| (core.raw_read_16(a + 2, -1) >> 6) & 0xF != 0).any(|a| {
-        (core.raw_read_16(a + 2, -1) >> 6) & 0xF == 3
-            && core.raw_read_8(a, -1) as u32 + 1 == x
-            && core.raw_read_8(a + 1, -1) as u32 + 2 == y
-            && core.raw_read_8(a + 4, -1) > 0
-    })
+    crate::grand_bolt::part_alive(core, k)
 }
 
 /// The unit id on a cell (0: none).
@@ -338,7 +331,6 @@ fn unit_id_at(core: &Core, x: u32, y: u32) -> u8 {
 /// point's hit points while its crystal stands ([`MTE_LEN`] bytes, kept
 /// with a mission saved halfway, `crate::suspend`).
 pub(crate) const MTE_TOLD: u32 = 0x0203_F700;
-const MTE_HP: u32 = 0x0203_F701;
 /// Ring of Fire: its Volcano stilled (Dual Strike's rule: Black Hole's
 /// unit hiding in the city found).
 const VOLCANO_STILL: u32 = 0x0203_F704;
@@ -361,38 +353,16 @@ pub fn crystal_alive(core: &Core, k: usize) -> bool {
     })
 }
 
-/// The invention entry of weak point `k` (its Obelisk: top-left cell).
-fn weak_point_entry(core: &Core, k: usize) -> Option<u32> {
-    let (x, y) = GRAND_BOLT_WEAK_POINTS[k];
-    (0..16).map(|i| INVENTIONS + 8 * i).take_while(|&a| (core.raw_read_16(a + 2, -1) >> 6) & 0xF != 0).find(|&a| {
-        (core.raw_read_16(a + 2, -1) >> 6) & 0xF == 3 && core.raw_read_8(a, -1) as u32 + 1 == x && core.raw_read_8(a + 1, -1) as u32 + 2 == y
-    })
-}
-
 /// Means to an End in a session.
 fn means_to_an_end(core: &Core) -> bool {
     crate::ds_campaign::active(core) && crate::ds_campaign::mission(core) == MEANS_TO_AN_END as u8 && crate::ds_campaign::in_battle(core)
 }
 
-/// Every frame in Means to an End: a weak point whose crystal stands
-/// takes no damage (its force field: its hit points kept); once its
-/// crystal is shattered it is open.
+/// Every frame in Means to an End: the Grand Bolt (crate::grand_bolt: its
+/// colours; a weak point whose crystal stands keeps its hit points, its
+/// force field; once its crystal is shattered it is open).
 pub fn mte_tick(core: &mut Core) {
-    if !means_to_an_end(core) {
-        return;
-    }
-    for k in 0..3 {
-        let Some(e) = weak_point_entry(core, k) else { continue };
-        let hp = core.raw_read_8(e + 4, -1);
-        let kept = core.raw_read_8(MTE_HP + k as u32, -1);
-        if crystal_alive(core, k) {
-            if kept == 0 || hp > kept {
-                core.raw_write_8(MTE_HP + k as u32, -1, hp);
-            } else if hp < kept {
-                core.raw_write_8(e + 4, -1, kept);
-            }
-        }
-    }
+    crate::grand_bolt::tick(core);
 }
 
 /// A mission's start: the mission's state (Means to an End's, Ring of
@@ -491,10 +461,7 @@ pub fn invention_at(core: &mut Core) {
     if !TARGET_CALLERS.contains(&lr) {
         return;
     }
-    let closed = (0..3).any(|k| {
-        let (wx, wy) = GRAND_BOLT_WEAK_POINTS[k];
-        crystal_alive(core, k) && (wx - 1..=wx + 1).contains(&x) && (wy - 2..=wy).contains(&y)
-    });
+    let closed = (0..3).any(|k| GRAND_BOLT_WEAK_POINTS[k] == (x, y) && crystal_alive(core, k));
     if closed {
         let cpu = core.gba_mut().cpu_mut();
         cpu.set_gpr(0, 0);

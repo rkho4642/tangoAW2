@@ -411,13 +411,14 @@ struct Painter<'a> {
     vram: Vec<u8>,
     used: Vec<bool>,
     loaded: bool,
+    bolt_slots: Option<Vec<usize>>,
 }
 
 const TILE: usize = 32;
 
 impl<'a> Painter<'a> {
     fn new(core: &Core, look: Option<&'a crate::ds_look::Look>) -> Self {
-        Painter { look, buf: core.raw_read_32(BG3_BUFFER_POINTER, -1), vram: Vec::new(), used: Vec::new(), loaded: false }
+        Painter { look, buf: core.raw_read_32(BG3_BUFFER_POINTER, -1), vram: Vec::new(), used: Vec::new(), loaded: false, bolt_slots: None }
     }
 
     fn load(&mut self, core: &Core) {
@@ -439,22 +440,69 @@ impl<'a> Painter<'a> {
         let Some((tile, b)) = l.composite(e, o, side) else {
             return e;
         };
+        match self.pool_tile(core, l, &tile) {
+            Some(s) => s as u16 | b << 12,
+            // The pool is full: the cell without the upper part.
+            None => e,
+        }
+    }
+
+    /// A tile of the look's pool holding `tile`: one already there, else
+    /// the first one no tilemap entry uses (written to VRAM); None when the
+    /// pool is full.
+    fn pool_tile(&mut self, core: &mut Core, l: &crate::ds_look::Look, tile: &[u8]) -> Option<usize> {
+        let pool = l.pool.clone();
+        self.tile_in(core, &pool, tile)
+    }
+
+    /// [`Self::pool_tile`] over the slots `pool`.
+    fn tile_in(&mut self, core: &mut Core, pool: &[usize], tile: &[u8]) -> Option<usize> {
         self.load(core);
         let at = |s: usize| TILE * s..TILE * s + TILE;
-        let s = match l.pool.iter().copied().find(|&s| self.vram[at(s)] == tile) {
+        let s = match pool.iter().copied().find(|&s| self.vram[at(s)] == *tile) {
             Some(s) => s,
-            None => match l.pool.iter().copied().find(|&s| !self.used[s]) {
-                Some(s) => {
-                    self.vram[at(s)].copy_from_slice(&tile);
-                    core.raw_write_range(VRAM_TILES + (TILE * s) as u32, -1, &tile);
-                    s
-                }
-                // The pool is full: the cell without the upper part.
-                None => return e,
-            },
+            None => {
+                let s = pool.iter().copied().find(|&s| !self.used[s])?;
+                self.vram[at(s)].copy_from_slice(tile);
+                core.raw_write_range(VRAM_TILES + (TILE * s) as u32, -1, tile);
+                s
+            }
         };
         self.used[s] = true;
-        s as u16 | b << 12
+        Some(s)
+    }
+
+    /// Where the Grand Bolt's tiles go: the look's pool, then the static
+    /// tiles (not the sea's or river's, which their animation rewrites) no
+    /// other cell of the map draws with.
+    fn bolt_slots(&mut self, core: &Core, l: &crate::ds_look::Look) -> Vec<usize> {
+        if let Some(s) = &self.bolt_slots {
+            return s.clone();
+        }
+        let (w, h) = (core.raw_read_16(MAP, -1) as u32, core.raw_read_16(MAP + 2, -1) as u32);
+        let mut drawn = vec![false; crate::ds_look::TILES];
+        for y in 0..h.min(64) {
+            for x in 0..w.min(64) {
+                if crate::grand_bolt::cell_at(core, x, y).is_some() {
+                    continue;
+                }
+                let row = core.raw_read_16(MAP + 0x417A + 2 * y, -1) as u32;
+                let t = core.raw_read_16(MAP + 0xA22 + 2 * (row + x), -1);
+                for e in l.entries(t, x, y) {
+                    if let Some(d) = drawn.get_mut((e & 0x3FF) as usize) {
+                        *d = true;
+                    }
+                }
+            }
+        }
+        let mut slots = l.pool.clone();
+        for t in (1..0x100).chain(0x260..crate::ds_look::TILES) {
+            if !drawn[t] && !slots.contains(&t) {
+                slots.push(t);
+            }
+        }
+        self.bolt_slots = Some(slots.clone());
+        slots
     }
 
     /// A cell's four tilemap entries as `BlitMapRow`/`BlitMapColumn` draw
@@ -464,6 +512,23 @@ impl<'a> Painter<'a> {
         let cell = row(core, y) + x;
         let fog = if core.raw_read_8(MAP + 0x234A + cell, -1) == 0 { 0x4000 } else { 0 };
         let t = core.raw_read_16(MAP + 0xA22 + 2 * cell, -1);
+        // Means to an End's Grand Bolt: its own picture (crate::grand_bolt),
+        // its tiles in the pool as the composites are, in its palette.
+        if let (Some(l), Some(c), Some(b)) = (self.look, crate::grand_bolt::cell_at(core, x, y), crate::grand_bolt::bolt()) {
+            let mut q = [0u16; 4];
+            let mut whole = true;
+            let slots = self.bolt_slots(core, l);
+            for (k, e) in q.iter_mut().enumerate() {
+                let (tile, flips) = b.tile(c, k);
+                match self.tile_in(core, &slots, &tile) {
+                    Some(s) => *e = s as u16 | flips | crate::grand_bolt::PALETTE << 12,
+                    None => whole = false,
+                }
+            }
+            if whole {
+                return q.map(|v| v.wrapping_add(fog));
+            }
+        }
         let q = match self.look {
             Some(l) => {
                 let mut q = l.entries(t, x, y);

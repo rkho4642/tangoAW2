@@ -381,17 +381,30 @@ def ds_campaign_cpu_plays(ctx):
 
 @test(modes=("ds",))
 def ds_campaign_grand_bolt(ctx):
-    """Means to an End: the Grand Bolt (a picture of tiles AW2 has no art
-    for) is plains with a Black Obelisk on each of its three weak points;
-    on Black Hole's turn of every sixth day each weak point standing spawns
-    an Oozium below it; the mission goes on until they are destroyed."""
+    """Means to an End: the Grand Bolt is Dual Strike's own picture
+    (crate::grand_bolt: its cells AW2's underlay, drawn with its tiles in BG
+    palette 7, its colours there), its three weak points its parts (a
+    minicannon on tile 0x194, no Black Obelisk); on Black Hole's turn of
+    every sixth day each weak point standing spawns an Oozium below it; the
+    mission goes on until they are destroyed."""
     e, g, d = boot(ctx)
     d.start(step=27)
     d.wait_map()
     ctx.eq(d.mission(), 24, "Means to an End")
     inv = [(e.u8(0x02028360 + 8 * k), e.u8(0x02028361 + 8 * k), (e.u16(0x02028362 + 8 * k) >> 6) & 15)
            for k in range(16)]
-    ctx.eq(sorted(i for i in inv if i[2] == 3), [(2, 7, 3), (8, 9, 3), (14, 7, 3)], "three Obelisks on the weak points")
+    ctx.eq(sorted(i for i in inv if (i[0], i[1]) in [(3, 9), (9, 11), (15, 9)]), [(3, 9, 4), (9, 11, 4), (15, 9, 4)],
+           "the three weak points: the Grand Bolt's parts")
+    ctx.eq([i for i in inv if i[2] == 3], [], "no Black Obelisk")
+    rows = lambda y: e.u16(dc.MAP + 0x417A + 2 * y)
+    ctx.eq([e.u16(dc.MAP + 0xA22 + 2 * (rows(y) + x)) for x, y in [(3, 9), (9, 11), (15, 9)]], [0x194] * 3, "on tile 0x194")
+    ctx.eq(e.u16(dc.MAP + 0xA22 + 2 * (rows(6) + 9)), 0x1A4, "the dome: AW2's underlay")
+    g.goto(9, 6)
+    e.wait(30)
+    buf = e.u32(0x08499584)
+    pals = {e.u16(buf + 2 * k) >> 12 for k in range(0x400)}
+    ctx.check(7 in pals, f"drawn in BG palette 7 ({sorted(pals)})")
+    shot(ctx, e, "grand_bolt_drawn")
     cells = [(3, 10), (9, 12), (15, 10)]
     at = lambda: [next(((u["army"], u["type"]) for u in g.units() if (u["x"], u["y"]) == c), None) for c in cells]
     ctx.eq(at(), [None, None, None], "nothing below the weak points")
@@ -412,6 +425,48 @@ def ds_campaign_grand_bolt(ctx):
     g.goto(9, 8)
     e.wait(30)
     shot(ctx, e, "grand_bolt")
+
+
+@test(modes=("ds",))
+def ds_campaign_grand_bolt_blocks(ctx):
+    """Means to an End: no unit enters the Grand Bolt's cells (AW2's
+    underlay): an infantry put just below the dome reaches none
+    of them; the terrain panel on a dome cell reads Dual Strike's "Blocked",
+    on a weak point "G Bolt". (The tank's place is a test aid.)"""
+    e, g, d = boot(ctx)
+    d.start(step=27)
+    d.wait_map()
+    d.wait_control()
+    rows = lambda y: e.u16(dc.MAP + 0x417A + 2 * y)
+    tile = lambda x, y: e.u16(dc.MAP + 0xA22 + 2 * (rows(y) + x))
+    bolt = {(x, y) for y in range(12) for x in range(19) if tile(x, y) in (0x1A4, 0x194)}
+    ctx.check(len(bolt) > 150, f"the dome's cells: {len(bolt)}")
+    # (The player starts with none: Black Hole's infantry, its range shown.)
+    mine = [u for u in g.units() if u["type"] == 1]
+    ctx.require(mine, "an infantry")
+    ctx.log(f"unit type {mine[0]['type']}")
+    d.place_unit(mine[0], 5, 12)
+    e.wait(4)
+    g.goto(5, 12)
+    g.select(5, 12)
+    e.wait(20)
+    reach = set()
+    w, h = d.size()
+    for y in range(h):
+        r = e.read(dc.MAP + 0x2852 + rows(y), w)
+        reach |= {(x, y) for x in range(w) if r[x] != 0xFF}
+    ctx.check(reach and not (reach & bolt), f"the unit's range ({len(reach)} cells) has no cell of the dome ({sorted(reach & bolt)[:5]})")
+    shot(ctx, e, "range_below_dome")
+    e.press("B", 4)
+    e.wait(20)
+    g.goto(9, 6)
+    e.wait(30)
+    ctx.eq(e.u8(0x0203_0207), 5, "the panel on the dome: Blocked")
+    shot(ctx, e, "panel_blocked")
+    g.goto(9, 11)
+    e.wait(30)
+    ctx.eq(e.u8(0x0203_0207), 4, "on a weak point: G Bolt")
+    shot(ctx, e, "panel_part")
 
 
 # Dual Strike's tiles tangoAW2 converts (Com Towers, tall woods, Black
@@ -446,7 +501,7 @@ def _every_mission(step):
         classes = [e.u8(dc.MAP + 0x1432 + rows[y] + x) for y in range(h) for x in range(w)]
         grand_bolt = index == 24
         bad = [(i % w, i // w) for i, (t, want) in enumerate(zip(tiles, m["tiles"]))
-               if t != want and want not in CONVERTED and not (grand_bolt and t in (0x01, 0x193, 0x1A4)) and i not in moved]
+               if t != want and want not in CONVERTED and not (grand_bolt and t in (0x01, 0x194, 0x1A4)) and i not in moved]
         ctx.check(not bad, f"{label}: every tile as Dual Strike's ({len(bad)} differ: {bad[:6]})")
         none = [(i % w, i // w) for i, c in enumerate(classes) if c == 0]
         ctx.check(not none, f"{label}: every tile has a terrain ({len(none)} without: {none[:6]})")
@@ -967,8 +1022,16 @@ def shown_cleared(flags):
 WIN_DAYS = 40
 
 
+# Dual Strike's two-front missions (Victory or Death!, Lightning Strikes,
+# Omens and Signs, Ring of Fire, Means to an End): the user plays them by
+# hand (no pad-won test while their two fronts are being built).
+TWO_FRONT = {8, 10, 14, 21, 24}
+
+
 def _win(step):
     def fn(ctx):
+        if dc.ORDER[step] in TWO_FRONT:
+            raise Skip("a two-front mission: played by hand (the user's decision)")
         e, g, d = boot(ctx)
         index = dc.ORDER[step]
         name = dc.DsData().mission(index)["name"]
@@ -1397,7 +1460,7 @@ def ds_campaign_means_to_an_end(ctx):
     inv = lambda: [(e.u8(0x02028360 + 8 * k), e.u8(0x02028361 + 8 * k), (e.u16(0x02028362 + 8 * k) >> 6) & 15, 0x02028360 + 8 * k)
                    for k in range(16)]
     crystals = {(x, y): a for x, y, k, a in inv() if k == 4 and (x, y) in MTE_CRYSTALS}
-    obelisks = {(x + 1, y + 2): a for x, y, k, a in inv() if k == 3}
+    obelisks = {(x, y): a for x, y, k, a in inv() if k == 4 and (x, y) in [(3, 9), (9, 11), (15, 9)]}
     ctx.eq(sorted(crystals), sorted(MTE_CRYSTALS), "each crystal an invention (the game's own)")
     west = obelisks[(3, 9)]
     hp = e.u8(west + 4)

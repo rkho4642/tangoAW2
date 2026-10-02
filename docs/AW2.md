@@ -1038,13 +1038,36 @@ overlay 1, the campaign's code, at `0x02350560`).
   the weather as fixed weather (sandstorm as tangoAW2's) and the look are set
   (Snow, Desert and Wasteland drawn with Dual Strike's own terrain,
   `wasteland::set_ds_look`).
-- **Means to an End**: the Grand Bolt is a picture of tiles (laid out as a
-  sheet) AW2 has no art for; it becomes plains with a Black Obelisk on each
-  of its three weak points ((3, 9), (9, 11), (15, 9), where Dual Strike's
-  code tests its structure kinds 0xB..0xD). On Black Hole's turn of every
-  sixth day each standing weak point destroys the unit below it and spawns
-  an Oozium there (AW2's `CreateUnitAt`); destroying all three wins. Its
-  second front's three Black Crystals stand on the main map (below).
+- **Means to an End: the Grand Bolt** (`grand_bolt.rs`). Dual Strike draws
+  its battle map in 3D, a 16x16 texture per cell; its map stores the Grand
+  Bolt as a picture (cell (x, y) holds `8 + 0x20 * y + x`), which only Means
+  to an End (map 0xF8) reads through its own table (arm9 `0x02157F84`,
+  every other map `0x02157BC4`: per terrain id a texture and two flips,
+  0x4000 left-right, 0x8000 top-bottom). The Grand Bolt is one quarter
+  drawn four times: textures 0x78..0xA7 (16x16, 4 bits a pixel, one after
+  another) in `bmap/024` (`025`/`026` the same with other edges), coloured
+  by `bmap/0aa`. Here its cells are AW2's underlay (a structure's
+  footprint: no unit enters; the terrain panel reads Dual Strike's
+  "Blocked"), drawn by the Wasteland look's painter (`wasteland.rs`) with
+  its own tiles: one per texture quadrant, mirrored by the tilemap's flips
+  (172 tiles), put in the look's pool of free tiles, then in static
+  terrain tiles no other cell of the map draws with (one already there
+  used again), in BG palette 7 (the fogged copy of palette 3: the mission
+  has no fog), set each frame; the texture's ground around the dome
+  (colours 7..11) takes the colours of the map's plain as drawn. Its three
+  weak points ((3, 9), (9, 11), (15, 9), where Dual Strike's code tests its
+  structure kinds 0xB..0xD) are minicannons on tile `0x194` (unused by
+  AW2): no sprite (the picture draws its discs), no fire, no heal, "Bolt"
+  and their hit points in the terrain panel. No Black Obelisk stands in
+  the mission; Black Obelisks and Crystals keep their hit points nowhere
+  (`obelisk.rs` has no such path). On Black Hole's turn of every sixth day
+  each standing weak point destroys the unit below it and spawns an Oozium
+  there (AW2's `CreateUnitAt`); destroying all three wins. Its second
+  front's three Black Crystals stand on the main map for now (below).
+  Tests: `ds_campaign_grand_bolt`, `ds_campaign_grand_bolt_blocks`,
+  `test_obelisk_breakable.py` (Obelisks breakable on a Versus design map
+  and in Crystal Calamity and For the Future!; in Means to an End only the
+  closed weak points resist).
 - **Flags**: AW2 keeps its campaign progress in campaign flags 0x20..;
   during a session the game's flag get/set (`0x0803CBD8` / `0x0803CBA0`,
   trapped) use the DS Campaign's own (`0x0203FD20`, 16 bytes).
@@ -1229,7 +1252,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   second front (record 0x100) holds three Black Crystals, each guarding one
   of the Grand Bolt's weak points; destroying all three also wins. Here
   they stand on the main map, on the plain north of the bolt, each in the
-  column of the weak point it guards: (3, 3), (9, 5), (15, 3)
+  column of the weak point it guards: (3, 3), (9, 5), (15, 3) (on the Grand
+  Bolt's picture until its second front is played)
   (`ds_campaign_data::MTE_CRYSTALS`, tangoAW2's Crystals: they heal Black
   Hole's units around them as on Crystal Calamity). The second front's
   trigger records are kept as the main map's: a crystal shattered plays
@@ -1240,7 +1264,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   Black Hole loses). A weak point whose crystal stands takes no damage: it
   is no target where a unit picks one (`GetInventionAt` `0x0803DE94`,
   trapped for its two targeting callers, `0x0802B3DC` and `0x0802E2EA`) and
-  its hit points are kept each frame (`0x0203F701..`) whatever hits it.
+  its hit points are kept each frame (`0x0203F701..`, `grand_bolt::tick`,
+  keyed on its own tile) whatever hits it.
   The day limit is 36, not 24: the header's limit (the "Day(s) Left"
   counter), the trigger on which Black Hole wins (day 24 becomes 36), and
   the texts that state it (`ds_campaign_data::compromise_text`: the

@@ -38,6 +38,7 @@ SEAM = 0x10
 PROPERTIES = {HQ, CITY, BASE, AIRPORT, PORT, LAB}
 CAPTURERS = {1, 2}            # Infantry, Mech
 MTE_CRYSTALS = {(3, 3), (9, 5), (15, 3)}  # Means to an End's crystals (ds_campaign_data::MTE_CRYSTALS)
+GRAND_BOLT_PARTS = {(3, 9), (9, 11), (15, 9)}  # its weak points (crate::grand_bolt)
 AIR = {12, 13, 16, 17, 19, 20}
 NAVAL = {18, 21, 22, 23, 24, 25, 26}
 ANTI_AIR = {14, 15, 16}
@@ -176,11 +177,11 @@ class Bot:
                 # its top-left cell and fired on at its bottom middle.
                 x, y = (b[0], b[1]) if kind == 4 else (b[0] + 1, b[1] + 2)
                 out.append({"x": x, "y": y, "hp": b[4], "kind": kind})
-        # Means to an End: a weak point whose crystal (in its column, north
-        # of it) stands is no target yet.
+        # Means to an End: a weak point (the Grand Bolt's part) whose crystal
+        # (in its column, north of it) stands is no target yet.
         crystals = [s for s in out if s["kind"] == 4 and (s["x"], s["y"]) in MTE_CRYSTALS]
         if crystals:
-            out = [s for s in out if not (s["kind"] == 3 and any(c["x"] == s["x"] for c in crystals))]
+            out = [s for s in out if not ((s["x"], s["y"]) in GRAND_BOLT_PARTS and any(c["x"] == s["x"] for c in crystals))]
         return out
 
     def range_cells(self):

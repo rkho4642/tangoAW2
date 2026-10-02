@@ -159,6 +159,30 @@ fn main() {
                     }),
                 )]);
             }
+            "trapprint" => {
+                // Print r0..r3, LR and the text at r0 for the first N times
+                // the ARM9 reaches ADDR.
+                let at = hex(p[1]);
+                let left = std::rc::Rc::new(std::cell::Cell::new(p[2].parse::<u32>().unwrap_or(10)));
+                solo.side().console().set_traps(vec![(
+                    at,
+                    Box::new(move |nds: &mut melonds::Nds| {
+                        if left.get() > 0 {
+                            left.set(left.get() - 1);
+                            let r: Vec<u32> = (0..4).map(|i| nds.reg(i)).collect();
+                            let text = |nds: &mut melonds::Nds, a: u32| -> String {
+                                (0..24)
+                                    .map(|k| nds.read8(a.wrapping_add(k)))
+                                    .take_while(|&c| c != 0)
+                                    .map(|c| if (32..127).contains(&c) { c as char } else { '.' })
+                                    .collect()
+                            };
+                            let (s0, s1) = (text(nds, r[0]), text(nds, r[1]));
+                            eprintln!("trap {at:08x} r0 {:08x} r1 {:08x} r2 {:08x} r3 {:08x} lr {:08x} {s0:?} {s1:?}", r[0], r[1], r[2], r[3], nds.reg(14));
+                        }
+                    }),
+                )]);
+            }
             "readwatch" => {
                 // Print the PC and LR of the first N reads of ADDR (`readwatch
                 // off` removes the watch).

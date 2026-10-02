@@ -315,19 +315,25 @@ pub fn compromise_text(r: u32, t: Vec<u8>) -> Vec<u8> {
 
 /// A converted map: (width, height, tiles) and its LZ77 blob.
 pub fn convert_map(ds: &Ds, at: u32) -> Option<(u8, u8, Vec<u16>)> {
+    let (w, h, mut tiles) = raw_map(ds, at)?;
+    volcanoes(&mut tiles, w as usize, h as usize);
+    black_obelisks(&mut tiles, w as usize, h as usize);
+    grand_bolt(ds, &mut tiles, w as usize, h as usize);
+    for t in tiles.iter_mut() {
+        *t = remap_tile(*t);
+    }
+    Some((w, h, tiles))
+}
+
+/// A Dual Strike map as its record holds it: width, height, terrain ids.
+pub fn raw_map(ds: &Ds, at: u32) -> Option<(u8, u8, Vec<u16>)> {
     let head = ds.u32(at)?;
     let size = (head >> 8) as usize;
     let comp = ds.bytes(at, 4 + size * 2 + 64).or_else(|| ds.bytes(at, 4 + size + 64))?;
     let raw = crate::ds_art::lz10(comp)?;
     let (w, h) = (raw[0], raw[1]);
     let n = w as usize * h as usize;
-    let mut tiles: Vec<u16> = (0..n).map(|i| u16::from_le_bytes([raw[2 + 2 * i], raw[3 + 2 * i]])).collect();
-    volcanoes(&mut tiles, w as usize, h as usize);
-    black_obelisks(&mut tiles, w as usize, h as usize);
-    grand_bolt(&mut tiles, w as usize, h as usize);
-    for t in tiles.iter_mut() {
-        *t = remap_tile(*t);
-    }
+    let tiles: Vec<u16> = (0..n).map(|i| Some(u16::from_le_bytes([*raw.get(2 + 2 * i)?, *raw.get(3 + 2 * i)?]))).collect::<Option<_>>()?;
     Some((w, h, tiles))
 }
 
@@ -386,8 +392,7 @@ fn black_obelisks(tiles: &mut [u16], w: usize, h: usize) {
 /// The Grand Bolt's weak points (Means to an End): the cells Dual Strike's
 /// code tests for its three parts (kinds 0xB, 0xC, 0xD at (3, 9), (9, 11),
 /// (15, 9)); each part spawns an Oozium on the cell below it every sixth
-/// day. tangoAW2 puts a Black Obelisk (3x3) over each, its bottom row on
-/// the weak point.
+/// day. Each is tangoAW2's Grand Bolt part ([`crate::grand_bolt`]).
 pub const GRAND_BOLT_WEAK_POINTS: [(u32, u32); 3] = [(3, 9), (9, 11), (15, 9)];
 
 /// Means to an End (record index) and its single-front compromises
@@ -403,10 +408,14 @@ pub const MTE_DAY_LIMIT: u16 = 36;
 const DS_MTE_DAY_LIMIT: u16 = 24;
 
 /// Dual Strike's Grand Bolt is a picture drawn with tiles laid out as a
-/// sheet (tile = base + 0x20 * y + x over its whole shape), which AW2 has
-/// no art for: such a picture (40 cells or more) becomes plains, with a
-/// Black Obelisk on each weak point inside it.
-fn grand_bolt(tiles: &mut [u16], w: usize, h: usize) {
+/// sheet (tile = base + 0x20 * y + x over its whole shape), which Dual
+/// Strike's Means to an End draws through its own table of textures
+/// ([`crate::grand_bolt`]): the cells it draws as the Grand Bolt (textures
+/// 0x78..0xA7) become AW2's underlay (a structure's footprint: no unit
+/// enters; [`crate::grand_bolt`] draws them), the rest of the sheet plains,
+/// each weak point the Grand Bolt's part ([`crate::grand_bolt::PART_TILE`]).
+fn grand_bolt(ds: &Ds, tiles: &mut [u16], w: usize, h: usize) {
+    const REMAP: u32 = 0x0215_7F84;
     let key = |tiles: &[u16], x: usize, y: usize| tiles[y * w + x] as i32 - (0x20 * y + x) as i32;
     let mut counts: BTreeMap<i32, usize> = BTreeMap::new();
     for y in 0..h {
@@ -418,20 +427,25 @@ fn grand_bolt(tiles: &mut [u16], w: usize, h: usize) {
     if n < 40 || base < 0 {
         return;
     }
-    let cells: Vec<(usize, usize)> = (0..h).flat_map(|y| (0..w).map(move |x| (x, y))).filter(|&(x, y)| key(tiles, x, y) == base).collect();
-    let centres: Vec<(usize, usize)> = GRAND_BOLT_WEAK_POINTS
-        .iter()
-        .map(|&(x, y)| (x as usize, y as usize - 1))
-        .filter(|&(x, y)| x >= 1 && x + 1 < w && y >= 1 && y + 1 < h && key(tiles, x, y) == base)
-        .collect();
-    for (x, y) in cells {
-        tiles[y * w + x] = PLAIN;
-    }
-    let found = !centres.is_empty();
-    for (cx, cy) in centres {
-        for dy in 0..3 {
-            for dx in 0..3 {
-                tiles[(cy + dy - 1) * w + cx + dx - 1] = if dx == 1 && dy == 1 { OBELISK } else { UNDERLAY };
+    let drawn = |id: u16| {
+        ds.bytes(REMAP + 2 * id as u32, 2)
+            .map(|b| (u16::from_le_bytes([b[0], b[1]]) & 0x3FF).wrapping_sub(0x78) < 48)
+            .unwrap_or(false)
+    };
+    let mut found = false;
+    for y in 0..h {
+        for x in 0..w {
+            let id = tiles[y * w + x];
+            if key(tiles, x, y) == base || drawn(id) {
+                let part = GRAND_BOLT_WEAK_POINTS.contains(&(x as u32, y as u32));
+                found |= part;
+                tiles[y * w + x] = if part {
+                    crate::grand_bolt::PART_TILE
+                } else if drawn(id) {
+                    UNDERLAY
+                } else {
+                    PLAIN
+                };
             }
         }
     }
