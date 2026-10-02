@@ -790,6 +790,10 @@ PLANS = {1: {"protect": [1], "stance": "attack"}, 9: {"protect": [23]}, 12: {"ru
          # Means to an End: bombers and B copters from its airports fly over
          # the Oozium to the crystals and the Grand Bolt's weak points.
          24: {"build": {0xA: [17, 19, 16]}, "seed": 0},
+         # Snow Hunters: two pipe seams in the west wall broken open (Dual
+         # Strike's hint: "if we create an opening in the pipe..."), our HQ
+         # held, the minicannons beyond them.
+         13: {"seams": [(8, 5), (8, 3)], "garrison": True, "seed": 4},
          # Ring of Fire: on the attack, every hit counting from day 12, off
          # the Volcano's eruption cells (Dual Strike's list, ARM9 0x02167F50).
          21: {"stance": "attack", "finish": 12, "seed": 0,

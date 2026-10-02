@@ -34,6 +34,7 @@ CURRENT_ARMY = 0x030033EC
 INVENTIONS = 0x02028360
 # Terrain kinds (class & 0x1F) of properties, and those that build units.
 HQ, CITY, BASE, AIRPORT, PORT, LAB = 8, 6, 0xE, 0xA, 0xB, 0x14
+SEAM = 0x10
 PROPERTIES = {HQ, CITY, BASE, AIRPORT, PORT, LAB}
 CAPTURERS = {1, 2}            # Infantry, Mech
 MTE_CRYSTALS = {(3, 3), (9, 5), (15, 3)}  # Means to an End's crystals (ds_campaign_data::MTE_CRYSTALS)
@@ -65,7 +66,7 @@ def domain(t):
 
 class Bot:
     def __init__(self, d, log=None, protect=(), hold=(), goals=(), structures=False, stance="auto", rush=False, seed=None, build=None,
-                 finish=None, garrison=False, ooze=False, hazards=()):
+                 finish=None, garrison=False, ooze=False, hazards=(), seams=(), nearest=False):
         """`protect`: unit types to keep out of harm (they wait where they
         are, or step away from enemies); `hold`: types that never move;
         `goals`: cells the mission is won on (capturers head there first);
@@ -93,6 +94,13 @@ class Bot:
         # `hazards`: cells a volcano's eruption hits each day (50 HP) while
         # it is not stilled (ds_campaign_rules: 0x0203F704).
         self.hazards = {tuple(c) for c in hazards}
+        # `seams`: pipe seams to break open (a way out of a pipe maze): fired
+        # on as structures while intact, and made for by units with no other
+        # goal of their own.
+        self.seams = [tuple(c) for c in seams]
+        # `nearest`: a unit that captures makes for the properties nearest
+        # it (a race for properties), not the map's first ones.
+        self.nearest = nearest
         # `build`: what a factory kind builds, best first (instead of BUILD).
         self.build_order = {int(k): v for k, v in (build or {}).items()}
         # `seed`: another player's style (how much danger each kind of unit
@@ -471,7 +479,12 @@ class Bot:
         out = list(self.enemies(army))
         for s in self.structures():
             out.append({"x": s["x"], "y": s["y"], "hp": s["hp"], "type": STRUCTURE_AS, "structure": True})
+        for (x, y) in self.intact_seams():
+            out.append({"x": x, "y": y, "hp": 99, "type": STRUCTURE_AS, "structure": True, "seam": True})
         return out
+
+    def intact_seams(self):
+        return [c for c in self.seams if self.cls(*c) & 0x1F == SEAM]
 
     # -- one action -------------------------------------------------------------
     def cancel(self):
@@ -553,6 +566,10 @@ class Bot:
             cands = [(here, f) for f in targets if info["min"] <= dist(here, (f["x"], f["y"])) <= info["max"]]
         else:
             cands = [(c, f) for f in targets for c in free if dist(c, (f["x"], f["y"])) == 1]
+        if self.ooze and u["type"] in CAPTURERS and self.goals:
+            # (against Ooziums the units that capture keep to their goal: a
+            # hit leaves them next to an Oozium that eats them)
+            cands = []
         scored = [(self.attack_score(u, c, f, indirect, armed_foes), c, f) for c, f in cands]
         if self.debug:
             top = sorted((s for s in scored if s[0] is not None), key=lambda s: -s[0])[:4]
@@ -583,12 +600,12 @@ class Bot:
                 return ("wait", best, None)
         # Move up on the goal.
         if u["type"] in CAPTURERS:
-            goals = self.goals + [p for p, _ in self.targets_for_capture(army, props)][:4]
+            goals = self.goals + self.capture_goals(u, army, props)
             # Nothing left to capture: on the enemy's units like the rest.
             goals = goals or [(f["x"], f["y"]) for f in foes]
         else:
             goals = [(s["x"], s["y"]) for s in targets if s.get("structure")] if self.structures_goal else []
-            goals = goals or self.goals or [(f["x"], f["y"]) for f in foes] or [p for p, _ in self.targets_for_capture(army, props)][:4]
+            goals = goals or self.intact_seams() or self.goals or [(f["x"], f["y"]) for f in foes] or [p for p, _ in self.targets_for_capture(army, props)][:4]
         if not goals:
             return ("stay", here, None)
         attack = self.aggressive(army)
@@ -630,12 +647,19 @@ class Bot:
         w, h = self.size()
         return [n for n in ((c[0] + 1, c[1]), (c[0] - 1, c[1]), (c[0], c[1] + 1), (c[0], c[1] - 1)) if 0 <= n[0] < w and 0 <= n[1] < h]
 
+    def capture_goals(self, u, army, props):
+        """The properties a unit that captures makes for (four)."""
+        out = [p for p, _ in self.targets_for_capture(army, props)]
+        if self.nearest:
+            out.sort(key=lambda p: dist(p, (u["x"], u["y"])))
+        return out[:4]
+
     def goals_for(self, u, army):
         """The cells `u` makes for: what it captures, else the structures
         the mission is won on, else the enemy's units, else what is left to
         capture."""
         props = self.properties()
-        capt = self.goals + [p for p, _ in self.targets_for_capture(army, props)][:4]
+        capt = self.goals + self.capture_goals(u, army, props)
         if u["type"] in CAPTURERS:
             return capt
         structs = [(s["x"], s["y"]) for s in self.structures()] if self.structures_goal else []
