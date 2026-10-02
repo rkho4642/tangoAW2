@@ -68,6 +68,7 @@ pub mod survival_maps;
 pub mod suspend;
 pub mod two_front;
 pub mod tag;
+pub mod tag_ui;
 pub mod pvp;
 mod volcano;
 

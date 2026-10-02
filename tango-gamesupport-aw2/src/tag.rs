@@ -437,6 +437,98 @@ pub fn map_start(core: &mut Core) {
     }
 }
 
+// --- The DS Campaign's CO screen: the player's partners ------------------------------
+
+/// The player's pairs a DS mission asks for (Dual Strike's (0x1C, 0x1C): the
+/// player picks both): (the armies picked for, the partners picked). AW2's
+/// CO screen has room for four picks, so with three armies only the first
+/// gets a partner. A mission with a second front is left to its own flow.
+fn ds_partner_picks(core: &Core) -> (u32, u32) {
+    let Some(m) = crate::ds_campaign::mission_info(core) else { return (0, 0) };
+    if m.second_front.is_some() {
+        return (0, 0);
+    }
+    let armies = (m.armies as usize).min(4);
+    let n = (0..armies).take_while(|&k| m.cos[k].0 == 0x1C).count() as u32;
+    let pairs = (0..n as usize).take_while(|&k| m.cos[k].1 == 0x1C).count() as u32;
+    (n, pairs.min(4 - n))
+}
+
+/// `sub_0803BD14` (the CO screen's count of picks: the leading player armies
+/// of the map's header) at its return (r3): the partners are picked after
+/// the armies' COs, on the same screen. Not for `SetArmyCoIdsFromList`
+/// (which gives the picks to the armies: the partners are kept apart).
+const PICK_COUNT: u32 = 0x0803_BD42;
+const SET_COS: u32 = 0x0803_BCDC;
+fn pick_count(core: &mut Core) {
+    if !is_on(core) || !crate::ds_campaign::active(core) {
+        return;
+    }
+    let lr = core.gba().cpu().gpr(14) as u32 & !1;
+    if (SET_COS..PICK_COUNT).contains(&lr) {
+        return;
+    }
+    let (_, k) = ds_partner_picks(core);
+    if k > 0 {
+        let cpu = core.gba_mut().cpu_mut();
+        let r3 = cpu.gpr(3);
+        cpu.set_gpr(3, r3 + k as i32);
+    }
+}
+
+/// `SetArmyCoIdsFromList(picks)`: the picks past the armies' are their
+/// partners (pending until the map starts).
+fn set_cos(core: &mut Core) {
+    if !is_on(core) || !crate::ds_campaign::active(core) {
+        return;
+    }
+    let (n, k) = ds_partner_picks(core);
+    let src = core.gba().cpu().gpr(0) as u32;
+    if k == 0 || !(0x0200_0000..0x0400_0000).contains(&src) {
+        return;
+    }
+    for i in 0..k {
+        let main = core.raw_read_8(src + i, -1);
+        let partner = core.raw_read_8(src + n + i, -1);
+        set_pending(core, i + 1, main, partner);
+    }
+}
+
+/// The CO screen's per-pick "locks its country" words (`gUnknown_030059C0`,
+/// crate::ds_campaign's CO_GROUP_SWITCH) and the countries locked so far
+/// (`gUnknown_03005910`): AW2 gives every army of a campaign map its own
+/// country, so a pick locks its country for the next. A partner is not an
+/// army: its picks lock nothing, and while they are made every country is
+/// open (Dual Strike pairs COs of one country).
+const PICK_LOCKS: u32 = 0x0300_59C0;
+const COUNTRY_LOCKED: u32 = 0x0300_5910;
+const CO_SELECT_SCRIPT: u32 = 0x0861_6638;
+const PROC_POOL: (u32, u32) = (0x0200_D610, 0x0200_E418);
+fn co_screen_partners(core: &mut Core) {
+    if !crate::ds_campaign::active(core) {
+        return;
+    }
+    let Some(proc) = (PROC_POOL.0..PROC_POOL.1).step_by(0x6C).find(|&p| core.raw_read_32(p, -1) == CO_SELECT_SCRIPT) else {
+        return;
+    };
+    let (n, k) = ds_partner_picks(core);
+    if k == 0 {
+        return;
+    }
+    for i in n..(n + k).min(5) {
+        if core.raw_read_32(PICK_LOCKS + 4 * i, -1) != 0 {
+            core.raw_write_32(PICK_LOCKS + 4 * i, -1, 0);
+        }
+    }
+    if core.raw_read_16(proc + 0x64, -1) as u32 >= n {
+        for c in 0..5 {
+            if core.raw_read_8(COUNTRY_LOCKED + c, -1) != 0 {
+                core.raw_write_8(COUNTRY_LOCKED + c, -1, 0);
+            }
+        }
+    }
+}
+
 // --- The map menu: Tag and Change ---------------------------------------------------
 
 /// `OpenMapMenu`'s literal-pool word for its table.
@@ -786,6 +878,7 @@ pub fn tick(core: &mut Core, on: bool) {
         clear_pending(core);
         core.raw_write_range(TEAMS_PARTNER, -1, &[NONE; 4]);
     }
+    co_screen_partners(core);
     let battle = any(core);
     core.raw_write_8(BATTLE_ON, -1, battle as u8);
     let want = if battle { MENU } else { AW2_MENU };
@@ -812,25 +905,47 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (AI_END, Box::new(ai_end)),
         (AI_FACTORY, Box::new(ai_factory)),
         (DRAW_PANEL, Box::new(draw_panel)),
+        (PICK_COUNT, Box::new(pick_count)),
+        (SET_COS, Box::new(set_cos)),
     ]
 }
 
 // --- A suspended game ----------------------------------------------------------------------
 
-/// The pairs, as a suspended game keeps them ([`crate::suspend`]): the five
-/// records (their skills are the mode's, worked out again).
-pub const SAVED_LEN: usize = (REC * ARMIES) as usize;
+/// The pairs, as a suspended game keeps them ([`crate::suspend`]): per army
+/// 1..5 the partner, the phase, its power count, its announcement byte and
+/// its meter (8 bytes); the skills are the mode's, worked out again.
+const SAVED_REC: usize = 8;
+pub const SAVED_LEN: usize = SAVED_REC * ARMIES as usize;
 
 pub fn saved(core: &Core) -> Vec<u8> {
     let mut b = vec![0u8; SAVED_LEN];
-    core.raw_read_range(STATE, -1, &mut b);
+    for a in 1..=ARMIES {
+        let o = SAVED_REC * (a as usize - 1);
+        core.raw_read_range(rec(a), -1, &mut b[o..o + SAVED_REC]);
+        if core.raw_read_8(STATE + 0xFC, -1) != MAGIC_RAM {
+            b[o] = NONE;
+        }
+    }
     b
 }
 
+/// A suspended game continued: its pairs (none from a game saved without).
 pub fn restore(core: &mut Core, b: Option<&[u8]>) {
     clear_pairs(core);
-    if let Some(b) = b.filter(|b| b.len() == SAVED_LEN) {
-        core.raw_write_range(STATE, -1, b);
+    let Some(b) = b.filter(|b| b.len() == SAVED_LEN) else { return };
+    for a in 1..=ARMIES {
+        let o = SAVED_REC * (a as usize - 1);
+        let r = &b[o..o + SAVED_REC];
+        if r[0] == NONE {
+            continue;
+        }
+        let charge = u32::from_le_bytes(r[4..8].try_into().unwrap());
+        form_pair(core, a, r[0], 0);
+        core.raw_write_32(rec(a) + P_CHARGE, -1, charge);
+        core.raw_write_8(rec(a) + P_PHASE, -1, r[1]);
+        core.raw_write_8(rec(a) + P_USES, -1, r[2]);
+        core.raw_write_8(rec(a) + P_ANNOUNCE, -1, r[3]);
     }
 }
 

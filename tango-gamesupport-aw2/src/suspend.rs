@@ -45,6 +45,8 @@ const BLOCK: u32 = 0x0200_0000;
 const TAIL: u32 = BLOCK + 0xDAC;
 #[cfg(test)]
 const BLOCK_LEN: u32 = 0xE28;
+/// The length `sub_08016D30` writes.
+const BLOCK_WRITE: u32 = 0xE28;
 /// The tail: +0 [`MARK`], +4 version, +5 the rain's fog flag, +8 the stun.
 const MARK: u32 = 0x3257_4154; // "TAW2"
 const VERSION: u8 = 1;
@@ -61,9 +63,35 @@ pub const CAPTURED: u32 = 0x0801_6D88;
 pub const APPLIED: u32 = 0x0801_6DD0;
 const CURRENT_ARMY: u32 = 0x0300_33EC;
 
+/// CO tag pairs ([`crate::tag`]) ride past the 0xE28-byte block: while a
+/// battle has pairs the block is written longer (the staging buffer is
+/// 0x2000 bytes; AW2's reader takes the slot's whole length back). A mark,
+/// a hash of AW2's part of the block (+0..+0xDAC, so a stale copy from
+/// another save is never taken), then the pairs.
+const TAG_AT: u32 = BLOCK + 0xE28;
+const TAG_MARK: u32 = 0x5347_4154; // "TAGS"
+pub const TAG_LEN: u32 = 8 + crate::tag::SAVED_LEN as u32;
+
+fn block_hash(core: &Core) -> u32 {
+    let mut b = vec![0u8; 0xDAC];
+    core.raw_read_range(BLOCK, -1, &mut b);
+    b.iter().fold(0x811C_9DC5u32, |h, &x| (h ^ x as u32).wrapping_mul(0x0100_0193))
+}
+
+fn tag_tail_ok(core: &Core) -> bool {
+    core.raw_read_32(TAG_AT, -1) == TAG_MARK && core.raw_read_32(TAG_AT + 4, -1) == block_hash(core)
+}
+
 fn captured(core: &mut Core) {
     if !is_on(core) {
         return;
+    }
+    if crate::tag::any(core) {
+        let mut t = Vec::with_capacity(TAG_LEN as usize);
+        t.extend_from_slice(&TAG_MARK.to_le_bytes());
+        t.extend_from_slice(&block_hash(core).to_le_bytes());
+        t.extend_from_slice(&crate::tag::saved(core));
+        core.raw_write_range(TAG_AT, -1, &t);
     }
     let mut b = vec![0u8; TAIL_LEN as usize];
     b[0..4].copy_from_slice(&MARK.to_le_bytes());
@@ -83,6 +111,16 @@ fn applied(core: &mut Core) {
     let army = core.raw_read_8(CURRENT_ARMY, -1);
     crate::ds_weather::set_rule_fog(core, if ours { b[AT_RULE_FOG as usize] } else { 0 });
     crate::co_powers::set_stun_state(core, ours.then(|| &b[AT_STUN as usize..]), army);
+    if tag_tail_ok(core) {
+        let mut t = vec![0u8; crate::tag::SAVED_LEN];
+        core.raw_read_range(TAG_AT + 8, -1, &mut t);
+        crate::tag::restore(core, Some(&t));
+        // Read once: a later Continue of a game saved without pairs does
+        // not take these.
+        core.raw_write_32(TAG_AT, -1, 0);
+    } else {
+        crate::tag::restore(core, None);
+    }
 }
 
 // --- A DS Campaign mission saved halfway ---------------------------------------
@@ -122,6 +160,9 @@ fn save_start(core: &mut Core) {
 }
 
 fn save_write(core: &mut Core) {
+    if is_on(core) && core.gba().cpu().gpr(2) as u32 == BLOCK_WRITE && tag_tail_ok(core) {
+        core.gba_mut().cpu_mut().set_gpr(2, (BLOCK_WRITE + TAG_LEN) as i32);
+    }
     let saving = core.raw_read_8(DS_SAVING, -1);
     if saving & 0x80 == 0 {
         return;
@@ -228,5 +269,9 @@ mod tests {
     fn tail_fits_the_block() {
         assert!(TAIL + TAIL_LEN <= BLOCK + BLOCK_LEN);
         assert!(DS_AT + DS_LEN <= BLOCK + BLOCK_LEN);
+        // The longer write still fits one Flash sector (payload from +0x52,
+        // the profile's directory from +0xFEF).
+        assert!(0x52 + BLOCK_LEN + TAG_LEN <= 0xFEF);
+        assert_eq!(TAG_AT, BLOCK + BLOCK_LEN);
     }
 }

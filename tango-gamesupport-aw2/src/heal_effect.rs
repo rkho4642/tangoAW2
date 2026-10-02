@@ -600,6 +600,11 @@ fn playing_fn() -> Vec<u8> {
 }
 
 /// Writes the functions and the wait once (the same bytes on every peer).
+/// The animation is playing (it borrows OBJ tiles crate::tag_ui uses too).
+pub fn playing(core: &Core) -> bool {
+    core.raw_read_8(KIND, -1) != 0
+}
+
 pub fn install(core: &mut Core) {
     if art().is_none() || core.raw_read_32(ROM_SENTINEL, -1) == ROM_MAGIC {
         return;

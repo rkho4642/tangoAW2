@@ -166,6 +166,7 @@ const KEY_LEFT: u32 = 1 << 5;
 const KEY_UP: u32 = 1 << 6;
 const KEY_DOWN: u32 = 1 << 7;
 const KEY_L: u32 = 1 << 9;
+const KEY_R: u32 = 1 << 8;
 const ALL_KEYS: u32 = 0x3FF;
 
 fn ids(core: &Core) -> [u8; 4] {
@@ -283,6 +284,11 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
     if on_teams && pressed & KEY_L != 0 {
         let v = core.raw_read_8(co_skills::VERSUS_RULE, -1);
         core.raw_write_8(co_skills::VERSUS_RULE, -1, (v == 0) as u8);
+    }
+    // R: the Versus rule CO Tag (crate::tag), beside Skills.
+    if on_teams && pressed & KEY_R != 0 {
+        let v = core.raw_read_8(crate::tag::RULE, -1);
+        core.raw_write_8(crate::tag::RULE, -1, (v != 1) as u8);
     }
     draw(core);
     keys & !ALL_KEYS
@@ -621,7 +627,8 @@ fn compose(core: &mut Core, a: &Art) -> Canvas {
     }
     let hint = if core.raw_read_8(ON_TEAMS, -1) == 1 {
         let on = core.raw_read_8(co_skills::VERSUS_RULE, -1) == 1;
-        format!("L Skills {}", if on { "ON" } else { "OFF" })
+        let tag = core.raw_read_8(crate::tag::RULE, -1) == 1;
+        format!("L Skills {}  R Tag {}", if on { "ON" } else { "OFF" }, if tag { "ON" } else { "OFF" })
     } else {
         format!("{}/{}", cur.iter().take(n).filter(|&&x| x != 0).count(), n)
     };
