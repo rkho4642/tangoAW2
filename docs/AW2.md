@@ -1289,7 +1289,13 @@ overlay 1, the campaign's code, at `0x02350560`).
     to the after-action list (3), one per army: the pseudo predicate
     `PROPERTY_COUNT | army << 8 | n` (the army owns n properties or more:
     HQs, cities, bases, airports, ports, Com Towers and labs alike) fires a
-    script ending the match with that army's win (op 0x40).
+    script ending the match with that army's win (op 0x40). As Dual
+    Strike's code has it: the battle's setup copies +0x34/+0x36 to its state
+    (+0x81, `0x020E9400`); `0x020C4498` counts each player's properties
+    from the map (classes 6, 8, 10, 11, 14, 20, 22 by the table at
+    `0x022F45B8`) and `0x020CEDF4` returns the first player 1..4 with that
+    many or more, whose team then wins (`0x02019A6C`): the computer's
+    armies too.
   - Crystal Calamity's `0x0235172C` is the Black Onyx's real-time laser
     charge (90% or more on Dual Strike's top screen); with the 50-minute
     count left out it never holds.

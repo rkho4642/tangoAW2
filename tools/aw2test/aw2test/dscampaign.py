@@ -815,7 +815,8 @@ def plan(data, index):
     if index == 22:
         cells += [(i % w, i // w) for i, t in enumerate(m["tiles"]) if 0x1B9 <= t <= 0x1BD]
     out = dict(PLANS.get(index, {}))
-    if cells:
+    # ("labs": False: the lab is not the goal, a plan won another way)
+    if cells and out.pop("labs", True):
         out["goals"] = cells
     if index in STRUCTURE_MISSIONS:
         out["structures"] = True
