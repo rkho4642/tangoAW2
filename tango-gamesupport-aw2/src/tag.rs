@@ -128,6 +128,11 @@ pub fn player(core: &Core, army: u32) -> u32 {
     crate::five::players(core) + PLAYER * army
 }
 
+/// Army `army`'s active CO (AW2's player block).
+pub fn army_co_of(core: &Core, army: u32) -> u8 {
+    army_co(core, army)
+}
+
 fn army_co(core: &Core, army: u32) -> u8 {
     core.raw_read_8(player(core, army) + PL_CO, -1)
 }
@@ -467,7 +472,7 @@ pub fn map_start(core: &mut Core) {
 /// gets a partner. A mission with a second front is left to its own flow.
 fn ds_partner_picks(core: &Core) -> (u32, u32) {
     let Some(m) = crate::ds_campaign::mission_info(core) else { return (0, 0) };
-    if m.second_front.is_some() {
+    if m.two_front.is_some() {
         return (0, 0);
     }
     let armies = (m.armies as usize).min(4);
@@ -499,8 +504,9 @@ fn pick_count(core: &mut Core) {
 }
 
 /// `SetArmyCoIdsFromList(picks)`: the picks past the armies' are their
-/// partners (pending until the map starts).
-fn set_cos(core: &mut Core) {
+/// partners (pending until the map starts). Called from crate::two_front's
+/// trap there (one trap an address).
+pub fn set_cos(core: &mut Core) {
     if !is_on(core) || !crate::ds_campaign::active(core) {
         return;
     }
@@ -971,15 +977,26 @@ pub fn tick(core: &mut Core, on: bool) {
     co_screen_partners(core);
     let battle = any(core);
     core.raw_write_8(BATTLE_ON, -1, battle as u8);
-    let want = if battle { MENU } else { AW2_MENU };
-    if core.raw_read_32(MENU_POOL, -1) != want {
+    // The map menu's table: ours while the battle has a pair; without one,
+    // back to AW2's only if it is ours (crate::two_front puts its own there
+    // in a two-front battle: its Front; a pair formed there takes over, the
+    // second front being over by then).
+    let now = core.raw_read_32(MENU_POOL, -1);
+    let want = if battle {
+        MENU
+    } else if now == MENU {
+        AW2_MENU
+    } else {
+        return;
+    };
+    if now != want {
         core.raw_write_32(MENU_POOL, -1, want);
     }
 }
 
 /// Without the pack the menu is AW2's (the pool word put back).
 pub fn put_back(core: &mut Core) {
-    if core.raw_read_32(MENU_POOL, -1) != AW2_MENU {
+    if core.raw_read_32(MENU_POOL, -1) == MENU {
         core.raw_write_32(MENU_POOL, -1, AW2_MENU);
     }
 }
@@ -996,7 +1013,6 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (AI_FACTORY, Box::new(ai_factory)),
         (DRAW_PANEL, Box::new(draw_panel)),
         (PICK_COUNT, Box::new(pick_count)),
-        (SET_COS, Box::new(set_cos)),
     ]
 }
 

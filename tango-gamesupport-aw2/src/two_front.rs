@@ -663,6 +663,9 @@ fn pick_count(core: &mut Core) {
 /// `SetArmyCoIdsFromList(list)`: the main front's picks to gPlaySt, the
 /// second front's to [`SECOND_COS`].
 fn set_picks(core: &mut Core) {
+    // The DS Campaign's tag partners picked on the same screen (crate::tag
+    // shares this trap; nothing there in a two-front mission).
+    crate::tag::set_cos(core);
     let Some(b) = battle(core) else { return };
     let (m, s) = picks(&b);
     if s == 0 {
@@ -799,7 +802,15 @@ fn unit_value(core: &Core, u: u32) -> u32 {
 /// CO to that army's main-front CO here. Until then the main front's armies
 /// keep their one CO.
 fn second_front_over(core: &mut Core) {
-    let _ = second_front_result(core);
+    // The winning side's second-front CO joins its army's main-front CO as
+    // its tag partner (crate::tag; an empty meter, as Dual Strike's), for
+    // the player's army and Black Hole's alike.
+    if let Some((_, army, co)) = second_front_result(core) {
+        let main = crate::tag::army_co_of(core, army);
+        if co != 0xFF && co != main && crate::tag::partner(core, army).is_none() {
+            crate::tag::form_pair(core, army, co, 0);
+        }
+    }
 }
 
 /// The second front's outcome, once it is over: (the player's side won,

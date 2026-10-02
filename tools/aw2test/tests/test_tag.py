@@ -65,7 +65,7 @@ def oam(e):
     out = []
     for i in range(128):
         a0, a1, a2 = struct.unpack_from("<HHH", b, 8 * i)
-        if (a0 >> 8) & 3 != 2:
+        if (a0 >> 8) & 3 != 2 and (a0 & 0xFF) < 160:
             out.append((a0, a1, a2))
     return out
 
@@ -652,3 +652,35 @@ def _mission_pairs(step, picks, label):
 _mission_pairs(7, 1, "tag_battle")          # the computer's Jugger and Lash
 _mission_pairs(9, 2, "black_boats_ahoy")    # the player's pair
 _mission_pairs(12, 4, "frozen_fortress")    # two player pairs, the computer's Kindle and Jugger
+
+
+# --- Two fronts: the second front's CO comes back as a partner --------------------------
+
+@test(modes=("ds",))
+def tag_two_front_partner(ctx):
+    """Victory or Death! on two fronts (crate::two_front): when the second
+    front is won, the player's second-front CO reports back to the main
+    front as the army's tag partner (Dual Strike: "The CO will now report
+    back to the main front."); lost, Black Hole's second-front CO joins
+    Black Hole's army there ("Return to the main front for tag battle.")."""
+    import importlib.util, os as _os
+    spec = importlib.util.spec_from_file_location("test_two_fronts_h", _os.path.join(_os.path.dirname(__file__), "test_two_fronts.py"))
+    t2 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(t2)
+    from aw2test import twofront as tf
+    e, g, d = t2.start(ctx, t2.VICTORY_OR_DEATH)
+    ctx.eq((tag.partner(e, 1), tag.partner(e, 2)), (None, None), "no pairs while both fronts are fought")
+    t2.first_round(ctx, e, d)
+    cp = tf.checkpoint(e, ctx, "second_started")
+    t2.second_front_ends(ctx, e, d, g, tf.SECOND_WON, "won", lambda: t2.structures_down(d, lambda x, y: True))
+    t = tag.partner(e, 1)
+    ctx.check(t is not None and t["co"] != g.player(1)["co"], f"won: the player's army has a partner ({t})")
+    ctx.eq(tag.partner(e, 2), None, "won: Black Hole's army stays single")
+    names = tf.map_menu_names(g)
+    ctx.check("Change" in names, f"won: Change on the map menu ({names})")
+    ctx.shot(g, "won_pair_panel")
+    tf.back_to(e, g, cp)
+    t2.second_front_ends(ctx, e, d, g, tf.SECOND_LOST, "lost", lambda: t2.kill_setup(d, 1, 2, keep_others=False))
+    ctx.eq(tag.partner(e, 1), None, "lost: the player's army stays single")
+    t = tag.partner(e, 2)
+    ctx.check(t is not None, f"lost: Black Hole's army has its second-front CO as partner ({t})")

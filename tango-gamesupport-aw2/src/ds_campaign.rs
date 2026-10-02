@@ -1014,7 +1014,7 @@ pub fn tag_pairs(core: &Core) -> Vec<(u32, u8, u8)> {
     let Some(m) = campaign(core).and_then(|c| c.model.built.missions.get(core.raw_read_8(MISSION, -1) as usize)) else {
         return Vec::new();
     };
-    if m.second_front.is_some() {
+    if m.two_front.is_some() {
         return Vec::new();
     }
     let mut out = Vec::new();

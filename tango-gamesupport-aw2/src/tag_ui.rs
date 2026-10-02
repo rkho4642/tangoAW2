@@ -381,14 +381,6 @@ fn none_box(_core: &Core) -> Vec<u8> {
     tiles_of(&px, BOX_W, 32)
 }
 
-/// AW2's proportional font (crate::skills_panel's).
-const GLYPHS: u32 = 0x084C_32E4;
-const WIDTHS: u32 = 0x084C_36E4;
-
-fn text_width(core: &Core, s: &str) -> usize {
-    s.bytes().map(|c| core.raw_read_8(WIDTHS + c as u32, -1) as usize + 1).sum::<usize>().saturating_sub(1)
-}
-
 /// Pixels (w x h, one byte each) as 4bpp OBJ tiles in rows.
 fn tiles_of(px: &[u8], w: usize, h: usize) -> Vec<u8> {
     let mut out = Vec::new();
