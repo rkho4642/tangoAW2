@@ -200,10 +200,12 @@ class Ctx:
 
         x1 = (damage.hp_bars(att0["hp"]) - damage.hp_bars(att1["hp"])) * price(pa0, att0["type"])
         x2 = (damage.hp_bars(dfd0["hp"]) - damage.hp_bars(dfd1["hp"])) * price(pd0, dfd0["type"])
-        for p0, p1, gain, who in ((pa0, pa1, x1 + damage.div(x2, 2), "attacker"),
-                                  (pd0, pd1, x2 + damage.div(x1, 2), "defender")):
+        for p0, p1, gain, who, army in ((pa0, pa1, x1 + damage.div(x2, 2), "attacker", att0["army"]),
+                                        (pd0, pd1, x2 + damage.div(x1, 2), "defender", dfd0["army"])):
             if p0["co_mode"] != 0 or p1["co_mode"] != 0:
                 continue
+            if 0x48 in self.skills.get(army, ()):
+                gain = damage.div(gain * 110, 100)  # Star Power (crate::co_skills)
             cap = power_star_cost(p0["powers_used"]) * g.co_stars(p0["co"])[1]
             self.eq(p1["charge"], min(cap, p0["charge"] + gain), f"{label}: {who}'s power meter")
         return {"first": first, "counter": counter, "before": (att0, dfd0), "after": (att1, dfd1),

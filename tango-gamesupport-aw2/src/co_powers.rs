@@ -268,7 +268,8 @@ fn army_of_index(core: &Core, i: u32) -> u32 {
 pub fn extra_firepower(core: &Core, army: u32) -> i32 {
     let mut add = 0;
     if crate::com_tower::active(core) {
-        add += crate::co_roster::tower_attack(core, army) * crate::com_tower::towers(core, army) as i32;
+        let per = crate::co_roster::tower_attack(core, army) + crate::co_skills::tower_bonus(core, army);
+        add += per * crate::com_tower::towers(core, army) as i32;
     }
     if is_on(core) && army_co(core, army) == (KINDLE, SCOP) {
         add += 3 * owned(core, army, &PROPERTIES);

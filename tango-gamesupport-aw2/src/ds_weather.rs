@@ -92,16 +92,27 @@ pub fn tick(core: &mut Core, on: bool) {
 /// modifier; `sub_080253B0`).
 pub const FUEL: u32 = 0x0802_5434;
 pub fn fuel(core: &mut Core) {
-    if !is_on(core) || core.raw_read_8(WEATHER, -1) != SNOW {
+    if !is_on(core) {
         return;
     }
     let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
-    let co = core.raw_read_8(crate::five::players(core) + 0x3C * army + 0x1D, -1);
-    if co == OLAF {
-        return;
+    let unit = core.gba().cpu().gpr(4) as u32;
+    let mut burn = core.gba().cpu().gpr(5) as u8 as i8 as i32;
+    let start = burn;
+    // A dived Sub's or hidden Stealth's burn less Sneaky / Stealthy
+    // (crate::co_skills), before the snow doubles it.
+    if (0x0200_0000..0x0204_0000).contains(&unit) && core.raw_read_8(unit + 1, -1) & 0x20 != 0 {
+        burn = (burn - crate::co_skills::hidden_fuel_cut(core, army)).max(0);
     }
-    let burn = core.gba().cpu().gpr(5) as u8 as i8 as i32;
-    core.gba_mut().cpu_mut().set_gpr(5, (burn * 2).clamp(0, 127));
+    if core.raw_read_8(WEATHER, -1) == SNOW {
+        let co = core.raw_read_8(crate::five::players(core) + 0x3C * army + 0x1D, -1);
+        if co != OLAF {
+            burn *= 2;
+        }
+    }
+    if burn != start {
+        core.gba_mut().cpu_mut().set_gpr(5, burn.clamp(0, 127));
+    }
 }
 
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {

@@ -199,3 +199,112 @@ def skills_ds_campaign_exp_and_sets(ctx):
     ctx.eq(active(e2, 1), [0x20, 0x25], f"the player's CO ({co2}): Bruiser and Slam Guard on (Brawler not open)")
     for a in (2, 3, 4):
         ctx.eq(active(e2, a), [], f"army {a}: none")
+
+
+UNIT_TABLE = 0x08680000   # tangoAW2's unit table (crate::roster), 0x5C a unit
+RANGE = 0x0201E450 + 0x2852
+ROWS = 0x0201E450 + 0x417A
+
+
+def reach(g, x, y):
+    """The cells the unit at (x, y) can move to (its move range drawn)."""
+    g.select(x, y)
+    g.e.wait(8)
+    cells = set()
+    w, h = g.e.u16(0x0201E450), g.e.u16(0x0201E452)
+    for yy in range(h):
+        row = g.e.u16(ROWS + 2 * yy)
+        r = g.e.read(RANGE + row, w)
+        cells |= {(xx, yy) for xx in range(w) if r[xx] != 0xFF}
+    g.e.press("B", 4)
+    g.wait_for_input()
+    return cells
+
+
+@test(modes=("ds",))
+def skills_apc_boost(ctx):
+    """APC Boost: a transport moves one square more (an APC on plains:
+    every cell within 7, not 6)."""
+    m = ctx.map()
+    m.unit(1, "apc", 10, 10).unit(2, "tank", 27, 17)
+    g = ctx.start(m, ["andy", "andy"])
+    before = reach(g, 10, 10)
+    set_skills(ctx, g, 1, [0x24])
+    after = reach(g, 10, 10)
+    far = max(abs(x - 10) + abs(y - 10) for x, y in before)
+    ctx.eq(far, 6, "an APC's reach without it")
+    ctx.eq(max(abs(x - 10) + abs(y - 10) for x, y in after), 7, "with APC Boost: one more")
+
+
+@test(modes=("ds",))
+def skills_capture(ctx):
+    """Invader + Conquerer: a capture takes 3 points more (a full-HP
+    Infantry on a neutral city: 13 of 20, not 10)."""
+    m = ctx.map()
+    m.terrain(10, 10, "city")
+    m.unit(1, "infantry", 10, 10).unit(2, "tank", 27, 17)
+    g = ctx.start(m, ["andy", "andy"])
+    set_skills(ctx, g, 1, [0x3F, 0x40])
+    u = g.unit_at(10, 10)
+    g.select(10, 10)
+    g.move_to(10, 10)
+    g.choose("Capt", g.ACTION_MENU)
+    g.wait_for_input()
+    got = g.e.u8(g.unit_addr(u["id"]) + 5) >> 3
+    ctx.eq(got, 13, "the capture's points (10 + 1 + 2)")
+
+
+@test(modes=("ds",))
+def skills_build_cost(ctx):
+    """Sale Price + Fire Sale: building costs 13% less (a Tank: 7000 -> 6090)."""
+    m = ctx.map()
+    m.terrain(10, 10, "base", 1)
+    m.unit(2, "tank", 27, 17)
+    g = ctx.start(m, ["andy", "andy"])
+    set_skills(ctx, g, 1, [0x43, 0x44])
+    funds = lambda: g.e.u32(g.players_base + 0x3C)
+    g.e.w32(g.players_base + 0x3C, 10000)  # (funds to build with: a test aid)
+    before = funds()
+    g.buy(10, 10, 5)
+    ctx.eq(before - funds(), 7000 * 87 // 100, "a Tank's price less 13%")
+
+
+@test(modes=("ds",))
+def skills_gold_rush(ctx):
+    """Gold Rush: 100 more a day per property that earns (two cities and
+    the HQ: income 3300, not 3000)."""
+    m = ctx.map()
+    m.terrain(5, 5, "city", 1).terrain(6, 5, "city", 1)
+    m.unit(1, "infantry", 2, 2).unit(2, "infantry", 27, 17)
+    g = ctx.start(m, ["andy", "andy"])
+    set_skills(ctx, g, 1, [0x46])
+    funds = lambda: g.e.u32(g.players_base + 0x3C)
+    props = ctx.properties(g, 1)
+    before = funds()
+    g.end_turn()
+    ctx.eq(funds() - before, 1100 * props, f"{props} properties: 1000 + 100 each")
+
+
+@test(modes=("ds",))
+def skills_repair(ctx):
+    """Mechanic + Gear Head: a unit on its own city repairs 5 HP, not 2."""
+    m = ctx.map()
+    m.terrain(5, 5, "city", 1)
+    m.unit(1, "tank", 5, 5).unit(2, "infantry", 27, 17)
+    g = ctx.start(m, ["andy", "andy"])
+    set_skills(ctx, g, 1, [0x3D, 0x3E])
+    u = g.unit_at(5, 5)
+    ctx.set_hp(g, 5, 5, 40)
+    g.end_turn()
+    ctx.eq(g.unit(u["id"])["hp"], 90, "40 + 50 HP")
+
+
+@test(modes=("ds",))
+def skills_star_power(ctx):
+    """Star Power: the power meter fills 10% faster (ctx.attack's meter check
+    with the skill)."""
+    m = ctx.map()
+    m.unit(1, "tank", 10, 10).unit(2, "tank", 11, 10)
+    g = ctx.start(m, ["andy", "andy"])
+    set_skills(ctx, g, 1, [0x48])
+    ctx.attack(g, (10, 10), (10, 10), (11, 10))

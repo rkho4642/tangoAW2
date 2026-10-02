@@ -196,6 +196,283 @@ pub fn blast(core: &Core, army: u32, hit: i32) -> i32 {
     if has(core, army, MISSILE_GUARD) { (hit - 10).max(0) } else { hit }
 }
 
+pub const TOWER_POWER: u8 = 0x3A;
+pub const PRAIRIE_DOG: u8 = 0x38;
+pub const PATHFINDER: u8 = 0x39;
+pub const SCOUT: u8 = 0x3B;
+pub const EAGLE_EYE: u8 = 0x3C;
+pub const INVADER: u8 = 0x3F;
+pub const CONQUERER: u8 = 0x40;
+pub const SNEAKY: u8 = 0x41;
+pub const STEALTHY: u8 = 0x42;
+pub const SALE_PRICE: u8 = 0x43;
+pub const FIRE_SALE: u8 = 0x44;
+pub const LUCK: u8 = 0x47;
+pub const STAR_POWER: u8 = 0x48;
+pub const MISTWALKER: u8 = 0x49;
+pub const SOUL_OF_HACHI: u8 = 0x4A;
+
+/// Firepower per Com Tower on top of the CO's (Tower Power: 10 -> 15).
+pub fn tower_bonus(core: &Core, army: u32) -> i32 {
+    if has(core, army, TOWER_POWER) { 5 } else { 0 }
+}
+
+/// A dived Sub's or hidden Stealth's daily fuel less (Sneaky 1, Stealthy 2).
+pub fn hidden_fuel_cut(core: &Core, army: u32) -> i32 {
+    (if has(core, army, SNEAKY) { 1 } else { 0 }) + (if has(core, army, STEALTHY) { 2 } else { 0 })
+}
+
+// --- Hooks in AW2's code ---------------------------------------------------------
+
+const CURRENT_ARMY: u32 = 0x0300_33EC;
+const CO_ABILITIES: u32 = 0x0300_3FC8;
+const UNITS_POINTER: u32 = 0x0849_9594;
+const UNIT: u32 = 12;
+/// Kept between a function's entry and its return (army).
+const LUCK_ARMY: u32 = 0x0203_F7FE;
+const SPECIAL_ARMY: u32 = 0x0203_F7FF;
+
+fn any_on(core: &Core) -> bool {
+    core.raw_read_range_nonzero(ACTIVE, ACTIVE_LEN * 5)
+}
+
+trait NonZero {
+    fn raw_read_range_nonzero(&self, at: u32, n: u32) -> bool;
+}
+impl NonZero for Core {
+    fn raw_read_range_nonzero(&self, at: u32, n: u32) -> bool {
+        (0..n).step_by(2).any(|k| self.raw_read_16(at + k, -1) != 0)
+    }
+}
+
+/// `GetUnitMovementWithCoBonus(army r5, type r6)`, returning r4: APC Boost,
+/// a transport's move +1 (every move range, the CPU's too).
+const MOVE_DONE: u32 = 0x0804_2D42;
+fn move_done(core: &mut Core) {
+    if !any_on(core) {
+        return;
+    }
+    let cpu = core.gba().cpu();
+    let (army, t) = (cpu.gpr(5) as u32, cpu.gpr(6) as u8);
+    if has(core, army, APC_BOOST) && is_transport(t) {
+        let cpu = core.gba_mut().cpu_mut();
+        let r4 = cpu.gpr(4);
+        cpu.set_gpr(4, r4 + 1);
+    }
+}
+
+/// `GetUnitVisionWithCoBonus(army r4)`, the CO's vision just added into r5
+/// (before rain's -1): Scout +1, Eagle Eye +2.
+const VISION_DONE: u32 = 0x0804_2DA6;
+fn vision_done(core: &mut Core) {
+    if !any_on(core) {
+        return;
+    }
+    let army = core.gba().cpu().gpr(4) as u32;
+    let add = (if has(core, army, SCOUT) { 1 } else { 0 }) + (if has(core, army, EAGLE_EYE) { 2 } else { 0 });
+    if add != 0 {
+        let cpu = core.gba_mut().cpu_mut();
+        let r5 = cpu.gpr(5);
+        cpu.set_gpr(5, r5 + add);
+    }
+}
+
+/// `sub_08042650` (a capture action), its points for this action just in r5
+/// (before the progress so far is added and capped at 20): Invader +1,
+/// Conquerer +2.
+const CAPTURE_POINTS: u32 = 0x0804_269A;
+fn capture_points(core: &mut Core) {
+    if !any_on(core) {
+        return;
+    }
+    let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
+    let add = (if has(core, army, INVADER) { 1 } else { 0 }) + (if has(core, army, CONQUERER) { 2 } else { 0 });
+    if add != 0 {
+        let cpu = core.gba_mut().cpu_mut();
+        let r5 = cpu.gpr(5);
+        cpu.set_gpr(5, r5 + add);
+    }
+}
+
+/// `GetCoPriceMultiplier(army r4, type r5)`: the CO's cost % in r0 before
+/// 100 is added: Sale Price -5, Fire Sale -8. Not for the power meter
+/// (Dual Strike's meter reads no price modifier): its calls from
+/// `sub_08041978` and the Oozium's eat keep the CO's own.
+const PRICE: u32 = 0x0804_2CC0;
+const PRICE_METER_CALLERS: [u32; 3] = [0x0804_1C3F, 0x0804_1C89, 0x0802_C8E3];
+fn price(core: &mut Core) {
+    if !any_on(core) {
+        return;
+    }
+    let cpu = core.gba().cpu();
+    let (army, sp) = (cpu.gpr(4) as u32, cpu.gpr(13) as u32);
+    let caller = core.raw_read_32(sp + 12, -1);
+    if PRICE_METER_CALLERS.contains(&caller) {
+        return;
+    }
+    let cut = (if has(core, army, SALE_PRICE) { 5 } else { 0 }) + (if has(core, army, FIRE_SALE) { 8 } else { 0 });
+    if cut != 0 {
+        let cpu = core.gba_mut().cpu_mut();
+        let r0 = cpu.gpr(0);
+        cpu.set_gpr(0, r0 - cut);
+    }
+}
+
+/// `GetPlayerCoLuckBonus(army)`: its entry keeps the army; at its return the
+/// luck in r0 (10 with CO abilities off): Luck adds 10 (abilities on).
+const LUCK_ENTRY: u32 = 0x0804_2E64;
+const LUCK_DONE: u32 = 0x0804_2E7A;
+fn luck_entry(core: &mut Core) {
+    if any_on(core) {
+        let army = core.gba().cpu().gpr(0) as u8;
+        core.raw_write_8(LUCK_ARMY, -1, army);
+    }
+}
+fn luck_done(core: &mut Core) {
+    if !any_on(core) || core.raw_read_8(CO_ABILITIES, -1) == 0 {
+        return;
+    }
+    let army = core.raw_read_8(LUCK_ARMY, -1) as u32;
+    if has(core, army, LUCK) {
+        let cpu = core.gba_mut().cpu_mut();
+        let r0 = cpu.gpr(0);
+        cpu.set_gpr(0, r0 + 10);
+    }
+}
+
+/// The power meter's charge (`sub_080440E0(army, amount)`): Star Power x1.1.
+const METER_CHARGE: u32 = 0x0804_40E0;
+fn meter_charge(core: &mut Core) {
+    if !any_on(core) {
+        return;
+    }
+    let cpu = core.gba().cpu();
+    let (army, amount) = (cpu.gpr(0) as u32, cpu.gpr(1));
+    if has(core, army, STAR_POWER) && amount > 0 {
+        core.gba_mut().cpu_mut().set_gpr(1, amount * 110 / 100);
+    }
+}
+
+/// `GetPlayerSpecialAbilities(army)`: its entry keeps the army; at its
+/// return the ability bits in r0. In the CO's Super Power, Mistwalker
+/// strikes first when attacked (bit 0x04, Sonja's Counter Break) and Soul
+/// of Hachi deploys from cities (bit 0x02, Hachi's Merchant Union; the
+/// player's: the computer never builds at cities).
+const SPECIAL_ENTRY: u32 = 0x0804_3050;
+const SPECIAL_DONE: u32 = 0x0804_3066;
+const SCOP: u8 = 2;
+fn special_entry(core: &mut Core) {
+    if any_on(core) {
+        let army = core.gba().cpu().gpr(0) as u8;
+        core.raw_write_8(SPECIAL_ARMY, -1, army);
+    }
+}
+fn special_done(core: &mut Core) {
+    if !any_on(core) {
+        return;
+    }
+    let army = core.raw_read_8(SPECIAL_ARMY, -1) as u32;
+    if !(1..=5).contains(&army) || crate::co_roster::army_co(core, army).1 != SCOP {
+        return;
+    }
+    let bits = (if has(core, army, MISTWALKER) { 0x04 } else { 0 }) | (if has(core, army, SOUL_OF_HACHI) { 0x02 } else { 0 });
+    if bits != 0 {
+        let cpu = core.gba_mut().cpu_mut();
+        let r0 = cpu.gpr(0);
+        cpu.set_gpr(0, r0 | bits);
+    }
+}
+
+/// `CacheUnitMovementCosts(type r6)` done (the flood fill's 32 costs by
+/// terrain class at `*0x084999C8`; the army moving is u16 `0x03004480`):
+/// Prairie Dog, tires pay 1 on plains; Pathfinder, treads and tires pay 1
+/// in woods (a cost is only ever lowered; impassable stays so).
+const MOVE_COSTS_DONE: u32 = 0x0801_F91E;
+const MOVE_COSTS: u32 = 0x0849_99C8;
+const FLOOD_ARMY: u32 = 0x0300_4480;
+const TREADS: u8 = 2;
+const TIRES: u8 = 3;
+const PLAIN: u32 = 1;
+const WOOD_CLASS: u32 = 4;
+fn move_costs_done(core: &mut Core) {
+    if !any_on(core) {
+        return;
+    }
+    let army = core.raw_read_16(FLOOD_ARMY, -1) as u32;
+    let t = core.gba().cpu().gpr(6) as u32 & 0xFF;
+    let mt = core.raw_read_8(crate::roster::table(core) + 0x5C * t + 0x19, -1);
+    let cache = core.raw_read_32(MOVE_COSTS, -1);
+    if !(0x0200_0000..0x0400_0000).contains(&cache) {
+        return;
+    }
+    let lower = |core: &mut Core, class: u32| {
+        let c = core.raw_read_8(cache + class, -1) as i8;
+        if c > 1 {
+            core.raw_write_8(cache + class, -1, 1);
+        }
+    };
+    if has(core, army, PRAIRIE_DOG) && mt == TIRES {
+        lower(core, PLAIN);
+    }
+    if has(core, army, PATHFINDER) && (mt == TREADS || mt == TIRES) {
+        lower(core, WOOD_CLASS);
+    }
+}
+
+/// A structure's shot hits a unit (`sub_0803ECE8`: r1 the damage, r5 the
+/// unit, r2 its entry in the hit list `*0x03003338`, whose first entry of
+/// a shot has unit 0 and the shooter's kind at +2): Cannon Guard takes 20
+/// off a cannon's or laser's hit (kinds 1, 3, 4; not the Volcano's).
+const SHOT_HIT: u32 = 0x0803_ED12;
+const HIT_LIST: u32 = 0x0300_3338;
+fn shot_hit(core: &mut Core) {
+    if !any_on(core) {
+        return;
+    }
+    let cpu = core.gba().cpu();
+    let (dmg, unit, entry) = (cpu.gpr(1) as u32, cpu.gpr(5) as u32, cpu.gpr(2) as u32);
+    let units = core.raw_read_32(UNITS_POINTER, -1);
+    if unit < units {
+        return;
+    }
+    let army = crate::five::army_of_index(core, (unit - units) / UNIT);
+    if !has(core, army, CANNON_GUARD) {
+        return;
+    }
+    let list = core.raw_read_32(HIT_LIST, -1);
+    let mut e = entry;
+    let mut kind = 0;
+    for _ in 0..64 {
+        if e < list {
+            break;
+        }
+        if core.raw_read_16(e, -1) == 0 {
+            kind = core.raw_read_16(e + 2, -1);
+            break;
+        }
+        e -= 8;
+    }
+    if matches!(kind, 1 | 3 | 4) {
+        core.gba_mut().cpu_mut().set_gpr(1, dmg.saturating_sub(20) as i32);
+    }
+}
+
+pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
+    vec![
+        (MOVE_DONE, Box::new(move_done)),
+        (VISION_DONE, Box::new(vision_done)),
+        (CAPTURE_POINTS, Box::new(capture_points)),
+        (PRICE, Box::new(price)),
+        (LUCK_ENTRY, Box::new(luck_entry)),
+        (LUCK_DONE, Box::new(luck_done)),
+        (METER_CHARGE, Box::new(meter_charge)),
+        (SPECIAL_ENTRY, Box::new(special_entry)),
+        (SPECIAL_DONE, Box::new(special_done)),
+        (MOVE_COSTS_DONE, Box::new(move_costs_done)),
+        (SHOT_HIT, Box::new(shot_hit)),
+    ]
+}
+
 // --- EXP (Dual Strike's `0x020EA240`, `0x020E9C24`) ------------------------------
 
 /// EXP a CO gets for a DS Campaign win: the mission's score (AW2's results,
@@ -370,7 +647,8 @@ mod tests {
 
     #[test]
     fn ram_fits() {
-        assert!(ACTIVE >= 0x0203_F7E0 && ACTIVE + ACTIVE_LEN * 5 <= 0x0203_F800, "between crate::power_anim's and crate::ds_battle's state");
+        assert!(ACTIVE >= 0x0203_F7E0 && ACTIVE + ACTIVE_LEN * 5 <= LUCK_ARMY, "between crate::power_anim's and crate::ds_battle's state");
+        assert!(SPECIAL_ARMY < 0x0203_F800);
         assert!((LAST - FIRST) as u32 / 8 < ACTIVE_LEN);
     }
 
