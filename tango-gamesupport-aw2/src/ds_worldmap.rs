@@ -101,7 +101,8 @@ const AW2_REVEAL_TABLE: u32 = 0x0861_500C;
 /// (`gUnknown_0861485C`): `StartWorldMapForResume`'s pools, the Continue
 /// proc's wait for it, the main loop's way back to it.
 const MAP_SCRIPT_POOLS: [u32; 5] = [0x0807_814C, 0x0807_817C, 0x0807_81E4, 0x0849_EB90, 0x0861_4750];
-/// The mission panel's rank (AW2's results by mission, `gUnknown_0200C2D0`).
+/// The mission panel's rank (AW2's results by mission, `gUnknown_0200C2D0`;
+/// in a session the DS Campaign's own, crate::ds_campaign::RECORDS).
 const RANK_POOLS: [u32; 1] = [0x0807_758C];
 const AW2_RANKS: u32 = 0x0200_C2D0;
 
@@ -554,7 +555,7 @@ pub fn tick(core: &mut Core, session: bool, aw2_map_script: u32, ds_map_script: 
         set32(core, at, pick(REVEAL_TABLE, AW2_REVEAL_TABLE));
     }
     for at in RANK_POOLS {
-        set32(core, at, pick(ZEROS, AW2_RANKS));
+        set32(core, at, pick(crate::ds_campaign::RECORDS, AW2_RANKS));
     }
     // The world map from the menu: the session's copy of its script
     // (crate::ds_campaign: the prologue before the first mission).
@@ -610,6 +611,7 @@ pub fn flush_sprites(core: &mut Core, mut at: u32, end: u32) -> u32 {
         return at;
     }
     let Some(w) = world_map() else { return at };
+    draw_rank_tiles(core);
     let (cam_x, cam_y) = (core.raw_read_16(S_CAMERA_X, -1) as i16 as i32, core.raw_read_16(S_CAMERA_Y, -1) as i16 as i32);
     for (m, &(px, py, _)) in w.points.iter().enumerate() {
         if core.raw_read_8(S_FLAGS + m as u32, -1) & CLEARED == 0 || at + 8 > end {
@@ -624,8 +626,101 @@ pub fn flush_sprites(core: &mut Core, mut at: u32, end: u32) -> u32 {
         core.raw_write_16(at + 4, -1, CLEARED_FLAG_TILE | (3 << 10));
         core.raw_write_16(at + 6, -1, 0);
         at += 8;
+        // Its best rank (the record of the campaign's difficulty), beside it.
+        let Some(rank) = record_rank(core, m) else { continue };
+        if at + 8 > end {
+            continue;
+        }
+        let (rx, ry) = (x + RANK_DX, y + RANK_DY);
+        core.raw_write_16(at, -1, ((ry as u16) & 0xFF) | (2 << 14));
+        core.raw_write_16(at + 2, -1, (rx as u16) & 0x1FF);
+        core.raw_write_16(at + 4, -1, (RANK_TILES + 2 * rank as u16) | (3 << 10));
+        core.raw_write_16(at + 6, -1, 0);
+        at += 8;
     }
     at
+}
+
+/// The rank letters (S, A, B, C), 8x16 sprites in free OBJ tiles of the
+/// map screen (904..911), beside a cleared mission's flag.
+const RANK_TILES: u16 = 904;
+const RANK_DX: i32 = 13;
+const RANK_DY: i32 = 2;
+const RANK_LETTERS: [char; 4] = ['S', 'A', 'B', 'C'];
+
+/// A mission's best rank (0 S .. 3 C) from the DS Campaign's records, as
+/// AW2 ranks a score (`0x08037D80`: up to 199 C, 249 B, 279 A, else S).
+fn record_rank(core: &Core, m: usize) -> Option<usize> {
+    let hard = crate::ds_campaign::hard(core) as u32;
+    let rec = core.raw_read_32(crate::ds_campaign::RECORDS + 8 * m as u32 + 4 * hard, -1);
+    let score = rec >> 20;
+    (score > 0).then_some(match score {
+        0..=199 => 3,
+        200..=249 => 2,
+        250..=279 => 1,
+        _ => 0,
+    })
+}
+
+/// 5x10 letters, '#' drawn.
+fn rank_glyph(c: char) -> [&'static str; 10] {
+    match c {
+        'S' => [".####", "#####", "##...", "##...", "####.", ".####", "...##", "...##", "#####", "####."],
+        'A' => [".###.", "#####", "##.##", "##.##", "##.##", "#####", "#####", "##.##", "##.##", "##.##"],
+        'B' => ["####.", "#####", "##.##", "##.##", "####.", "#####", "##.##", "##.##", "#####", "####."],
+        _ => [".###.", "#####", "##.##", "##...", "##...", "##...", "##...", "##.##", "#####", ".###."],
+    }
+}
+
+/// The letters' tiles (4bpp, two 8x8 tiles each, top then bottom): the
+/// letter in `fill` with a one-pixel `edge` around it.
+fn rank_tiles(fill: u8, edge: u8) -> Vec<u8> {
+    let mut out = Vec::new();
+    for c in RANK_LETTERS {
+        let g = rank_glyph(c);
+        let on = |x: i32, y: i32| (0..5).contains(&(x - 1)) && (0..10).contains(&(y - 3)) && g[(y - 3) as usize].as_bytes()[(x - 1) as usize] == b'#';
+        let mut px = [[0u8; 8]; 16];
+        for y in 0..16 {
+            for x in 0..8 {
+                px[y][x] = if on(x as i32, y as i32) {
+                    fill
+                } else if (-1..=1).any(|dy| (-1..=1).any(|dx| on(x as i32 + dx, y as i32 + dy))) {
+                    edge
+                } else {
+                    0
+                };
+            }
+        }
+        for half in 0..2 {
+            for y in 0..8 {
+                for x in (0..8).step_by(2) {
+                    let r = &px[8 * half + y];
+                    out.push(r[x] | (r[x + 1] << 4));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Every frame on the DS map: the rank letters' tiles, in OBJ palette 0's
+/// lightest and darkest colours.
+fn draw_rank_tiles(core: &mut Core) {
+    let mut pal = [0u8; 32];
+    core.raw_read_range(PAL_BUFFER + 0x200, -1, &mut pal);
+    let lum = |i: usize| {
+        let c = u16::from_le_bytes([pal[2 * i], pal[2 * i + 1]]);
+        (c & 31) as u32 * 3 + ((c >> 5) & 31) as u32 * 6 + ((c >> 10) & 31) as u32
+    };
+    let fill = (1..16).max_by_key(|&i| lum(i)).unwrap_or(1) as u8;
+    let edge = (1..16).min_by_key(|&i| lum(i)).unwrap_or(2) as u8;
+    let tiles = rank_tiles(fill, edge);
+    let at = 0x0601_0000 + RANK_TILES as u32 * 32;
+    let mut now = vec![0u8; tiles.len()];
+    core.raw_read_range(at, -1, &mut now);
+    if now != tiles {
+        core.raw_write_range(at, -1, &tiles);
+    }
 }
 
 /// The map screen is up (its layers as it sets them).

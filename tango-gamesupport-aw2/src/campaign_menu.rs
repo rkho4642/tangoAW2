@@ -9,7 +9,10 @@
 //! positive. tangoAW2 keeps a level ([`LEVEL`]): 0 the chooser (the box's
 //! rows show "AW2 CAMPAIGN" and "DS CAMPAIGN"; UP/DOWN and A are taken
 //! from the game), 1 AW2's own box, 2 the DS Campaign's box (B goes back to
-//! the chooser). In the DS box the game's "is there a campaign to
+//! the chooser), 3 its Normal / Hard choice: once a Normal campaign has
+//! been cleared (as Dual Strike opens Hard), New in the DS box asks
+//! for the difficulty in the chooser's style (A takes it and goes on with
+//! New, B back to the box); before that New starts Normal. In the DS box the game's "is there a campaign to
 //! continue" (`GetCampaignSaveFlag`, trapped) answers for the DS Campaign,
 //! and the choice is passed on through [`crate::ds_campaign::REQUEST`].
 //!
@@ -85,13 +88,47 @@ fn campaign_box(core: &Core) -> Option<u32> {
     (kind == CAMPAIGN && open).then_some(p)
 }
 
-/// Whether the chooser (AW2 / DS) is showing.
+/// Whether the chooser (AW2 / DS, or Normal / Hard) is showing.
 pub fn chooser(core: &Core) -> bool {
-    crate::ds_weather::is_on(core) && campaign_box(core).is_some() && core.raw_read_8(LEVEL, -1) == 0
+    crate::ds_weather::is_on(core) && campaign_box(core).is_some() && matches!(core.raw_read_8(LEVEL, -1), 0 | 3)
+}
+
+/// The Normal / Hard choice's row (0 Normal, 1 Hard).
+pub const DIFFICULTY: u32 = 0x0203_FD5F;
+
+/// The box's help lines (text ids 0x9C2 "Continue a campaign in
+/// progress." and 0x9C3 "Start a new campaign.": their text table words)
+/// and AW2's texts; under the Normal / Hard choice they are the choice's.
+const HELP_WORDS: [u32; 2] = [0x0861_3140, 0x0861_3144];
+const AW2_HELP: [u32; 2] = [0x0860_7684, 0x0860_76A8];
+
+fn help_lines(core: &mut Core) {
+    let ds = (core.raw_read_8(LEVEL, -1) == 3).then(|| crate::ds_campaign::campaign(core).map(|c| c.help)).flatten();
+    for (k, &at) in HELP_WORDS.iter().enumerate() {
+        let want = ds.map_or(AW2_HELP[k], |h| h[k]);
+        if core.raw_read_32(at, -1) != want {
+            core.raw_write_32(at, -1, want);
+        }
+    }
+}
+
+/// The labels showing and the highlighted row.
+fn shown(core: &Core) -> ([&'static str; 2], usize) {
+    if core.raw_read_8(LEVEL, -1) == 3 {
+        (DIFFICULTY_LABELS, core.raw_read_8(DIFFICULTY, -1) as usize & 1)
+    } else {
+        (LABELS, core.raw_read_8(CHOICE, -1) as usize & 1)
+    }
 }
 
 /// Every frame, before the game runs: the keys the game gets.
 pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
+    let keys = tick_menu(core, ds, keys, prev);
+    help_lines(core);
+    keys
+}
+
+fn tick_menu(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
     if !ds {
         return keys;
     }
@@ -124,6 +161,29 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
             }
             keys &= !(KEY_UP | KEY_DOWN | KEY_A);
         }
+        3 => {
+            // Normal / Hard after New in the DS box.
+            let mut row = core.raw_read_8(DIFFICULTY, -1) & 1;
+            if pressed & (KEY_UP | KEY_DOWN) != 0 {
+                row ^= 1;
+                core.raw_write_8(DIFFICULTY, -1, row);
+            }
+            core.raw_write_16(p + W_CURSOR, -1, ROW0 + row as u16);
+            if pressed & KEY_B != 0 {
+                core.raw_write_8(LEVEL, -1, 2);
+                core.raw_write_16(p + W_CURSOR, -1, ROW0 + 1);
+                keys &= !(KEY_UP | KEY_DOWN | KEY_B);
+            } else if pressed & KEY_A != 0 {
+                // On with New: the box's cursor back on New, A to the game.
+                core.raw_write_8(crate::ds_campaign::HARD_REQUEST, -1, row);
+                core.raw_write_8(LEVEL, -1, 2);
+                core.raw_write_16(p + W_CURSOR, -1, ROW0 + 1);
+                core.raw_write_8(crate::ds_campaign::REQUEST, -1, 1);
+                keys &= !(KEY_UP | KEY_DOWN);
+            } else {
+                keys &= !(KEY_UP | KEY_DOWN | KEY_A);
+            }
+        }
         level => {
             if pressed & KEY_B != 0 {
                 let row = level - 1;
@@ -133,9 +193,20 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
                 core.raw_write_8(crate::ds_campaign::REQUEST, -1, 0);
                 keys &= !KEY_B;
             } else if level == 2 {
-                // The DS box: Continue (top) or New.
+                // The DS box: Continue (top) or New; New with Hard open
+                // asks Normal / Hard first.
                 let row = core.raw_read_16(p + W_CURSOR, -1) % 2;
-                core.raw_write_8(crate::ds_campaign::REQUEST, -1, if row == 0 { 2 } else { 1 });
+                if row == 1 && pressed & KEY_A != 0 && crate::ds_campaign::hard_open(core) {
+                    core.raw_write_8(LEVEL, -1, 3);
+                    core.raw_write_8(DIFFICULTY, -1, 0);
+                    core.raw_write_16(p + W_CURSOR, -1, ROW0);
+                    keys &= !KEY_A;
+                } else {
+                    core.raw_write_8(crate::ds_campaign::REQUEST, -1, if row == 0 { 2 } else { 1 });
+                    if pressed & KEY_A != 0 {
+                        core.raw_write_8(crate::ds_campaign::HARD_REQUEST, -1, 0);
+                    }
+                }
             }
         }
     }
@@ -171,6 +242,10 @@ fn glyph(c: char) -> &'static [&'static str] {
         'N' => &["#...#", "##..#", "###.#", "#####", "#.###", "#..##", "#...#", "#...#", "#...#", "#...#"],
         'D' => &["####.", "#####", "##.##", "##.##", "##.##", "##.##", "##.##", "##.##", "#####", "####."],
         'S' => &[".####", "#####", "##...", "##...", "####.", ".####", "...##", "...##", "#####", "####."],
+        'O' => &[".###.", "#####", "##.##", "##.##", "##.##", "##.##", "##.##", "##.##", "#####", ".###."],
+        'R' => &["####.", "#####", "##.##", "##.##", "#####", "####.", "##.##", "##.##", "##.##", "##.##"],
+        'L' => &["##...", "##...", "##...", "##...", "##...", "##...", "##...", "##...", "#####", "#####"],
+        'H' => &["##.##", "##.##", "##.##", "##.##", "#####", "#####", "##.##", "##.##", "##.##", "##.##"],
         _ => &["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."],
     }
 }
@@ -178,6 +253,7 @@ fn glyph(c: char) -> &'static [&'static str] {
 const LABEL_W: usize = 80;
 const LABEL_H: usize = 16;
 pub const LABELS: [&str; 2] = ["AW2 CAMPAIGN", "DS CAMPAIGN"];
+pub const DIFFICULTY_LABELS: [&str; 2] = ["NORMAL", "HARD"];
 
 /// A label in the game's style: palette index 15 the outer 2-pixel border, 1
 /// the box, 5 the text.
@@ -233,7 +309,8 @@ pub fn draw(core: &mut Core) {
     if !chooser(core) {
         return;
     }
-    for (k, t) in LABELS.iter().enumerate() {
+    let (labels, _) = shown(core);
+    for (k, t) in labels.iter().enumerate() {
         let tiles = label_tiles(t);
         let at = OBJ_VRAM + (TILES + LABEL_TILES * k as u32) * 32;
         let mut now = vec![0u8; tiles.len()];
@@ -273,7 +350,7 @@ pub fn flush(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
         // The highlighted row in the game's "selected" palette (8), the
         // other in its plain one (10): the game recolours its labels only
         // on its own cursor moves.
-        let row = core.raw_read_8(CHOICE, -1) as usize & 1;
+        let (_, row) = shown(core);
         let pal = if k == row { SELECTED_PALETTE } else { PLAIN_PALETTE };
         let style = (a2 & 0x0C00) | (pal << 12); // priority, palette
         let tile = (TILES + LABEL_TILES * k as u32) as u16;
@@ -287,7 +364,7 @@ pub fn flush(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
     }
     // The box's right-hand cursor arrow (OBJ tile 768) moves out past the
     // wider labels, next to the highlighted row.
-    let row = core.raw_read_8(CHOICE, -1) as u16 & 1;
+    let row = shown(core).1 as u16;
     let mut s = start;
     while s < at {
         let (a0, a1, a2) = (core.raw_read_16(s, -1), core.raw_read_16(s + 2, -1), core.raw_read_16(s + 4, -1));
@@ -313,7 +390,7 @@ mod tests {
 
     #[test]
     fn labels_fit() {
-        for t in LABELS {
+        for t in LABELS.iter().chain(DIFFICULTY_LABELS.iter()) {
             let w: usize = t.chars().map(|c| glyph(c)[0].len() + 1).sum::<usize>() - 1;
             assert!(w + 6 <= LABEL_W, "{t}");
             assert_eq!(label_tiles(t).len(), LABEL_TILES as usize * 32);

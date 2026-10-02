@@ -67,6 +67,20 @@ const COUNTDOWN: u32 = 0x0203_FD18;
 const CREDITS: u32 = 0x0203_FD17;
 /// Means to an End (the campaign's last mission).
 const FINAL_MISSION: u8 = 24;
+/// The Campaign box's request for a Hard campaign (set with New's
+/// [`REQUEST`] by [`crate::campaign_menu`]'s Normal/Hard choice).
+pub const HARD_REQUEST: u32 = 0x0203_FD5E;
+/// AW2's Hard Campaign flag: AW2's own code reads it (through the flag
+/// get, [`IS_FLAG`]) for a mission's hard map and deployment (its header's
+/// +0x30/+0x38) and for the results' and the panel's records (Normal or
+/// Hard, `0x0803866C`). The DS Campaign keeps it as its difficulty.
+pub const HARD_FLAG: u32 = 0x60;
+/// The missions' best results (AW2's layout, `gUnknown_0200C2D0`: per
+/// mission a word for Normal and one for Hard: CO, days << 8, score << 20),
+/// by DS mission index; saved with the progress. EWRAM the game never
+/// touches.
+pub const RECORDS: u32 = 0x0203_F600;
+pub const RECORDS_SIZE: u32 = 8 * data::MISSIONS as u32;
 /// 1 once [`MISSION`]'s header is in the map table (the world map's sync).
 const MISSION_SET: u32 = 0x0203_FD15;
 /// The last mission's outcome (1 won, 2 lost), its index and day (u16).
@@ -91,6 +105,13 @@ const RAM_END: u32 = 0x0203_FD60;
 /// flags 0x20..0x9F.
 const P_MAGIC: u32 = PROGRESS;
 const P_NEXT: u32 = PROGRESS + 4;
+/// The campaign's difficulty: 0 Normal, 1 Hard. (In a session it is AW2's
+/// Hard Campaign flag, [`HARD_FLAG`], which the record's flags never keep:
+/// a 0.4.0 record kept a lab mission's flag there.)
+const P_HARD: u32 = PROGRESS + 6;
+/// The campaigns cleared (bit 0 Normal, bit 1 Hard): kept by New, so Hard
+/// stays open once Normal has been cleared (as Dual Strike opens it).
+const P_CLEARS: u32 = PROGRESS + 7;
 const P_WON: u32 = PROGRESS + 8;
 const P_FLAGS: u32 = PROGRESS + 0x10;
 const PROGRESS_MAGIC: u32 = 0x4344_5741; // "AWDC"
@@ -221,13 +242,14 @@ const STAGING: u32 = 0x0200_0000;
 /// writer, `sub_0801A7D8(SAVE_SLOT, buffer, SAVE_SIZE)`, which returns to
 /// the proc.
 fn save(core: &mut Core) {
-    let mut b = vec![0u8; SAVE_SIZE as usize];
-    core.raw_read_range(PROGRESS, -1, &mut b);
+    let mut b = vec![0u8; (SAVE_SIZE + RECORDS_SIZE) as usize];
+    core.raw_read_range(PROGRESS, -1, &mut b[..SAVE_SIZE as usize]);
+    core.raw_read_range(RECORDS, -1, &mut b[SAVE_SIZE as usize..]);
     core.raw_write_range(STAGING, -1, &b);
     let cpu = core.gba_mut().cpu_mut();
     cpu.set_gpr(0, SAVE_SLOT as i32);
     cpu.set_gpr(1, STAGING as i32);
-    cpu.set_gpr(2, SAVE_SIZE as i32);
+    cpu.set_gpr(2, b.len() as i32);
     cpu.set_thumb_pc(SLOT_WRITER);
 }
 
@@ -271,7 +293,12 @@ pub struct Campaign {
     /// runs it after the ending ([`ending_script`]).
     pub credits: Option<crate::ds_credits::Credits>,
     pub ending: u32,
+    /// The Normal / Hard choice's help lines ([`crate::campaign_menu`]).
+    pub help: [u32; 2],
 }
+
+/// The help line under the Normal / Hard choice, per row.
+pub const DIFFICULTY_HELP: [&str; 2] = ["Dual Strike's campaign.", "Hard Campaign: stronger enemy forces."];
 
 /// `Proc_Goto(proc, label)` and the start of the Select Mode menu (what
 /// the world map's "Return to Select Mode" path ends with).
@@ -358,9 +385,10 @@ pub fn campaign(core: &Core) -> Option<&'static Campaign> {
             let credits_running = built.add_magic(data::Magic::Flow(FLOW_CREDITS_RUNNING));
             let credits = crate::ds_credits::build(core, &ds, &mut built);
             let ending = built.add(&ending_script(credits_start, credits_running));
+            let help = DIFFICULTY_HELP.map(|t| built.add(&[t.as_bytes(), &[0]].concat()));
             assert!(built.base + (built.blob.len() as u32) < DATA_END);
             let pictures = crate::ds_story_art::narration_pictures();
-            Some(Campaign { built, start_proc, map_script, pictures, hide_stub, co_setup, credits, ending })
+            Some(Campaign { built, start_proc, map_script, pictures, hide_stub, co_setup, credits, ending, help })
         })
         .as_ref()
 }
@@ -510,11 +538,47 @@ fn progress_valid(core: &Core) -> bool {
 }
 
 fn new_progress(core: &mut Core) {
+    let clears = if progress_valid(core) { core.raw_read_8(P_CLEARS, -1) } else { 0 };
     for a in (PROGRESS..PROGRESS + SAVE_SIZE).step_by(4) {
         core.raw_write_32(a, -1, 0);
     }
     core.raw_write_32(P_MAGIC, -1, PROGRESS_MAGIC);
     core.raw_write_8(P_NEXT, -1, 0);
+    core.raw_write_8(P_CLEARS, -1, clears);
+}
+
+/// Hard is open: a Normal campaign has been cleared (the saved record's).
+pub fn hard_open(core: &mut Core) -> bool {
+    has_save(core) && core.raw_read_8(P_CLEARS, -1) & 1 != 0
+}
+
+/// The session's campaign is Hard.
+pub fn hard(core: &Core) -> bool {
+    campaign_flag(core, HARD_FLAG)
+}
+
+/// The session's flags from the record's, AW2's Hard Campaign flag from
+/// the record's difficulty.
+fn flags_from_record(core: &mut Core) {
+    for k in 0..16 {
+        let v = core.raw_read_8(P_FLAGS + k, -1);
+        core.raw_write_8(FLAGS + k, -1, v);
+    }
+    let (at, bit) = flag_bit(HARD_FLAG).unwrap();
+    let v = core.raw_read_8(at, -1) & !bit;
+    let hard = core.raw_read_8(P_HARD, -1) == 1;
+    core.raw_write_8(at, -1, if hard { v | bit } else { v });
+}
+
+/// The record's flags from the session's (without the Hard flag).
+fn flags_to_record(core: &mut Core) {
+    for k in 0..16 {
+        let v = core.raw_read_8(FLAGS + k, -1);
+        core.raw_write_8(P_FLAGS + k, -1, v);
+    }
+    let (at, bit) = ((HARD_FLAG - 0x20) / 8, 1u8 << ((HARD_FLAG - 0x20) % 8));
+    let v = core.raw_read_8(P_FLAGS + at, -1);
+    core.raw_write_8(P_FLAGS + at, -1, v & !bit);
 }
 
 /// The campaign's order: Dual Strike's 25 story missions, with its three
@@ -581,13 +645,18 @@ fn load_from_flash(core: &mut Core) {
         }
     }
     let Some((_, at)) = best else { return };
-    let len = (core.raw_read_16(at + 0x50, -1) as u32).min(SAVE_SIZE);
+    let len = (core.raw_read_16(at + 0x50, -1) as u32).min(SAVE_SIZE + RECORDS_SIZE);
     let mut b = vec![0u8; len as usize];
     for (k, v) in b.iter_mut().enumerate() {
         *v = core.raw_read_8(at + 0x52 + k as u32, -1);
     }
     if b.len() >= 4 && u32::from_le_bytes(b[0..4].try_into().unwrap()) == PROGRESS_MAGIC {
-        core.raw_write_range(PROGRESS, -1, &b);
+        let n = b.len().min(SAVE_SIZE as usize);
+        core.raw_write_range(PROGRESS, -1, &b[..n]);
+        // The records (a record saved before them has none).
+        if b.len() == (SAVE_SIZE + RECORDS_SIZE) as usize {
+            core.raw_write_range(RECORDS, -1, &b[SAVE_SIZE as usize..]);
+        }
     }
 }
 
@@ -658,7 +727,12 @@ fn start(core: &mut Core, new: bool) {
     core.raw_write_8(REQUEST, -1, 0);
     if req == 1 || !progress_valid(core) {
         new_progress(core);
+        // New after the Normal/Hard choice (Continue keeps the record's).
+        if req == 1 && core.raw_read_8(HARD_REQUEST, -1) == 1 {
+            core.raw_write_8(P_HARD, -1, 1);
+        }
     }
+    core.raw_write_8(HARD_REQUEST, -1, 0);
     // A record saved by 0.4.0 kept the lab missions' flags at 0x60..0x62
     // (AW2's Hard Campaign flag among them): they move to 0x90..0x92.
     for k in 0..3u32 {
@@ -672,10 +746,7 @@ fn start(core: &mut Core, new: bool) {
         }
     }
     // Flags of the session come from the progress record.
-    for k in 0..16 {
-        let v = core.raw_read_8(P_FLAGS + k, -1);
-        core.raw_write_8(FLAGS + k, -1, v);
-    }
+    flags_from_record(core);
     crate::ds_worldmap::backup_aw2_state(core);
     let open = available(core);
     // The cursor on the mission at the progress's step if it is open (a
@@ -711,16 +782,10 @@ fn end_of_battle(core: &mut Core) {
     if won {
         let w = core.raw_read_32(P_WON, -1) | (1 << index);
         core.raw_write_32(P_WON, -1, w);
-        for k in 0..16 {
-            let v = core.raw_read_8(FLAGS + k, -1);
-            core.raw_write_8(P_FLAGS + k, -1, v);
-        }
+        flags_to_record(core);
     } else {
         // A lost mission leaves the flags as they were before it.
-        for k in 0..16 {
-            let v = core.raw_read_8(P_FLAGS + k, -1);
-            core.raw_write_8(FLAGS + k, -1, v);
-        }
+        flags_from_record(core);
     }
     let after = available(core);
     let newly: Vec<u8> = after.iter().copied().filter(|m| !before.contains(m)).collect();
@@ -739,9 +804,12 @@ fn end_of_battle(core: &mut Core) {
     }
     core.raw_write_32(crate::ds_worldmap::S_MISSION, -1, index as u32);
     core.raw_write_8(crate::ds_worldmap::S_WON, -1, won as u8);
-    // Means to an End won: its ending scenes on the map, then the credits.
+    // Means to an End won: its ending scenes on the map, then the credits;
+    // the campaign (Normal or Hard) cleared (Normal opens Hard).
     if won && index == FINAL_MISSION {
         core.raw_write_8(CREDITS, -1, 1);
+        let c = core.raw_read_8(P_CLEARS, -1) | if hard(core) { 2 } else { 1 };
+        core.raw_write_8(P_CLEARS, -1, c);
     }
     let cpu = core.gba_mut().cpu_mut();
     cpu.set_gpr(4, 0);
@@ -756,6 +824,18 @@ fn end_of_battle(core: &mut Core) {
 const BEST_SCORE: u32 = 0x0801_7720;
 fn best_score(core: &mut Core) {
     if active(core) && core.raw_read_8(MAP_ID, -1) == data::MAP_ID {
+        // The DS Campaign's own records instead ([`RECORDS`], AW2's
+        // layout and rule: kept unless the new score is lower).
+        let cpu = core.gba().cpu();
+        let (co, score, days) = (cpu.gpr(0) as u32 & 0xFF, cpu.gpr(2) as u32 & 0xFFF, cpu.gpr(3) as u32 & 0xFFF);
+        let index = core.raw_read_8(MISSION, -1) as u32;
+        if index < data::MISSIONS as u32 {
+            let at = RECORDS + 8 * index + 4 * hard(core) as u32;
+            let old = core.raw_read_32(at, -1);
+            if score >= old >> 20 {
+                core.raw_write_32(at, -1, co | days << 8 | score << 20);
+            }
+        }
         let cpu = core.gba_mut().cpu_mut();
         let lr = cpu.gpr(14) as u32;
         cpu.set_thumb_pc(lr & !1);

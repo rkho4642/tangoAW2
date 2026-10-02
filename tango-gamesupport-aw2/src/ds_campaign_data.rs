@@ -27,7 +27,8 @@
 //!   unit selected, after a unit's action, an action chosen, match end).
 //!   Records are AW2's grouped by front (op = 3 * AW2 op + front variant:
 //!   +0 main front, +1 second front, +2 either), opened by 0x15 (normal
-//!   campaign only) or 0x16 (hard only), fired by 0x17..0x19, ended by
+//!   campaign only) or 0x16 (hard only: both kept, testing the campaign's
+//!   difficulty), fired by 0x17..0x19, ended by
 //!   0x1A.
 //! - Event scripts: AW2's format (16 bytes a command), Dual Strike's
 //!   handler table at arm9 0x021585C0 (0x5D opcodes); many are AW2's own
@@ -1138,8 +1139,12 @@ fn convert_scripts(cx: &mut Ctx, entries: &[u32]) {
     }
 }
 
+/// A pseudo predicate (no Dual Strike address): the campaign is Hard
+/// (crate::ds_campaign_rules::predicate).
+pub const HARD_CAMPAIGN: u32 = 0x60;
+
 /// Converts a Dual Strike trigger list to AW2's (8-byte records). Records
-/// for the hard campaign only (0x16) and the second front only (+1
+/// for one difficulty test it; those for the second front only (+1
 /// variants) are left out.
 fn convert_triggers(cx: &mut Ctx, at: u32) -> Vec<u8> {
     let mut out = Vec::new();
@@ -1157,8 +1162,16 @@ fn convert_triggers(cx: &mut Ctx, at: u32) -> Vec<u8> {
             break;
         }
         if op == 0x15 || op == 0x16 {
+            // Normal only (0x15) or Hard only (0x16): the record tests the
+            // campaign's difficulty first (AW2's kinds 5/6: a predicate
+            // true / false; [`HARD_CAMPAIGN`]).
             record.clear();
-            skip = op == 0x16;
+            skip = false;
+            let s = cx.magic(Magic::Predicate(HARD_CAMPAIGN));
+            let mut x = [0u8; 8];
+            x[0] = if op == 0x16 { 5 } else { 6 };
+            x[4..8].copy_from_slice(&s.to_le_bytes());
+            record.push(x);
             continue;
         }
         let (kind, front) = (op / 3, op % 3);

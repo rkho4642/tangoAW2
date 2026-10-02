@@ -910,3 +910,147 @@ def ds_campaign_credits(ctx):
     ctx.eq(e.u8(dc.ACTIVE), 0, "back on Select Mode: the session is over")
     ctx.check(all(e.u32(a) == AW2_PAGES for a in PAGE_POOLS), "AW2's own pages back")
     ctx.eq(e.u8(dc.P_NEXT + 1), 1, "the campaign recorded as over")
+
+
+# -- Hard Campaign ---------------------------------------------------------------
+DS_FLAGS = 0x0203FD20             # the session's campaign flags 0x20..0x9F
+LEVEL_HARD_CHOICE = 3             # campaign_menu: the Normal / Hard choice
+HELP_WORDS = (0x08613140, 0x08613144)  # the box's help lines' text table words
+AW2_HELP = [0x08607684, 0x086076A8]
+RANK_POOL = 0x0807758C            # the map panel's results table word
+
+
+def session_hard(e):
+    f = dc.HARD_FLAG - 0x20
+    return (e.u8(DS_FLAGS + f // 8) >> (f % 8)) & 1
+
+
+def to_ds_box(e, d, cleared):
+    """Select Mode, Campaign, DS CAMPAIGN: the DS box; with `cleared` the
+    record says a Normal campaign was cleared (a test aid: the record's
+    clears byte, as Means to an End's win sets it)."""
+    d.open_campaign_box()
+    d.chooser_row(1)
+    e.press("A", 8)
+    e.wait(30)
+    if cleared:
+        e.w32(dc.P_MAGIC, dc.PROGRESS_MAGIC)
+        e.w8(dc.P_CLEARS, 1)
+    d.box_row(1)
+    e.wait(20)
+
+
+@test(modes=("ds",))
+def ds_campaign_hard_locked(ctx):
+    """Before a Normal campaign is cleared, DS CAMPAIGN's New starts a
+    Normal campaign directly (no Normal / Hard choice), with the normal
+    deployment."""
+    data = dc.DsData()
+    e, g, d = boot(ctx)
+    to_ds_box(e, d, cleared=False)
+    e.press("A", 8)
+    levels = set()
+    for _ in range(60):
+        levels.add(e.u8(dc.MENU_LEVEL))
+        if d.active():
+            break
+        e.wait(10)
+        if not d.active():
+            e.press("A", 8)
+    ctx.require(d.active(), "New starts the DS Campaign")
+    ctx.check(LEVEL_HARD_CHOICE not in levels, "no Normal / Hard choice")
+    ctx.eq((e.u8(dc.P_HARD), session_hard(e)), (0, 0), "a Normal campaign")
+
+
+@test(modes=("ds",))
+def ds_campaign_hard(ctx):
+    """Once a Normal campaign has been cleared, DS CAMPAIGN's New asks
+    Normal or Hard (the chooser's style: two labels, the cursor, A takes
+    it, B goes back). Hard: AW2's Hard Campaign flag in the session, Jake's
+    Trial on Dual Strike's hard map with its hard deployment; Continue after
+    a reboot is Hard again. Normal from the same choice is Normal."""
+    data = dc.DsData()
+    e, g, d = boot(ctx)
+    to_ds_box(e, d, cleared=True)
+    e.press("A", 8)
+    e.wait(20)
+    ctx.require(e.u8(dc.MENU_LEVEL) == LEVEL_HARD_CHOICE, "New asks Normal or Hard")
+    ctx.check(e.u32(HELP_WORDS[0]) != AW2_HELP[0] and e.u32(HELP_WORDS[1]) != AW2_HELP[1], "the choice's help lines")
+    shot(ctx, e, "normal_or_hard.png")
+    tiles = e.read(0x06010000 + 832 * 32, 72 * 32)
+    e.press("B", 6)
+    e.wait(20)
+    ctx.eq(e.u8(dc.MENU_LEVEL), 2, "B: back to the DS box")
+    e.wait(2)
+    ctx.eq([e.u32(w) for w in HELP_WORDS], AW2_HELP, "AW2's help lines back")
+    d.box_row(1)
+    e.press("A", 8)
+    e.wait(20)
+    e.press("DOWN", 6)
+    e.wait(20)
+    shot(ctx, e, "hard_highlighted.png")
+    ctx.check(e.read(0x06010000 + 832 * 32, 72 * 32) == tiles, "the labels stay drawn")
+    e.press("A", 8)
+    for _ in range(40):
+        if e.wait_until(d.active, 30, step=5):
+            break
+        e.press("A", 8)
+    ctx.require(d.active(), "Hard: the session starts")
+    ctx.eq((e.u8(dc.P_HARD), session_hard(e)), (1, 1), "a Hard campaign (the record and AW2's flag)")
+    d.wait_world_map()
+    d.pick_mission()
+    d.wait_map()
+    m = data.mission(0, hard=True)
+    ctx.eq(d.size(), (m["w"], m["h"]), "Jake's Trial: the hard map's size")
+    have = sorted((u["army"], u["x"], u["y"], u["type"]) for u in g.units())
+    ctx.eq(have, sorted(m["units"]), "Jake's Trial: the hard deployment")
+    ctx.check(sorted(m["units"]) != sorted(data.mission(0)["units"]), "(which is not the normal one)")
+    shot(ctx, e, "jakes_trial_hard.png")
+    # Continue after a reboot: Hard again.
+    save = e.save(os.path.join(ctx.out, "hard"))
+    e2, g2, d2 = boot(ctx, save)
+    d2.start(new=False, pick=False)
+    ctx.eq((e2.u8(dc.P_HARD), session_hard(e2)), (1, 1), "Continue: Hard again")
+    # Normal from the choice.
+    e3, g3, d3 = boot(ctx)
+    to_ds_box(e3, d3, cleared=True)
+    e3.press("A", 8)
+    e3.wait(20)
+    e3.press("A", 8)
+    for _ in range(40):
+        if e3.wait_until(d3.active, 30, step=5):
+            break
+        e3.press("A", 8)
+    ctx.eq((e3.u8(dc.P_HARD), session_hard(e3)), (0, 0), "Normal from the choice: a Normal campaign")
+
+
+@test(modes=("ds",))
+def ds_campaign_records(ctx):
+    """A won mission's result is the DS Campaign's own record (AW2's layout:
+    score, days, CO; Normal's word), shown by the world map's mission panel
+    (its results table is the DS Campaign's in a session), saved with the
+    progress and back after a reboot; AW2's own results untouched."""
+    e, g, d = boot(ctx)
+    aw2_results = e.read(0x0200C2D0, 0x150)
+    d.start(step=0)
+    d.wait_map()
+    ctx.require(d.force_win(), "Jake's Trial won (test aid)")
+    for _ in range(3000):
+        if d.world_map_up() and e.u8(dc.WM_STATE + 0x10) and not d.scripts_running():
+            break
+        if d.scripts_running() or not d.in_battle():
+            e.press("A", 4)
+        e.wait(10)
+    e.wait(60)
+    rec = e.u32(dc.RECORDS)
+    ctx.check(rec >> 20 > 0 and (rec >> 8) & 0xFFF > 0, f"Jake's Trial's record: score {rec >> 20}, days {(rec >> 8) & 0xFFF}")
+    ctx.eq(e.u32(dc.RECORDS + 4), 0, "(the Hard word untouched)")
+    ctx.eq(e.u32(RANK_POOL), dc.RECORDS, "the panel reads the DS records")
+    ranks = [t for t in oam_tiles(e) if 904 <= t < 912]
+    ctx.check(len(ranks) == 1, f"the cleared mission's rank letter on the map (OBJ tiles {ranks})")
+    shot(ctx, e, "rank_on_map.png")
+    ctx.eq(e.read(0x0200C2D0, 0x150), aw2_results, "AW2's results untouched")
+    save = e.save(os.path.join(ctx.out, "records"))
+    e2, g2, d2 = boot(ctx, save)
+    d2.start(new=False, pick=False)
+    ctx.eq(e2.u32(dc.RECORDS), rec, "the record after a reboot")

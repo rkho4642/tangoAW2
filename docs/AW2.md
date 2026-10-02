@@ -592,7 +592,8 @@ table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
 0x0862DA38..0x08630A37 (the DS Campaign's text ids 0x7400..0x7FFF),
 0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used),
 0x08E80000..0x08EDFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow).
-Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F740..0x0203F79F
+Free RAM used: 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F600..0x0203F6DF (the DS
+Campaign's records; 0x0203E000..0x0203F73F was found unwritten at the title, Select Mode, in AW2 and DS battles), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203FDC8..0x0203FDFB, stun, battle distance, Teams list),
@@ -1114,8 +1115,32 @@ overlay 1, the campaign's code, at `0x02350560`).
   are not shown. Test: `ds_campaign_credits` (every name of Dual Strike's
   roll, read from the .nds, in order; every heading; the music; Select
   Mode after with the session over and AW2's pages back).
+- **Hard Campaign**: once a Normal campaign has been cleared (Means to
+  an End won: the record's clears byte, kept by New), DS CAMPAIGN's New asks
+  Normal or Hard in the chooser's style (`campaign_menu` level 3: two
+  labels, A takes the choice and goes on with New, B goes back to the box;
+  the box's help lines, text ids 0x9C2/0x9C3, are the choice's while it
+  shows); before that New starts Normal directly. Continue resumes the
+  saved difficulty. Hard is AW2's own Hard Campaign flag (0x60) in the
+  session's flags, set from the record's difficulty byte (the record's
+  flags never keep it: a 0.4.0 record kept a lab flag there): AW2's code
+  reads it for a mission's hard map and deployment (the converted header's
+  +0x30/+0x38, Dual Strike's +0x48/+0x50) and for the results' Normal/Hard
+  record. Dual Strike's normal-only (0x15) and hard-only (0x16) trigger
+  records are both converted, each testing the difficulty first (AW2 kinds
+  6/5 on a pseudo predicate, `HARD_CAMPAIGN`). AW2 CAMPAIGN's own SELECT for
+  Hard is untouched. Tests: `ds_campaign_hard_locked`, `ds_campaign_hard`.
+- **Records**: a won mission's result goes to the DS Campaign's own table
+  (`0x0203F600`, AW2's layout of `gUnknown_0200C2D0`: per mission a Normal
+  and a Hard word of CO, days << 8, score << 20; `InsertBestScoreRecord`
+  `0x08017720`, trapped, writes it in a session), which the map panel's
+  results word (`0x0807758C`) points at in a session; on the map a cleared
+  mission's flag has its best rank beside it (S/A/B/C by AW2's thresholds,
+  `0x08037D80`; 8x16 sprites in OBJ tiles 904..911). Saved with the
+  progress. Test: `ds_campaign_records`.
 - **Save**: the progress (`0x0203FD30`, 0x20 bytes: "AWDC", next step,
-  campaign over, missions won (bits), flags 0x20..0x9F) is written at each
+  campaign over, difficulty, campaigns cleared, missions won (bits), flags
+  0x20..0x9F) and the records (0xE0 bytes) are written at each
   mission start through AW2's own save writer (`sub_0801A7D8`) into Flash
   slot 15 (AW2: 0 profile, 2..4 suspends, 5..7 design maps), so AW2's
   profile and its checksum are untouched; read back from the newest slot-15
@@ -1140,12 +1165,12 @@ overlay 1, the campaign's code, at `0x02350560`).
 - AW2 armies have one CO: a tag pair is its first CO, the "CO pair" tests
   check that CO only, and there are no tag or Dual Strike powers. CO skills
   are not converted.
-- Normal campaign only (Dual Strike's hard maps and deployments are not
-  used). The world map is Dual Strike's bottom screen only (no top-screen
-  displays); a won mission is not played again.
+- The world map is Dual Strike's bottom screen only (no top-screen
+  displays); a won mission is not played again (its rank shows beside its
+  flag).
 - The player's CO is picked on AW2's CO screen from Dual Strike's pool for
   the mission.
-- Results are AW2's results screen; ranks are not kept.
+- Results are AW2's results screen (AW2's scoring and ranks).
 - Dual Strike's sound effects, screen effects and top-screen displays in
   scripts (ops 0x20, 0x21, 0x2D, 0x2E, 0x46, 0x4B, 0x59) are left out, as
   are a few of its functions: camera visits to a stealth or an Oozium,

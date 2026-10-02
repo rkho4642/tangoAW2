@@ -14,6 +14,10 @@ MISSION = 0x0203FD12
 PROGRESS = 0x0203FD30
 P_MAGIC = PROGRESS
 P_NEXT = PROGRESS + 4
+P_HARD = PROGRESS + 6          # 1: a Hard campaign
+P_CLEARS = PROGRESS + 7        # campaigns cleared: 1 Normal, 2 Hard
+HARD_FLAG = 0x60               # AW2's Hard Campaign flag (in the session's flags)
+RECORDS = 0x0203F600           # the missions' best results, 8 bytes each (Normal, Hard)
 P_WON = PROGRESS + 8
 P_FLAGS = PROGRESS + 0x10
 PROGRESS_MAGIC = 0x43445741
@@ -862,14 +866,16 @@ class DsData:
         raw = self.bytes(at, 0x800)
         return raw[:raw.index(b"\0")]
 
-    def mission(self, i):
+    def mission(self, i, hard=False):
+        """Mission `i` (with `hard`, its Hard Campaign map and deployment
+        where it has them)."""
         r = self.bytes(DS_RECORDS + 0xA0 * i, 0xA0)
         w = lambda o: struct.unpack_from("<I", r, o)[0]
         h = lambda o: struct.unpack_from("<H", r, o)[0]
-        m = self.lz10(self.bytes(w(0x44), 0x2000))
+        m = self.lz10(self.bytes(w(0x48) if hard and w(0x48) else w(0x44), 0x2000))
         width, height = m[0], m[1]
         tiles = list(struct.unpack_from(f"<{width * height}H", m, 2))
-        units, army, p = [], None, w(0x4C)
+        units, army, p = [], None, w(0x50) if hard and w(0x50) else w(0x4C)
         while True:
             u = self.bytes(p, 13)
             p += 13
