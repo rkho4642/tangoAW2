@@ -9,8 +9,12 @@
 //!   top-bottom). The Grand Bolt is one quarter drawn four times, textures
 //!   0x78..0xA7, 16x16 at 4 bits a pixel, laid out one after another in
 //!   `bmap/024` (`025`, `026` are the same with other edges, the textures
-//!   Dual Strike loads for its other looks' borders), coloured by
-//!   `bmap/0aa`.
+//!   Dual Strike loads for its other looks' borders), coloured by its
+//!   terrain palette 2 (its cells' class, 0x1B, picks palette 2 from the
+//!   table at arm9 `0x02157AE4`), from Means to an End's palette file
+//!   `bmap/00b` (+0x40): the greys, the core's pinks and the sand, as Dual
+//!   Strike's screen shows them (read back from its texture palettes in
+//!   melonDS).
 //! - Here: its cells are AW2's underlay (a structure's footprint: no unit
 //!   enters), drawn by [`crate::wasteland`]'s painter with the Grand Bolt's
 //!   own tiles (one per texture quadrant, mirrored with the tilemap's flips),
@@ -18,9 +22,9 @@
 //!   static terrain tiles no other cell of the map draws with (one already
 //!   there is used again), in BG palette 7 (the fogged copy of palette 3:
 //!   Means to an End has no fog), set every frame of the mission
-//!   ([`tick`]). The texture's ground around the dome (its colours 7..11,
-//!   which Dual Strike draws as the ground under it) takes the colours of
-//!   the map's own plain as it is drawn now (weather included).
+//!   ([`tick`]). The texture's ground around the dome (its sand colours
+//!   7..11 and dots 12) takes the colours of the map's own plain as it is
+//!   drawn now (weather included).
 //! - Its three weak points (Dual Strike's parts 0xB..0xD at
 //!   [`GRAND_BOLT_WEAK_POINTS`]) are AW2 inventions (a minicannon on tile
 //!   [`PART_TILE`], crate::obelisk: no sprite, no fire, no heal, "G Bolt" in
@@ -45,7 +49,8 @@ const REMAP_LEN: usize = 0x200;
 const FIRST: u16 = 0x78;
 const TEXTURES: usize = 48;
 const TEXTURE_FILE: &str = "bmap/024";
-const PALETTE_FILE: &str = "bmap/0aa";
+const PALETTE_FILE: &str = "bmap/00b";
+const PALETTE_AT: usize = 0x40;
 
 /// BG palette 7: the fogged copy of terrain palette 3.
 pub const PALETTE: u16 = 7;
@@ -68,7 +73,7 @@ fn build() -> Option<Bolt> {
     let pal = pack.file(PALETTE_FILE)?;
     let mut colours = [0u16; 16];
     for (k, c) in colours.iter_mut().enumerate() {
-        *c = u16::from_le_bytes([*pal.get(2 * k)?, *pal.get(2 * k + 1)?]);
+        *c = u16::from_le_bytes([*pal.get(PALETTE_AT + 2 * k)?, *pal.get(PALETTE_AT + 2 * k + 1)?]);
     }
     // Colour 0 is drawn by Dual Strike's textures; on AW2's map it would be
     // see-through: such pixels take the closest other colour.
@@ -186,11 +191,11 @@ pub fn is_part(core: &Core, entry: u32) -> bool {
     (core.raw_read_16(entry + 2, -1) >> 6) & 0xF == KIND_MINICANNON && crate::obelisk::tile_at(core, x, y) == PART_TILE
 }
 
-/// The texture's ground colours (7, 10, 8, 11 light to dark; 9 the dots)
-/// as the map's plain is drawn: its colours by how much of it they cover,
-/// the dots its reddest.
-const GROUND: [usize; 4] = [7, 10, 8, 11];
-const DOTS: usize = 9;
+/// The texture's ground colours (its sand 7..11, its dots 12) as the map's
+/// plain is drawn: the sand by brightness from the plain's most used
+/// colours, the dots its reddest.
+const SAND: [usize; 5] = [7, 8, 9, 10, 11];
+const DOTS: usize = 12;
 const VRAM_TILES: u32 = 0x0600_8000;
 const PLAIN: u16 = 1;
 
@@ -214,9 +219,11 @@ fn with_ground(core: &Core, mut colours: [u16; 16]) -> [u16; 16] {
         return colours;
     }
     let lum = |c: u16| (c & 31) as u32 * 3 + ((c >> 5) & 31) as u32 * 6 + ((c >> 10) & 31) as u32;
-    let mut main: Vec<u16> = by_use.iter().take(4).map(|e| e.0).collect();
+    let mut main: Vec<u16> = by_use.iter().take(SAND.len()).map(|e| e.0).collect();
     main.sort_by_key(|&c| std::cmp::Reverse(lum(c)));
-    for (k, &slot) in GROUND.iter().enumerate() {
+    let mut sand = SAND;
+    sand.sort_by_key(|&k| std::cmp::Reverse(lum(colours[k])));
+    for (k, &slot) in sand.iter().enumerate() {
         colours[slot] = main[k.min(main.len() - 1)];
     }
     let red = |c: u16| (c & 31) as i32 * 2 - ((c >> 5) & 31) as i32 - ((c >> 10) & 31) as i32;

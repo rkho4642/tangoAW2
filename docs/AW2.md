@@ -1046,7 +1046,9 @@ overlay 1, the campaign's code, at `0x02350560`).
   0x4000 left-right, 0x8000 top-bottom). The Grand Bolt is one quarter
   drawn four times: textures 0x78..0xA7 (16x16, 4 bits a pixel, one after
   another) in `bmap/024` (`025`/`026` the same with other edges), coloured
-  by `bmap/0aa`. Here its cells are AW2's underlay (a structure's
+  by its terrain palette 2 (the cells' class 0x1B picks it, arm9
+  `0x02157AE4`) from `bmap/00b` +0x40, as Dual Strike's screen shows it (read
+  back from its texture palettes in melonDS). Here its cells are AW2's underlay (a structure's
   footprint: no unit enters; the terrain panel reads Dual Strike's
   "Blocked"), drawn by the Wasteland look's painter (`wasteland.rs`) with
   its own tiles: one per texture quadrant, mirrored by the tilemap's flips
@@ -1054,7 +1056,8 @@ overlay 1, the campaign's code, at `0x02350560`).
   terrain tiles no other cell of the map draws with (one already there
   used again), in BG palette 7 (the fogged copy of palette 3: the mission
   has no fog), set each frame; the texture's ground around the dome
-  (colours 7..11) takes the colours of the map's plain as drawn. Its three
+  (its sand 7..11 and dots 12) takes the colours of the map's plain as
+  drawn. Its three
   weak points ((3, 9), (9, 11), (15, 9), where Dual Strike's code tests its
   structure kinds 0xB..0xD) are minicannons on tile `0x194` (unused by
   AW2): no sprite (the picture draws its discs), no fire, no heal, "Bolt"

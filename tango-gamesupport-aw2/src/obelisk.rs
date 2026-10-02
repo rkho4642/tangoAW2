@@ -56,7 +56,7 @@ pub const OBELISK_NAME_AT: u32 = DATA + 0x200;
 const CRYSTAL_PICTURE_AT: u32 = DATA + 0x300;
 const OBELISK_PICTURE_AT: u32 = DATA + 0x400;
 const DATA_SENTINEL: u32 = DATA + 0xFFC;
-const DATA_MAGIC: u32 = 0x354B_4C42; // "BLK5" (bump when the data changes)
+const DATA_MAGIC: u32 = 0x364B_4C42; // "BLK6" (bump when the data changes)
 
 /// OBJ tiles for the sprites in battle (no screen of the battle map writes
 /// 0x176..0x1A5): the Obelisk's 36 tiles, then the Crystal's 8.
