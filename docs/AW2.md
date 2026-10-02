@@ -1160,6 +1160,36 @@ the reference's over at the New press leaves it), so it is console state
 outside memory after the session's songs; the test allows that one window
 and nothing else.
 
+## CO skills (design, not built yet)
+
+Dual Strike's CO skills, as the player's decisions set them (found in the
+.nds: overlay 0's skill table at `0x022F5ECC`, records of {rank, name text
+`0x7C<<24|i`, description `0x7B<<24|i`}; the save's per-CO record at
+`0x02290750 + 0x1C*co`):
+
+- **Skills.** Dual Strike's 43 player skills (ids 0x20..0x4A) less its
+  three tag skills (0x35..0x37: no tag pairs here). Ids 1..16 are the COs'
+  own hidden abilities, already in tangoAW2's CO code.
+- **Rank and slots.** A CO's rank is its EXP / 1000 (up to 100); a skill
+  unlocks at its rank; slots = min(rank, 4). The rank-10 skills also need
+  Means to an End won (Normal; the Hard ones once Hard Campaign is in).
+- **EXP.** Humans only, as Dual Strike: the DS Campaign (x2 playing solo,
+  x1 for the first eight missions, Hard doubles), War Room (x1..x2.5),
+  Survival (x1); AW2's own campaign earns it by the same campaign rules;
+  Versus none.
+- **Where they apply.** DS Campaign, Survival and War Room as Dual Strike
+  has them; AW2's campaign when a set is equipped. Versus Rules gets
+  "Skills: On/Off" (default Off): On, each army (the CPU's too) uses its
+  CO's saved Versus set, shown on the Teams screen; the rule and the sets
+  are part of the netplay settings both peers check.
+- **Choosing.** A Set Skills panel on AW2's CO screens (per army, human
+  and CPU): the Campaign/Survival set of 4 and the four Versus sets.
+- **Save.** Per CO: EXP and the sets, in tangoAW2's own Flash slot 15
+  beside the DS Campaign's progress (AW2's profile untouched).
+- **Tests.** EXP per mode, unlocks, the panel, each skill's effect against
+  the damage calculator, the Versus rule on and off, netplay sync, AW2's
+  campaign unchanged with no skills equipped.
+
 ## Known limits
 
 - Black Hole's unique buildings (Black Cannons and so on) are map
