@@ -640,8 +640,11 @@ const AFTER_MEANS_TO_AN_END: usize = 24;
 /// Narration: each text over its picture (crate::ds_story_art, a magic
 /// call puts it on the map's layer), in a box of its own with no speaker
 /// (AW2's `ShowTextOnBg0`, op 0x1A); then the map back and the end.
-fn narration(cx: &mut Ctx, texts: &[u32]) -> u32 {
+fn narration(cx: &mut Ctx, texts: &[u32], song: Option<u16>) -> u32 {
     let mut s = Vec::new();
+    if let Some(m) = song.and_then(crate::ds_music::story_song) {
+        s.extend_from_slice(&cmd(0x41, 0, m, 0, 0));
+    }
     for &r in texts {
         if let Some(n) = crate::ds_story_art::NARRATION.iter().position(|x| x.0 == r) {
             let stub = cx.magic(Magic::Flow(crate::ds_campaign::FLOW_PICTURE + n as u8));
@@ -652,6 +655,11 @@ fn narration(cx: &mut Ctx, texts: &[u32]) -> u32 {
     }
     let back = cx.magic(Magic::Flow(crate::ds_campaign::FLOW_MAP_BACK));
     s.extend_from_slice(&cmd(0x00, back, 0, 0, 0));
+    if song.and_then(crate::ds_music::story_song).is_some() {
+        // The map's song again.
+        let map = crate::ds_music::story_song(crate::ds_music::WORLD_MAP).unwrap_or(0x1A8);
+        s.extend_from_slice(&cmd(0x41, 0, map, 0, 0));
+    }
     s.extend_from_slice(&cmd(0x04, 0, 0, 0, 0));
     cx.blob.push(&s)
 }
@@ -688,10 +696,15 @@ fn story_scripts<'a>(cx: &mut Ctx<'a>, story: Ds<'a>, scripts: &[u32]) -> u32 {
 
 fn convert_story_scenes<'a>(cx: &mut Ctx<'a>, ds: &Ds<'a>) -> Story {
     let story = ds.story();
-    let prologue = narration(cx, &PROLOGUE_TEXTS);
-    let interlude = narration(cx, &INTERLUDE_TEXTS);
+    let prologue = narration(cx, &PROLOGUE_TEXTS, Some(crate::ds_music::OPENING));
+    let interlude = narration(cx, &INTERLUDE_TEXTS, None);
     let party = story_scripts(cx, story, &PARTY_SCRIPTS);
-    let ending = story_scripts(cx, story, &ENDING_SCRIPTS);
+    let mut ending = story_scripts(cx, story, &ENDING_SCRIPTS);
+    // The ending plays Dual Strike's ending song, with a pack that has it.
+    if let (Some(m), true) = (crate::ds_music::story_song(crate::ds_music::ENDING), ending != 0) {
+        let s = [cmd(0x41, 0, m, 0, 0), cmd(0x1D, ending, 0, 0, 0)].concat();
+        ending = cx.blob.push(&s);
+    }
     let after_win = [(AFTER_VICTORY_OR_DEATH, interlude), (AFTER_CRYSTAL_CALAMITY, party), (AFTER_MEANS_TO_AN_END, ending)]
         .into_iter()
         .filter(|&(_, s)| s != 0)
@@ -932,7 +945,9 @@ fn cmd(op: u32, w1: u32, h8: u16, ha: u16, wc: u32) -> [u8; 16] {
     c
 }
 
-/// AW2 music for a Dual Strike song id (op 0x47), where AW2 has a like one.
+/// AW2 music for a Dual Strike song id (op 0x47): Dual Strike's own,
+/// converted (crate::ds_music::STORY_SONGS), with a pack that has it; else
+/// where AW2 has a like one.
 ///
 /// Dual Strike's mission scripts play six event songs (its sound archive's
 /// names): its allies' scenes (`BGM_ALLY_EVENT1`/`2`) and a crisis
@@ -941,6 +956,9 @@ fn cmd(op: u32, w1: u32, h8: u16, ha: u16, wc: u32) -> [u8; 16] {
 /// AW2 plays for Black Hole's officers (411); Von Bolt's
 /// (`BGM_HAGEVOLT_EVENT1`) the one AW2 plays at Sturm's citadel (220).
 fn aw2_song(ds_song: u32) -> Option<u16> {
+    if let Some(s) = crate::ds_music::story_song(ds_song as u16) {
+        return Some(s);
+    }
     match ds_song {
         0x19 | 0x1A | 0x2D => Some(413),
         0x16 | 0x17 => Some(411),

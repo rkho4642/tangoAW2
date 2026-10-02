@@ -21,8 +21,11 @@ use std::sync::OnceLock;
 pub const CACHE_NAME: &str = "Dual Strike pack.tangoaw2";
 const MAGIC: &[u8; 8] = b"TAW2DSPK";
 /// Bumped when the pack's contents change; an older pack is rebuilt from
-/// the .nds on the next scan, or ignored without it (3: the heal sounds).
-const VERSION: u32 = 3;
+/// the .nds on the next scan (3: the heal sounds; 4: the DS Campaign's
+/// songs). Without the .nds, a pack of version [`OLDEST`] or later is
+/// still used (what it lacks falls back to AW2's own).
+const VERSION: u32 = 4;
+const OLDEST: u32 = 3;
 /// The header CRC16 of Advance Wars: Dual Strike (USA).
 const HEADER_CRC: u16 = 0xB586;
 
@@ -60,6 +63,9 @@ impl Pack {
 }
 
 static PACK: OnceLock<Pack> = OnceLock::new();
+/// A saved pack of an older version: used until (unless) the .nds gives a
+/// current one.
+static OLDER: OnceLock<Pack> = OnceLock::new();
 
 /// The pack, if one has been offered (a DS ROM, a saved pack, or the file
 /// `TANGOAW2_DS_ROM` names).
@@ -72,7 +78,7 @@ pub fn pack() -> Option<&'static Pack> {
             crate::ds_art::offer(&buf);
         }
     }
-    PACK.get()
+    PACK.get().or_else(|| OLDER.get())
 }
 
 /// Whether the Dual Strike features are on: for a netplay match or its
@@ -109,8 +115,12 @@ pub(crate) fn offer_rom(rom: &[u8]) -> bool {
 /// older version).
 pub(crate) fn offer_saved(buf: &[u8]) -> bool {
     match decode(buf) {
-        Some(p) => {
+        Some((p, true)) => {
             let _ = PACK.set(p);
+            true
+        }
+        Some((p, false)) => {
+            let _ = OLDER.set(p);
             true
         }
         None => false,
@@ -209,8 +219,10 @@ fn encode(p: &Pack) -> Vec<u8> {
     out
 }
 
-fn decode(buf: &[u8]) -> Option<Pack> {
-    if !is_saved_pack(buf) || u32_at(buf, 8)? != VERSION as usize {
+/// A saved pack, and whether it is of the current version.
+fn decode(buf: &[u8]) -> Option<(Pack, bool)> {
+    let version = u32_at(buf, 8)? as u32;
+    if !is_saved_pack(buf) || !(OLDEST..=VERSION).contains(&version) {
         return None;
     }
     let count = u32_at(buf, 12)?;
@@ -235,11 +247,14 @@ fn decode(buf: &[u8]) -> Option<Pack> {
             files.insert(name, data);
         }
     }
-    Some(Pack {
-        arm9: arm9?,
-        overlays,
-        files,
-    })
+    Some((
+        Pack {
+            arm9: arm9?,
+            overlays,
+            files,
+        },
+        version == VERSION,
+    ))
 }
 
 #[cfg(test)]
@@ -256,7 +271,7 @@ mod tests {
         assert!(is_supported_rom(&rom));
         let p = from_rom(&rom).unwrap();
         let saved = encode(&p);
-        let q = decode(&saved).unwrap();
+        let q = decode(&saved).unwrap().0;
         assert_eq!(q.arm9, p.arm9);
         assert_eq!(q.overlays, p.overlays);
         assert_eq!(q.files.len(), p.files.len());
@@ -288,11 +303,16 @@ mod tests {
             overlays: vec![vec![0; 4], vec![1]],
             files,
         };
-        let q = decode(&encode(&p)).unwrap();
+        let q = decode(&encode(&p)).unwrap().0;
         assert_eq!(q.arm9, p.arm9);
         assert_eq!(q.overlays, p.overlays);
         assert_eq!(q.file("bmap/015"), Some(&[1u8, 2, 3][..]));
         assert_eq!(q.file("battle/0dd"), Some(&[][..]));
         assert!(decode(b"TAW2DSPK\x02\0\0\0\0\0\0\0").is_none());
+        // A pack of the previous version still loads, as an older one.
+        let mut old = encode(&p);
+        old[8..12].copy_from_slice(&OLDEST.to_le_bytes());
+        assert!(!decode(&old).unwrap().1);
+        assert!(decode(&encode(&p)).unwrap().1);
     }
 }

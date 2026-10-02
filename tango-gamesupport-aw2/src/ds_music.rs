@@ -45,6 +45,9 @@ use std::sync::OnceLock;
 
 /// Start of the music: after the 8 MB cartridge image.
 pub const BASE: u32 = 0x0880_0000;
+/// The DS Campaign's songs: past everything else tangoAW2 adds (the 16 MB
+/// mark; the cartridge's range goes to 32 MB).
+pub const STORY_BASE: u32 = 0x0900_0000;
 const MAGIC: u32 = 0x4D53_4444; // "DDSM"
 const TABLE: u32 = BASE + 0x100;
 /// AW2's song table: 505 entries of (header, player, player).
@@ -89,6 +92,30 @@ const SE_PLAYER: u16 = 2;
 const SE_PRIORITY: u8 = 10;
 /// Dual Strike's tempo when a sequence sets none.
 const DS_DEFAULT_TEMPO: u16 = 120;
+
+/// The DS Campaign's songs (sequence ids of the archive, named as its
+/// symbol table names them): the event songs its mission scripts play (op
+/// 0x47), its prologue's, its world map's and its ending's.
+pub const STORY_SONGS: [(u16, &str); 15] = [
+    (0x16, "BGM_ENEMY_EVENT1"),
+    (0x17, "BGM_ENEMY_EVENT2"),
+    (0x19, "BGM_ALLY_EVENT1"),
+    (0x1A, "BGM_ALLY_EVENT2"),
+    (0x23, "BGM_HAGEVOLT_EVENT1"),
+    (0x2C, "BGM_ALLY_ENTRY1"),
+    (0x2D, "BGM_EVENT_PINCH1"),
+    (0x3D, "BGM_EVENT_RED1"),
+    (0x3E, "BGM_EVENT_BLUE1"),
+    (0x29, "BGM_OPENING1"),
+    (0x06, "BGM_GMAP1"),
+    (0x2A, "BGM_GMAP2"),
+    (0x30, "BGM_GMAP3"),
+    (0x36, "BGM_NML_ENDING1"),
+    (0x37, "BGM_NML_ENDING2"),
+];
+pub const OPENING: u16 = 0x29;
+pub const WORLD_MAP: u16 = 0x06;
+pub const ENDING: u16 = 0x36;
 
 // --- The sound archive (SDAT) ------------------------------------------------
 
@@ -150,7 +177,7 @@ pub fn keep(sdat: &[u8], arm9: &[u8]) -> Option<Vec<(String, Vec<u8>)>> {
     };
     let mut out: Vec<(String, Vec<u8>)> = Vec::new();
     let mut have = std::collections::HashSet::new();
-    for id in theme_ids(arm9)?.into_iter().chain(heal_se_ids(arm9)?) {
+    for id in theme_ids(arm9)?.into_iter().chain(heal_se_ids(arm9)?).chain(STORY_SONGS.iter().map(|s| s.0)) {
         let seq = record(0, id)?;
         let bank = u16_at(seq, 4)?;
         if have.insert(format!("s{id}")) {
@@ -1088,24 +1115,31 @@ fn plan_tracks(seq: &Seq, until: u32) -> Vec<Vec<usize>> {
     groups
 }
 
-/// Everything the music adds, laid out from [`BASE`].
+/// Everything the music adds, laid out from [`BASE`] (the DS Campaign's
+/// songs from [`STORY_BASE`]).
 pub struct Music {
     pub blob: Vec<u8>,
+    pub story_blob: Vec<u8>,
     /// Song id per new CO, in [`crate::co_new::NEW`]'s order.
     pub songs: Vec<u16>,
     /// Each song's header address (in [`Music::songs`]' id order from [`FIRST_SONG`]).
     pub headers: Vec<u32>,
     /// The Crystal's and the Obelisk's heal sounds' song ids (after the themes).
     pub heal_se: [u16; 2],
+    /// The DS Campaign's songs ([`STORY_SONGS`]) the pack has: (sequence
+    /// id, song id). (A pack saved by 0.4.x has none: AW2's like songs
+    /// stand in.)
+    pub story: Vec<(u16, u16)>,
 }
 
 struct Blob {
     bytes: Vec<u8>,
+    base: u32,
 }
 
 impl Blob {
     fn at(&self) -> u32 {
-        BASE + self.bytes.len() as u32
+        self.base + self.bytes.len() as u32
     }
     fn align(&mut self) {
         while self.bytes.len() % 4 != 0 {
@@ -1129,7 +1163,7 @@ fn build() -> Option<Music> {
     let pack = crate::ds_pack::pack()?;
     let ids = theme_ids(&pack.arm9)?;
     let se_ids = heal_se_ids(&pack.arm9)?;
-    let mut blob = Blob { bytes: vec![0; (TABLE - BASE) as usize] };
+    let mut blob = Blob { bytes: vec![0; (TABLE - BASE) as usize], base: BASE };
     // The song table: AW2's, then ours (filled in below).
     let mut distinct: Vec<u16> = Vec::new();
     for &id in &ids {
@@ -1143,6 +1177,16 @@ fn build() -> Option<Music> {
             distinct.push(id);
         }
     }
+    // The DS Campaign's songs the pack has, after the heal sounds, in a
+    // ROM range of their own ([`STORY_BASE`]).
+    let effects = distinct.len();
+    let story_ids: Vec<u16> = STORY_SONGS.iter().map(|s| s.0).filter(|&id| pack.file(&format!("sound/seq/{id}")).is_some()).collect();
+    for &id in &story_ids {
+        if !distinct[effects..].contains(&id) {
+            distinct.push(id);
+        }
+    }
+    let mut story_blob = Blob { bytes: Vec::new(), base: STORY_BASE };
     let table_at = TABLE;
     blob.bytes.resize((TABLE - BASE) as usize + 8 * (AW2_SONGS as usize + distinct.len()), 0);
     let mut headers = Vec::new();
@@ -1170,7 +1214,8 @@ fn build() -> Option<Music> {
         // Dual Strike's default tempo if it sets none, and a note without a
         // length (Dual Strike plays it until its sample ends) as long as its
         // sample.
-        let se = n >= themes;
+        let se = n >= themes && n < effects;
+        let out: &mut Blob = if n >= effects { &mut story_blob } else { &mut blob };
         let mut seq = parse_seq(pack_file(&format!("sound/seq/{sid}"))?)?;
         if se && !seq.tracks.iter().flat_map(|t| t.evs.iter()).any(|e| matches!(e.1, Ev::Ctl(Ctl::Tempo(_)))) {
             seq.tracks.first_mut()?.evs.insert(0, (0, Ev::Ctl(Ctl::Tempo(DS_DEFAULT_TEMPO))));
@@ -1267,7 +1312,7 @@ fn build() -> Option<Music> {
                                     sub.extend_from_slice(&voice_silent);
                                     continue;
                                 };
-                                let at = blob.put(&wave_bytes(&w));
+                                let at = out.put(&wave_bytes(&w));
                                 waves.insert(key, at);
                                 at
                             }
@@ -1285,24 +1330,24 @@ fn build() -> Option<Music> {
                 }
                 sub.extend_from_slice(&v);
             }
-            let sub_at = blob.put(&sub);
+            let sub_at = out.put(&sub);
             let e = 12 * p as usize;
             group[e..e + 12].copy_from_slice(&[0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
             group[e + 4..e + 8].copy_from_slice(&sub_at.to_le_bytes());
         }
-        let group_at = blob.put(&group);
+        let group_at = out.put(&group);
         // Tracks.
         let plan = plan_tracks(&seq, until);
         let mut track_at = Vec::new();
         for srcs in &plan {
             let t = write_track(&seq, srcs, song_loop, tick_rate);
             let mut bytes = t.bytes;
-            blob.align();
-            let at = blob.at();
+            out.align();
+            let at = out.at();
             if let Some((goto, label)) = t.goto_at {
                 bytes[goto..goto + 4].copy_from_slice(&(at + label as u32).to_le_bytes());
             }
-            blob.put(&bytes);
+            out.put(&bytes);
             track_at.push(at);
         }
         let (priority, reverb, player) = if se { (SE_PRIORITY, 0, SE_PLAYER) } else { (0, REVERB, PLAYER) };
@@ -1311,7 +1356,7 @@ fn build() -> Option<Music> {
         for a in &track_at {
             header.extend_from_slice(&a.to_le_bytes());
         }
-        let header_at = blob.put(&header);
+        let header_at = out.put(&header);
         if !se {
             headers.push(header_at);
         }
@@ -1324,7 +1369,8 @@ fn build() -> Option<Music> {
     let song_of = |id: u16, from: usize| FIRST_SONG + (from + distinct[from..].iter().position(|&d| d == id).unwrap()) as u16;
     let songs = ids.iter().map(|&id| song_of(id, 0)).collect();
     let heal_se = se_ids.map(|id| song_of(id, themes));
-    Some(Music { blob: blob.bytes, songs, headers, heal_se })
+    let story = story_ids.iter().map(|&id| (id, song_of(id, effects))).collect();
+    Some(Music { blob: blob.bytes, story_blob: story_blob.bytes, songs, headers, heal_se, story })
 }
 
 static BUILT: OnceLock<Option<Music>> = OnceLock::new();
@@ -1332,6 +1378,12 @@ static BUILT: OnceLock<Option<Music>> = OnceLock::new();
 /// The converted music (built on first use from the pack).
 pub fn music() -> Option<&'static Music> {
     BUILT.get_or_init(build).as_ref()
+}
+
+/// AW2's song id for a Dual Strike sequence of the DS Campaign
+/// ([`STORY_SONGS`]), when the pack has it.
+pub fn story_song(seq: u16) -> Option<u16> {
+    music()?.story.iter().find(|s| s.0 == seq).map(|s| s.1)
 }
 
 /// The song a new CO's turn plays, with the pack.
@@ -1360,6 +1412,9 @@ fn install(core: &mut Core) -> bool {
     core.raw_write_range(TABLE, -1, &aw2);
     let rest = (TABLE - BASE) as usize + aw2.len();
     core.raw_write_range(BASE + rest as u32, -1, &m.blob[rest..]);
+    if !m.story_blob.is_empty() {
+        core.raw_write_range(STORY_BASE, -1, &m.story_blob);
+    }
     core.raw_write_32(BASE, -1, MAGIC);
     true
 }

@@ -99,6 +99,7 @@ class Bot:
         self.last_hp = {}
         self.debug = bool(os.environ.get("AW2TEST_BOT_DEBUG"))
         self.reach = {}
+        self.props = None
         self.charts = {}
         self.classes = {}
         self.gdist = {}
@@ -164,14 +165,13 @@ class Bot:
         return {(u["x"], u["y"]): u for u in self.g.units()}
 
     def properties(self):
+        """(cell, kind, owner) of every property (read once an action)."""
+        if self.props is not None:
+            return self.props
         w, h = self.size()
-        out = []
-        for y in range(h):
-            for x in range(w):
-                c = self.cls(x, y)
-                if c & 0x1F in PROPERTIES:
-                    out.append(((x, y), c & 0x1F, c >> 5))
-        return out
+        row = [self.e.read(CLASSES + self.row(y), w) for y in range(h)]
+        self.props = [((x, y), row[y][x] & 0x1F, row[y][x] >> 5) for y in range(h) for x in range(w) if row[y][x] & 0x1F in PROPERTIES]
+        return self.props
 
     def targets_for_capture(self, army, props=None):
         """Properties not ours (the enemy HQ first; with `rush`, the enemy
@@ -474,6 +474,16 @@ class Bot:
                 best = min(free, key=lambda c: (self.threat(u, c, armed_foes), near(c), cells[c]))
                 return ("wait", best, None)
             return ("stay", here, None)
+        # Our HQ with an enemy that captures in reach of it: whoever stands
+        # on it stays (firing from there if it can), else a unit that can
+        # get onto it does (a unit on it cannot be captured from under it).
+        guard = self.hq_in_danger(army)
+        if guard and here in guard:
+            free = [here]
+        elif guard:
+            onto = [c for c in guard if c in free]
+            if onto and u["type"] not in self.protect:
+                return ("wait", onto[0], None)
         # Fire: from here (indirect) or from a free cell next to the target.
         if indirect:
             cands = [(here, f) for f in targets if info["min"] <= dist(here, (f["x"], f["y"])) <= info["max"]]
@@ -533,6 +543,21 @@ class Bot:
             return (far + w * danger - 0.3 * self.stars(*c), cells[c])
         best = min(free, key=key)
         return ("wait", best, None)
+
+    def hq_in_danger(self, army):
+        """Our HQs an enemy that captures can get onto next turn (or stands on)."""
+        t = self.team(army)
+        hqs = [p for p, k, o in self.properties() if k == HQ and o and self.team(o) == t]
+        if not hqs:
+            return []
+        capturers = [f for f in self.enemies(army) if f["type"] in CAPTURERS]
+        out = []
+        for hq in hqs:
+            for f in capturers:
+                if (f["x"], f["y"]) == hq or hq in self.moves(f):
+                    out.append(hq)
+                    break
+        return out
 
     # -- ferrying ----------------------------------------------------------------
     def nbrs(self, c):
@@ -822,6 +847,7 @@ class Bot:
         d.wait_control()
         self.classes = {}
         self.gdist = {}
+        self.props = None
         done = set()
         for _ in range(80):
             if e.u8(LAST_RESULT) or e.u8(CURRENT_ARMY) != army:
@@ -832,6 +858,7 @@ class Bot:
             # (the enemy's reach, again after each action: units moved, died)
             self.reach = {}
             self.occ_now = self.occupied()
+            self.props = None
             targets = self.targets(army)
             # Units with an attack first (the biggest hit first; indirect
             # ones before direct ones that could block them), then the rest,
@@ -850,6 +877,7 @@ class Bot:
                     return
                 self.cancel()
             d.wait_control()
+        self.props = None
         try:
             self.build(army)
         except NavError as ex:

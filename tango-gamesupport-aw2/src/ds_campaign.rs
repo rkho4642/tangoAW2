@@ -149,9 +149,11 @@ pub const FLOW_PICTURE: u8 = 16;
 /// during a session ([`crate::ds_worldmap::tick`]).
 const AW2_MAP_SCRIPT: u32 = 0x0861_485C;
 fn map_script(prologue: u32, save: u32) -> Vec<u8> {
+    // The map's music: Dual Strike's, with a pack that has it.
+    let song = crate::ds_music::story_song(crate::ds_music::WORLD_MAP).unwrap_or(0x1A8);
     [
         proc_cmd(0x1D, 0x1E, 0),
-        proc_cmd(0x1B, 0x1A8, 0),
+        proc_cmd(0x1B, song as i16, 0),
         proc_cmd(0x02, 0, 0x0807_6ADD),
         proc_cmd(0x1E, 0x1E, 0),
         proc_cmd(0x02, 0, 0x0807_67C1),

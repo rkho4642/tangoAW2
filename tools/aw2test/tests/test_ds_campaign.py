@@ -756,3 +756,32 @@ def ds_campaign_world_map_picture(ctx):
     ctx.check(psnr >= 31.0, f"PSNR {psnr:.2f} dB")
     ctx.check(seam <= 2.0, f"colour jumps across tile edges {seam:+.2f} over Dual Strike's")
     shot(ctx, e, "world_map")
+
+
+
+@test(modes=("ds",))
+def ds_campaign_story_music(ctx):
+    """Dual Strike's own songs, converted from the .nds (crate::ds_music::
+    STORY_SONGS): its opening behind the prologue, its world map song on the
+    map after it (AW2's songs are in the cartridge's first 8 MB, the
+    converted ones after it)."""
+    BGM = 0x03005AE0
+    e, g, d = boot(ctx)
+    d.start(new=True, pick=False)
+    during = None
+    for i in range(400):
+        if d.text_shown():
+            e.wait(60)
+            during = e.u32(BGM)
+            break
+        e.wait(10)
+    ctx.check(during is not None and 0x08800000 <= during < 0x0A000000, f"the prologue plays a converted song (header {during or 0:#x})")
+    for i in range(1500):
+        if d.world_map_up() and e.u8(dc.WM_STATE + 0x10) and not d.scripts_running() and i > 20:
+            break
+        if d.scripts_running():
+            e.press("A", 4)
+        e.wait(15)
+    e.wait(120)
+    after = e.u32(BGM)
+    ctx.check(0x08800000 <= after < 0x0A000000 and after != during, f"the world map plays another converted song (header {after:#x})")
