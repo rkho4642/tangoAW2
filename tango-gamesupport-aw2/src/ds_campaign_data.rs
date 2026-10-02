@@ -1092,6 +1092,54 @@ fn convert_scripts(cx: &mut Ctx, entries: &[u32]) {
 /// (crate::ds_campaign_rules::predicate).
 pub const HARD_CAMPAIGN: u32 = 0x60;
 
+/// Pseudo predicates (no Dual Strike address): army `a` owns `n` properties
+/// or more (`PROPERTY_COUNT | a << 8 | n`; crate::ds_campaign_rules).
+pub const PROPERTY_COUNT: u32 = 0x0100_0000;
+
+/// Dual Strike's property-count win (the record's +0x34 Normal, +0x36
+/// Hard: Spiral Garden's "Whoever captures 15 properties wins"), which its
+/// engine tests, not its scripts: trigger records for the after-action
+/// list, one per army, each firing a script that ends the match with that
+/// army's win (AW2's op 0x40). Empty when the mission has none.
+fn property_win(cx: &mut Ctx, rec: &Record) -> Vec<u8> {
+    let normal = u16::from_le_bytes([rec.raw[0x34], rec.raw[0x35]]);
+    let hard = u16::from_le_bytes([rec.raw[0x36], rec.raw[0x37]]);
+    let mut out = Vec::new();
+    if normal == 0 && hard == 0 {
+        return out;
+    }
+    for army in 1..=rec.armies.min(4) as u32 {
+        let mut script = Vec::new();
+        script.extend_from_slice(&cmd(0x40, 0, army as u16, 0, 0));
+        script.extend_from_slice(&cmd(0x04, 0, 0, 0, 0));
+        cx.blob.align(4);
+        let fire = cx.blob.push(&script);
+        for (n, only) in [(normal, Some(false)), (hard, Some(true))] {
+            let only = if normal == hard { if only == Some(true) { continue } else { None } } else { only };
+            if n == 0 {
+                continue;
+            }
+            if let Some(h) = only {
+                let s = cx.magic(Magic::Predicate(HARD_CAMPAIGN));
+                let mut x = [0u8; 8];
+                x[0] = if h { 5 } else { 6 };
+                x[4..8].copy_from_slice(&s.to_le_bytes());
+                out.extend_from_slice(&x);
+            }
+            let s = cx.magic(Magic::Predicate(PROPERTY_COUNT | army << 8 | n as u32 & 0xFF));
+            let mut x = [0u8; 8];
+            x[0] = 5;
+            x[4..8].copy_from_slice(&s.to_le_bytes());
+            out.extend_from_slice(&x);
+            let mut x = [0u8; 8];
+            x[0] = 7;
+            x[4..8].copy_from_slice(&fire.to_le_bytes());
+            out.extend_from_slice(&x);
+        }
+    }
+    out
+}
+
 /// Converts a Dual Strike trigger list to AW2's (8-byte records). Records
 /// for one difficulty test it; those for the second front only (+1
 /// variants) are left out.
@@ -1272,9 +1320,15 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         // A second front shares its main mission's events; it has none of
         // its own here (played as the main map only).
         if rec.index < MISSIONS {
+            let wins = property_win(&mut cx, rec);
             for (k, &l) in lists.iter().enumerate() {
-                if l != 0 {
-                    let t = convert_triggers(&mut cx, l);
+                // (the after-action list, 3, also tests the property-count win)
+                if l != 0 || (k == 3 && !wins.is_empty()) {
+                    let mut t = if l != 0 { convert_triggers(&mut cx, l) } else { vec![8, 0, 0, 0, 0, 0, 0, 0] };
+                    if k == 3 {
+                        let end = t.len() - 8;
+                        t.splice(end..end, wins.iter().copied());
+                    }
                     table[k] = cx.blob.push(&t);
                 }
             }
@@ -1520,6 +1574,7 @@ mod tests {
             .magic
             .iter()
             .filter_map(|m| match *m {
+                Magic::Predicate(f) if f & 0xFF00_0000 == PROPERTY_COUNT => None,
                 Magic::Predicate(f) | Magic::Call(f, _) if !crate::ds_campaign_rules::KNOWN.contains(&f) => Some(format!("{m:x?}")),
                 _ => None,
             })

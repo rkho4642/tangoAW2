@@ -277,6 +277,10 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
         0x0235_204C => weak_point_spawns(core, 2, army),
         // The DS Campaign is Hard (the triggers of one difficulty).
         crate::ds_campaign_data::HARD_CAMPAIGN => crate::ds_campaign::hard(core),
+        // Dual Strike's property-count win: army a owns n properties.
+        f if f & 0xFF00_0000 == crate::ds_campaign_data::PROPERTY_COUNT => {
+            properties_owned(core, (f >> 8) & 0xFF) >= f & 0xFF
+        }
         // Every 6th day (the Grand Bolt's charge).
         0x0235_1CC8 => {
             let d = core.raw_read_16(DAY, -1);
@@ -288,6 +292,22 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
         0x0235_172C => false,
         _ => false,
     }
+}
+
+/// The properties army `a` owns (HQs, cities, bases, airports, ports, Com
+/// Towers and labs: AW2's classes 8, 6, 0xE, 0xA, 0xB, 0x14).
+fn properties_owned(core: &Core, a: u32) -> u32 {
+    let (w, h) = (core.raw_read_16(MAP, -1) as u32, core.raw_read_16(MAP + 2, -1) as u32);
+    let mut n = 0;
+    for y in 0..h.min(64) {
+        for x in 0..w.min(64) {
+            let c = class_at(core, x, y);
+            if matches!(c & 0x1F, 0x08 | 0x06 | 0x0E | 0x0A | 0x0B | 0x14) && (c >> 5) as u32 == a {
+                n += 1;
+            }
+        }
+    }
+    n
 }
 
 /// The predicates and calls [`predicate`] and [`call`] know (the rest are

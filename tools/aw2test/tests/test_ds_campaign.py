@@ -748,6 +748,76 @@ def ds_campaign_ring_of_fire_volcano(ctx):
 
 
 @test(modes=("ds",))
+def ds_campaign_property_win(ctx):
+    """Spiral Garden's "Whoever captures 15 properties wins" (Dual
+    Strike's record +0x34, tested by its engine, not a script): the player
+    owning 14 properties goes on; a 15th wins the mission (the after-action
+    triggers, crate::ds_campaign_data::property_win). (Properties are given
+    to the player here as a test aid; the capture that ends it is the
+    pad's.)"""
+    e, g, d = boot(ctx)
+    d.start(step=16)
+    d.wait_map()
+    ctx.eq(d.mission(), 27, "Spiral Garden")
+    tile, cls, unit_at = _cells(e)
+    w, h = d.size()
+    # (every property counts, the HQ and Com Towers too)
+    props = [(x, y) for y in range(h) for x in range(w) if cls(x, y) & 0x1F in (8, 6, 0xE, 0xA, 0xB, 0x14)]
+    mine = [c for c in props if cls(*c) >> 5 == 1]
+    capturer = [u for u in g.units(army=1) if u["type"] in (1, 2)][0]
+    # A neutral city next to the capturer's reach: the 15th.
+    others = [c for c in props if cls(*c) >> 5 == 0 and unit_at(*c) == 0 and cls(*c) & 0x1F == 6]
+    last = min(others, key=lambda c: abs(c[0] - capturer["x"]) + abs(c[1] - capturer["y"]))
+    give = [c for c in props if cls(*c) >> 5 != 1 and c != last and unit_at(*c) == 0 and cls(*c) & 0x1F not in (8, 0x14)][:14 - len(mine)]
+    for x, y in give:
+        row = e.u16(dc.MAP + 0x417A + 2 * y)
+        e.w8(dc.MAP + 0x1432 + row + x, (1 << 5) | (cls(x, y) & 0x1F))
+    owned = lambda: sum(1 for c in props if cls(*c) >> 5 == 1)
+    ctx.eq(owned(), 14, "14 properties the player's")
+    d.wait_control()
+    d.end_turn()
+    _until_army(e, d, 1)
+    ctx.eq(e.u8(dc.LAST_RESULT), 0, "14: the battle goes on")
+    # The capture of the 15th, through the pad: a capturer put beside it,
+    # Capt twice (two turns).
+    capturer = [u for u in g.units(army=1) if u["type"] in (1, 2)][0]
+    d.place_unit(capturer, *last)
+    e.wait(4)
+    for _ in range(3):
+        if e.u8(dc.LAST_RESULT):
+            break
+        try:
+            d.wait_control()
+        except NavError:
+            break
+        g.select(*last)
+        e.wait(8)
+        m = g.move_to(*last)
+        if any(n.lower().startswith("capt") for n in (g.menu() or m)["names"]):
+            g.choose("Capt", g.ACTION_MENU)
+        e.wait(60)
+        for _ in range(200):
+            if e.u8(dc.LAST_RESULT) or not d.scripts_running():
+                break
+            e.press("A", 4)
+            e.wait(10)
+        if e.u8(dc.LAST_RESULT):
+            break
+        try:
+            d.wait_control()
+        except NavError:
+            break
+        d.end_turn()
+        _until_army(e, d, 1)
+    for _ in range(300):
+        if e.u8(dc.LAST_RESULT):
+            break
+        e.press("A", 4)
+        e.wait(10)
+    ctx.eq(e.u8(dc.LAST_RESULT), 1, f"15 properties: won ({owned()} owned)")
+
+
+@test(modes=("ds",))
 def ds_campaign_victory_or_death_bomb(ctx):
     """Victory or Death!'s Black Arc (Dual Strike's 0x02350D44: its bomb at
     (13, 5) on Black Hole's turns while its rule holds): every unit within 2

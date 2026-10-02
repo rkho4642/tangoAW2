@@ -1250,6 +1250,13 @@ overlay 1, the campaign's code, at `0x02350560`).
     campaign flag 0x3C (Dual Strike's `0x021017F4(0x3C, 1 / 0)`).
   - Muck Amok!'s (14, 1) (`0x02351640`) is army 3's HQ; its capture
     routing army 3 (`0x023516A4`) is AW2's own HQ capture.
+  - Spiral Garden's "Whoever captures 15 properties wins" is not a script
+    but the record's +0x34 (Normal) / +0x36 (Hard), tested by Dual
+    Strike's engine. `ds_campaign_data::property_win` adds trigger records
+    to the after-action list (3), one per army: the pseudo predicate
+    `PROPERTY_COUNT | army << 8 | n` (the army owns n properties or more:
+    HQs, cities, bases, airports, ports, Com Towers and labs alike) fires a
+    script ending the match with that army's win (op 0x40).
   - Crystal Calamity's `0x0235172C` is the Black Onyx's real-time laser
     charge (90% or more on Dual Strike's top screen); with the 50-minute
     count left out it never holds.

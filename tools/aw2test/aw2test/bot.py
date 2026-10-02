@@ -83,7 +83,7 @@ class Bot:
         self.log = log or (lambda s: None)
         self.protect = set(protect)
         self.hold = set(hold)
-        self.goals = list(goals)
+        self.goals = [tuple(c) for c in goals]
         self.structures_goal = structures
         self.stance = stance
         self.rush = rush
