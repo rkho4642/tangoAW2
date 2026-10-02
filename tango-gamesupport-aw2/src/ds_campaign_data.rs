@@ -283,7 +283,7 @@ pub fn remap_tile(t: u16) -> u16 {
 
 /// Means to an End's texts as its single front plays it (docs/AW2.md): its
 /// briefing (bank 0xC0 text 682: the crystals are on the map, no top or
-/// touch screen; 36 days), Von Bolt's boast (bank 0x26 text 70: 36 days,
+/// touch screen; 36 days; short enough for the map panel's two lines), Von Bolt's boast (bank 0x26 text 70: 36 days,
 /// the 36th day) and Lash's report (text 69: the crystals to the north,
 /// not on a second front). Every other text is Dual Strike's own.
 pub fn compromise_text(r: u32, t: Vec<u8>) -> Vec<u8> {
@@ -304,8 +304,8 @@ pub fn compromise_text(r: u32, t: Vec<u8>) -> Vec<u8> {
     match r {
         0xC000_02AA => swap(
             t,
-            b"shatter the three black crystals\ron the top screen and defeat Von Bolt\x0fon the Touch Screen within 24 days.",
-            b"shatter the three black crystals\rand defeat Von Bolt within 36 days.",
+            b"To win, shatter the three black crystals\ron the top screen and defeat Von Bolt\x0fon the Touch Screen within 24 days.",
+            b"Shatter the three black crystals and\rdefeat Von Bolt within 36 days.",
         ),
         0x2600_0046 => swap(swap(t, b"In 24 days", b"In 36 days"), b"On the 24th day", b"On the 36th day"),
         0x2600_0045 => swap(t, b"near the crystals on the second front.", b"near the crystals to the north."),
@@ -481,6 +481,9 @@ pub fn convert_units(ds: &Ds, at: u32) -> Vec<u8> {
 /// AW2's dialogue box: lines of at most this many pixels in its font, two
 /// lines a box (the widest line of AW2's own campaign is 176).
 pub const LINE_PIXELS: u32 = 176;
+/// A line of the world map's mission panel (narrower: its picture of the
+/// CO screen on the left).
+pub const PANEL_PIXELS: u32 = 168;
 const BOX_LINES: usize = 2;
 
 fn width(widths: &[u8], s: &[u8]) -> u32 {
@@ -590,6 +593,15 @@ fn objective_text(ds: &Ds, script: u32) -> Option<Vec<u8>> {
 
 /// A text as at most two lines of AW2's box (line breaks `\r`): the words
 /// that fit, cut at the end of a sentence when there is one.
+/// The box of an objective text that states how to win (its first box
+/// saying "win" or "days"; else the first): the map panel's two lines. (Means to an
+/// End's first box is Nell's farewell; its second, the objective.)
+pub fn objective_box(t: &[u8]) -> &[u8] {
+    t.split(|&c| c == 0x0F)
+        .find(|b| b.windows(3).any(|w| w.eq_ignore_ascii_case(b"win")) || b.windows(4).any(|w| w == b"days"))
+        .unwrap_or(t)
+}
+
 pub fn two_lines(t: &[u8], widths: &[u8]) -> Vec<u8> {
     let words: Vec<Vec<u8>> = t
         .split(|&c| c == b' ' || c == b'\r' || c == 0x0E || c == 0x0F)
@@ -606,7 +618,7 @@ pub fn two_lines(t: &[u8], widths: &[u8]) -> Vec<u8> {
             longer.push(b' ');
         }
         longer.extend_from_slice(w);
-        if !cur.is_empty() && width(widths, &longer) > LINE_PIXELS {
+        if !cur.is_empty() && width(widths, &longer) > PANEL_PIXELS {
             if lines.len() == 2 {
                 break;
             }
@@ -1273,7 +1285,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         let units_hard = if rec.units.1 != 0 { cx.blob.push(&convert_units(ds, rec.units.1)) } else { 0 };
         let name = ds.name(rec.name).map(|n| plain(&n)).unwrap_or_else(|| format!("Mission {}", rec.index + 1).into_bytes());
         let name_id = cx.text_id(name.clone());
-        let info = objective_text(ds, rec.objective).map(|t| two_lines(&t, cx.widths)).unwrap_or_else(|| name.clone());
+        let info = objective_text(ds, rec.objective).map(|t| two_lines(objective_box(&t), cx.widths)).unwrap_or_else(|| name.clone());
         let info_text = cx.text_id(info);
 
         let mut hd = [0u8; 0x5C];
