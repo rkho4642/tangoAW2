@@ -91,3 +91,71 @@ def _mission(step):
 
 for _s in range(len(dc.ORDER)):
     _mission(_s)
+
+
+@test(modes=("ds",))
+def ds_crystal_calamity_black_cannon(ctx):
+    """Crystal Calamity: the structure at the top is Dual Strike's Black
+    Cannon facing down (99 HP, 5 HP a shot, every day: its battle entry
+    0901db0463010132, the same bytes as AW2's), not a second Obelisk; it
+    fires on a player unit in front of it on Black Hole's turn. The centre
+    holds the one Black Obelisk."""
+    e = Emu(save=paths.base_save(), ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    d = dc.DsCampaign(g)
+    d.start(step=dc.ORDER.index(18))
+    d.wait_map()
+    d.wait_control()
+    ctx.eq(e.read(INVENTIONS, 8).hex(), "0901db0463010132", "the Black Cannon's entry is Dual Strike's")
+    ctx.eq(tile(e, 10, 2), 0x187, "its middle is AW2's Black Cannon tile")
+    ctx.eq(sum(1 for k, _, _ in ours(e) if k == 0xA), 1, "one Black Obelisk")
+    u = [u for u in g.units(1)][0]
+    if g.unit_at(10, 7):
+        d.remove_unit(g.unit_at(10, 7))
+    d.place_unit(u, 10, 7)
+    # (no enemy unit near enough to reach it: the shot alone hurts it)
+    for o in g.units():
+        if o["army"] != 1 and abs(o["x"] - 10) + abs(o["y"] - 7) <= 12:
+            d.remove_unit(o)
+    e.wait(5)
+    hp = g.unit(u["id"])["hp"]
+    shot_seen = False
+    for _ in range(4):
+        d.end_turn()
+        e.wait(600)
+        d.wait_control(60000)
+        e.wait(400)
+        d.wait_control(60000)
+        now = g.unit(u["id"])
+        if now["hp"] != hp:
+            shot_seen = now["hp"] == hp - 50
+            break
+    ctx.check(shot_seen, f"the cannon's shot took 5 HP off the unit in front of it ({hp} -> {g.unit(u['id'])['hp']})")
+
+
+@test(modes=("ds",))
+def ds_surrounded_fortresses(ctx):
+    """Surrounded!: two missile pads and two fortresses (Dual Strike's 4x4
+    pictures, tiles 0x1AA..0x1AD / 0x1AE..0x1B1), each drawn with its own
+    picture though the map header names one (crate::obelisk::second_picture:
+    the fortress in OBJ tiles 0xC4..0x103, a 64x64 sprite from them)."""
+    from aw2test import rom as romlib
+    e = Emu(save=paths.base_save(), ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    d = dc.DsCampaign(g)
+    d.start(step=dc.ORDER.index(22))
+    d.wait_map()
+    d.wait_control()
+    g.goto(19, 1)
+    e.wait(30)
+    rom = e.read(0x080D38AC, 0x1000)
+    fortress = romlib.lz10(rom)
+    ctx.eq(e.read(0x06010000 + 0xC4 * 32, len(fortress)) == fortress, True, "the fortress picture is in OBJ tiles 0xC4..")
+    oam = e.read(0x07000000, 0x400)
+    tiles = [int.from_bytes(oam[8 * k + 4:8 * k + 6], "little") & 0x3FF for k in range(128)]
+    ctx.check(0xC4 in tiles, "a sprite draws it (the fortress at (17, 0))")
+    pad = romlib.lz10(e.read(0x080D2DA8, 0x1000))
+    ctx.eq(e.read(0x06010000 + 0x130 * 32, len(pad)) == pad, True, "the header's missile pad stays in its own tiles")
+    shot = e.shot(ctx.out + "/top_right")
