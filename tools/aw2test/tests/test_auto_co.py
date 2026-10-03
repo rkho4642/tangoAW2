@@ -43,7 +43,7 @@ def shot(ctx, e, name):
 
 ALLOWED = (LIGHTNING_STRIKES, RING_OF_FIRE)
 HELP = {tf.AUTO_ON: "Allow CPU to direct the secondary front.", tf.AUTO_OFF: "Direct the secondary front manually."}
-PANEL = tf.STATE + 0x18   # the panel drawn: 5 Auto CO's help line
+PANEL = tf.STATE + 0x18   # the panel drawn: 6 Auto CO's help line (5 the Front view's low window)
 
 
 def human_turn(e):
@@ -117,7 +117,7 @@ def two_front_auto_co_off_human_plays(ctx):
 
     before, after = tf.set_auto_co(g, False, shot=menu_shot)
     ctx.eq((before, after), (tf.AUTO_ON, tf.AUTO_OFF), "Auto CO On, chosen: Auto CO Off")
-    ctx.eq(shots, {"before": 5, "after": 5}, "Auto CO's help line under the menu")
+    ctx.eq(shots, {"before": 6, "after": 6}, "Auto CO's help line under the menu")
     ctx.eq(e.u8(tf.MANUAL), 1, "army 1's Auto CO off")
     ctx.eq(tf.intel(g)["names"][-1], tf.AUTO_OFF, "the setting kept")
     main_co = e.u8(g.players_base + 0x3C + 0x1D)
@@ -273,3 +273,69 @@ def two_front_auto_co_saved(ctx):
     ctx.require(ok, f"End: back to the main front ({tf.state(e)})")
     ctx.check((1, day, 2) in seen, f"Black Hole's turn on the second front ({sorted(set(seen))})")
     ctx.eq((e.u8(tf.LIVE), e.u16(tf.DAY)), (0, day + 1), "the next day on the main front")
+
+
+@test(modes=("ds",))
+def two_front_auto_co_panels_clean(ctx):
+    """crate::panel_sprites covers Auto CO's windows too: with Auto CO's help
+    line up (Intel, the cursor on the item; Ring of Fire and Lightning
+    Strikes) and with the Front view titled "Main front" (from the player's
+    turn on the second front, the cursor in the top rows and below), no
+    sprite behind the window shows through its lines."""
+    import struct
+    line_tiles = set(range(0x1F9, 0x20A)) | set(range(0x2D2, 0x2DB)) | set(range(0x2E4, 0x2E8))
+    sizes = [[(8, 8), (16, 16), (32, 32), (64, 64)], [(16, 8), (32, 8), (32, 16), (64, 32)],
+             [(8, 16), (8, 32), (16, 32), (32, 64)], [(8, 8)] * 4]
+
+    def sprites(e):
+        oam = e.read(0x07000000, 0x400)
+        out = []
+        for i in range(128):
+            a0, a1, a2 = struct.unpack_from("<3H", oam, 8 * i)
+            if a0 & 0x300 == 0x200:
+                continue
+            w, h = sizes[a0 >> 14][a1 >> 14]
+            x, y = a1 & 0x1FF, a0 & 0xFF
+            x, y = x - 512 if x >= 240 else x, y - 256 if y >= 160 else y
+            out.append({"i": i, "x": x, "y": y, "w": w, "h": h, "tile": a2 & 0x3FF, "prio": (a2 >> 10) & 3})
+        return out
+
+    def meets(a, b):
+        return a["x"] < b["x"] + b["w"] and b["x"] < a["x"] + a["w"] and a["y"] < b["y"] + b["h"] and b["y"] < a["y"] + a["h"]
+
+    def clean(e, label):
+        bg2 = e.u16(0x0400000C) & 3
+        sp = sprites(e)
+        lines = [s for s in sp if s["prio"] == 0 and s["tile"] in line_tiles and s["w"] == 8 and s["h"] == 16]
+        ctx.check(len(lines) >= 4, f"{label}: the window's lines ({len(lines)} sprites)")
+        behind = [s for s in sp if s["prio"] > bg2 and any(meets(s, l) for l in lines)]
+        ctx.check(not behind, f"{label}: no sprite behind the window under its lines "
+                              f"({[(s['i'], s['x'], s['y'], hex(s['tile'])) for s in behind]})")
+
+    for m in (RING_OF_FIRE, LIGHTNING_STRIKES):
+        e, g, d = start(ctx, m)
+
+        def check(name, m=m, e=e):
+            e.wait(10)
+            shot(ctx, e, f"m{m}_intel_{name}")
+            ctx.eq(e.u8(PANEL), 6, f"mission {m}: Auto CO's help line up ({name})")
+            clean(e, f"mission {m}, Auto CO's help ({name})")
+
+        tf.set_auto_co(g, False, shot=check)
+        if m == LIGHTNING_STRIKES:
+            to_human_turn(ctx, e, d, g, "Auto CO off")
+            ctx.require(tf.look_at_other_front(e, g), "Front: the main front shows")
+            for (cx, cy) in [(1, 1), (6, 1), (6, 8)]:
+                g.goto(cx, cy)
+                e.wait(30)
+                shot(ctx, e, f"main_front_{cx}_{cy}")
+                panel = e.u8(PANEL)
+                ctx.check(panel in (2, 5), f"({cx},{cy}): the view's window is up ({panel})")
+                # Not over the cursor (the map's camera, [0x08499590] +4/+6).
+                cam = e.u32(0x08499590)
+                sx, sy = [v - 0x10000 if v >= 0x8000 else v for v in (e.u16(cam + 4), e.u16(cam + 6))]
+                cursor = {"x": 16 * cx - sx, "y": 16 * cy - sy, "w": 16, "h": 16}
+                win = {"x": 64, "y": 0 if panel == 2 else 112, "w": 112, "h": 48}
+                ctx.check(not meets(cursor, win), f"({cx},{cy}): the window is not over the cursor ({cursor}, panel {panel})")
+                clean(e, f"\"Main front\" view, cursor at ({cx},{cy})")
+        e.close()

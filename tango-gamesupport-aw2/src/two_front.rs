@@ -1771,7 +1771,10 @@ fn want_panel(core: &Core) -> Option<Panel> {
     if core.raw_read_8(VIEW, -1) == 1 && busy == Stub::BeginViewIn as u8 && core.raw_read_8(MAP_LOCK, -1) == 0 {
         // Out of the cursor's way (the top rows hold the front's structures:
         // Means to an End's crystals).
-        let cursor_y = 16 * core.raw_read_16(MAP_CURSOR_Y, -1) as i32 - (core.raw_read_16(BG2VOFS, -1) & 0x1FF) as i32;
+        // (on the screen: the map's camera, not BG2's scroll, which is
+        // offset on some maps)
+        let camera_y = core.raw_read_16(core.raw_read_32(MAP_POINTER, -1) + 6, -1) as i16 as i32;
+        let cursor_y = 16 * core.raw_read_16(MAP_CURSOR_Y, -1) as i32 - camera_y;
         return Some(if cursor_y < VIEW_LOW_BELOW { Panel::ViewLow } else { Panel::View });
     }
     if core.raw_read_8(BANNER, -1) > 0 && busy == 0 && core.raw_read_16(MAP_STATE, -1) == STATE_CURSOR {
@@ -1791,6 +1794,8 @@ const PANEL_ROWS: u32 = 6;
 /// The map cursor's row; the view's window goes to the bottom while the
 /// cursor is above this (screen pixels).
 const MAP_CURSOR_Y: u32 = 0x0300_33E6;
+/// The battle map's state (its camera at +4, +6, in pixels).
+const MAP_POINTER: u32 = 0x0849_9590;
 const VIEW_LOW_BELOW: i32 = 48;
 const BG2_BUFFER_PTR: u32 = 0x0849_9580;
 const BG2_SCREEN: u32 = 0x0600_7800;
