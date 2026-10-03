@@ -72,34 +72,48 @@ changes, and online both players need it):
 - **Units, COs and terrain:** its 7 units and 9 new COs with their
   pictures, animations, music and numbers; Com Towers, Sandstorm, its
   weather and fog looks, Wasteland, Desert and Snow terrain, the Black
-  Crystal and Obelisk; eight new Versus maps.
+  Crystal and Obelisk, Black Hole's structures as Dual Strike draws them;
+  eight new Versus maps.
 - **Survival:** Money, Turn and Time, eleven maps each, with ranks and
   records.
-- **DS Campaign:** all 28 missions on Dual Strike's world map, with its
-  story, prologue, ending with a choice, credits and music; Hard campaign,
-  mission records and saving mid-mission; missions open with Dual Strike's
-  Setup phase. Two-front missions are fought on both fronts (look across
-  with **Front**, **Send** units over; in Lightning Strikes and Ring of Fire
-  turn **Intel → Auto CO** off to command the second yourself), and Means
-  to an End has the real Grand Bolt.
+- **DS Campaign:** all 28 missions on Dual Strike's world map:
+  - missions open as you advance, with LEVEL stars for each; Hard
+    campaign once Normal is cleared;
+  - the story scenes, prologue, ending with a choice, credits and music;
+  - mission records, and saving mid-mission;
+  - each mission opens with Dual Strike's Setup phase: look around, then
+    **Deploy**.
+- **Two-front missions** are fought on both fronts, taking turns each round:
+  - **Front** on the map menu looks at the other front; **Send** moves
+    units over;
+  - in Lightning Strikes and Ring of Fire, **Intel → Auto CO** off lets
+    you command the second front yourself;
+  - while the computer runs it, **Intel → General** sets how it fights
+    (Strike, Assault, General or Defense).
+- **Mission specials:** the real Grand Bolt in Means to an End; Crystal
+  Calamity's Black Onyx with its countdown, its laser every ten minutes
+  and the missile silos that hit it; Reclaim the Skies' 30-minute limit.
 - **CO skills:** Dual Strike's 40 skills, earned with EXP. **SELECT** on a
   CO screen (on Teams, on an army's CO) opens SET SKILLS; Versus' Rules
   screen turns them on (off by default).
 - **CO tag pairs:** on Teams press **START** on a CO, then **UP**/**DOWN**
-  for a partner. **Change** swaps COs; with both meters full **Tag** fires
-  a Tag Power, with Dual Strike's pair boosts and screens.
-  Sturm gets pairs of his own.
+  for a partner:
+  - **Change** swaps COs; with both meters full **Tag** fires a Tag Power,
+    with Dual Strike's pair boosts;
+  - the Tag Power and CO SWAP screens are animated, with Dual Strike's
+    sounds;
+  - Sturm gets pairs of his own.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/ds-campaign.png" width="240" alt="The DS Campaign's first mission"></td>
-<td><img src="docs/screenshots/ds-megatank-battle.png" width="240" alt="A Megatank firing in battle"></td>
-<td><img src="docs/screenshots/ds-von-bolt-ex-machina.png" width="240" alt="Von Bolt's Ex Machina"></td>
+<td><img src="docs/screenshots/ds-tag-power.png" width="240" alt="A Tag Power screen counting up its power"></td>
+<td><img src="docs/screenshots/ds-world-map.png" width="240" alt="The DS Campaign's world map"></td>
+<td><img src="docs/screenshots/ds-second-front.png" width="240" alt="Commanding the second front yourself"></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/ds-survival.png" width="240" alt="Turn Survival's first map"></td>
-<td><img src="docs/screenshots/five-magma-crown.png" width="240" alt="A five-army map"></td>
-<td><img src="docs/screenshots/design-inventions-editor.png" width="240" alt="Black Hole's inventions in the Design Room"></td>
+<td><img src="docs/screenshots/ds-black-onyx-laser.png" width="240" alt="The Black Onyx's laser striking Crystal Calamity"></td>
+<td><img src="docs/screenshots/ds-teams-five-pairs.png" width="240" alt="Five armies with tag partners on Versus' Teams screen"></td>
+<td><img src="docs/screenshots/ds-set-skills.png" width="240" alt="Choosing CO skills on SET SKILLS"></td>
 </tr>
 </table>
 
@@ -119,6 +133,8 @@ with **SELECT → File → Save**; play it from **Versus → Design Maps**.
   computer-controlled).
 - Five-army battles and Survival runs can't be suspended.
 - The mini maps show Black Hole's buildings in neutral grey.
+- Dual Strike's top-screen pictures (the Black Onyx's Earth view) are left
+  out, and tag powers play AW2's power music.
 
 ## How it's tested
 
