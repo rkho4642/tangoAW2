@@ -188,7 +188,7 @@ pub fn any(core: &Core) -> bool {
 // --- The CO table and the meters ----------------------------------------------------
 
 /// The CO table the game reads now (tangoAW2's copy with the pack).
-const CO_TABLE_POOL: u32 = 0x0804_2DDC;
+pub const CO_TABLE_POOL: u32 = 0x0804_2DDC;
 const CO_ROW: u32 = 0x104;
 
 fn stars(core: &Core, co: u8) -> (u32, u32) {
@@ -295,6 +295,11 @@ pub fn special_pair(a: u8, b: u8) -> Option<(u8, u32)> {
         }
     }
     None
+}
+
+/// The AW2 CO of a Dual Strike id (AW2's 19 and the new nine).
+pub fn aw2_co(d: u8) -> Option<u8> {
+    (0..19u8).chain(72..81).find(|&c| ds_id(c) == Some(d))
 }
 
 /// A CO's Dual Strike id (AW2's COs and the new ones).
@@ -659,11 +664,16 @@ const T_END: u32 = 4;
 const A_TAG: u32 = 5;
 const A_CHANGE: u32 = 6;
 const A_CHANGE2: u32 = 7;
+/// crate::tag_extras's Change script: the incoming CO's quote, a frame of
+/// the CO SWAP band, the swap.
+pub const S_QUOTE: u32 = 8;
+pub const S_SWAP_FRAME: u32 = 9;
+pub const S_SWAP: u32 = 10;
+const STUBS_N: u32 = 10;
 const MAGIC_ID: u32 = 0x5441_4700;
 
-/// `MapMenu_SuperPower`, `MapMenu_End`.
+/// `MapMenu_SuperPower`.
 const SUPER_POWER: u32 = 0x0802_CEFC;
-const END_TURN: u32 = 0x0802_CF6C;
 
 fn stub(id: u32) -> [u8; 16] {
     let mut s = [0u8; 16];
@@ -673,6 +683,10 @@ fn stub(id: u32) -> [u8; 16] {
     s[8..12].copy_from_slice(&(MAGIC_ID | id).to_le_bytes());
     s[12..16].copy_from_slice(&(LANDING | 1).to_le_bytes());
     s
+}
+
+pub fn stub_addr(id: u32) -> u32 {
+    stub_at(id)
 }
 
 fn stub_at(id: u32) -> u32 {
@@ -714,7 +728,7 @@ fn install(core: &mut Core) {
     menu.extend(with(end_item, T_END, None, None));
     menu.extend(item(AW2_ITEMS)); // the end mark
     core.raw_write_range(MENU, -1, &menu);
-    for id in 1..=7 {
+    for id in 1..=STUBS_N {
         core.raw_write_range(stub_at(id), -1, &stub(id));
     }
     let tag_at = STRINGS;
@@ -791,12 +805,20 @@ fn landing(core: &mut Core) {
         A_TAG => {
             set_phase(core, army, 1);
             core.raw_write_8(rec(army) + P_SHOW, -1, 2);
+            crate::tag_extras::tag_chosen(core, army);
             tail_call(core, SUPER_POWER);
         }
         A_CHANGE => {
+            // The incoming CO's quote and the CO SWAP band, then the swap
+            // and the turn's end (crate::tag_extras's script).
+            crate::tag_extras::change_chosen(core, army);
+        }
+        S_QUOTE => crate::tag_extras::quote(core),
+        S_SWAP_FRAME => crate::tag_extras::swap_frame(core),
+        S_SWAP => {
             power_off(core, army);
             swap(core, army);
-            tail_call(core, END_TURN);
+            return_to(core, 0);
         }
         A_CHANGE2 => {
             second_half(core, army);
@@ -866,6 +888,7 @@ fn ai_super(core: &mut Core) {
     let army = core.gba().cpu().gpr(0) as u32;
     if tag_ready(core, army) {
         set_phase(core, army, 1);
+        crate::tag_extras::tag_chosen(core, army);
         core.raw_write_8(rec(army) + P_SHOW, -1, 2);
     }
 }
@@ -970,6 +993,7 @@ pub fn tick(core: &mut Core, on: bool) {
         return;
     }
     install(core);
+    crate::tag_extras::install(core);
     if core.raw_read_8(STATE + 0xFC, -1) != MAGIC_RAM {
         clear_pairs(core);
         clear_pending(core);

@@ -338,6 +338,23 @@ const BOX_W: usize = 32;
 const BOX_H: usize = 28;
 const FACE_ROW: u32 = 0x0C;
 
+/// A CO's Teams-screen portrait (48x48: 36 tiles, rows of six), its
+/// transparent pixels its lightest colour, and its palette (crate::tag_extras's band).
+pub fn portrait48(core: &Core, co: u8) -> (Vec<u8>, [u8; 32]) {
+    let row = core.raw_read_32(PRESENTATION_POOL, -1) + PRESENTATION_ROW * co as u32;
+    let pal = co_palette(core, co);
+    let colour = |i: usize| u16::from_le_bytes([pal[2 * i], pal[2 * i + 1]]);
+    let lum = |c: u16| (c & 31) as u32 * 3 + ((c >> 5) & 31) as u32 * 6 + ((c >> 10) & 31) as u32;
+    let light = (1..16).max_by_key(|&i| lum(colour(i))).unwrap_or(1) as u8;
+    let mut src = crate::invention_art::lz77(core, core.raw_read_32(row + FACE_ROW, -1));
+    src.resize(36 * 32, 0);
+    for b in src.iter_mut() {
+        let (lo, hi) = (*b & 15, *b >> 4);
+        *b = (if lo == 0 { light } else { lo }) | (if hi == 0 { light } else { hi }) << 4;
+    }
+    (src, pal)
+}
+
 fn partner_box(core: &Core, co: u8) -> (Vec<u8>, [u8; 32]) {
     let row = core.raw_read_32(PRESENTATION_POOL, -1) + PRESENTATION_ROW * co as u32;
     let pal = co_palette(core, co);
@@ -621,5 +638,6 @@ pub fn flush(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
     }
     let at = teams_flush(core, start, at, end);
     tag::co_screen_flush(core, start, at);
+    let at = crate::tag_extras::flush(core, at, end);
     panel_flush(core, start, at, end)
 }
