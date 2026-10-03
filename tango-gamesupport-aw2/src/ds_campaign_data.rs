@@ -1265,6 +1265,13 @@ pub const SKY_UNITS: [u8; 4] = [16, 17, crate::roster::STEALTH, crate::roster::B
 /// either. The action is too fast."), and its Send rule: a front whose
 /// deployment is air units only is in the sky (Victory or Death!'s Black
 /// Arc, Omens and Signs), the others are on the ground.
+/// A front whose deployment is all aircraft is in the sky (Victory or
+/// Death!'s and Omens and Signs' second fronts: the Black Arc's).
+fn in_the_sky(ds: &Ds, front: &Record) -> bool {
+    let units = convert_units(ds, front.units.0);
+    units.chunks(12).filter(|u| u[0] < 0xFE).all(|u| SKY_UNITS.contains(&u[2]) || matches!(u[2], 19 | 20))
+}
+
 fn two_front(ds: &Ds, rec: &Record) -> Option<crate::campaign_model::TwoFront> {
     use crate::campaign_model::{FrontControl, SendRule, TwoFront, PICK};
     if rec.index >= MISSIONS || rec.second_front < (FIRST_RECORD + MISSIONS as u32) as u16 {
@@ -1279,14 +1286,14 @@ fn two_front(ds: &Ds, rec: &Record) -> Option<crate::campaign_model::TwoFront> {
             c => aw2_co(c).unwrap_or(0xFF),
         };
     }
-    let units = convert_units(ds, front.units.0);
-    let sky = units.chunks(12).filter(|u| u[0] < 0xFE).all(|u| SKY_UNITS.contains(&u[2]) || matches!(u[2], 19 | 20));
+    let sky = in_the_sky(ds, &front);
     Some(TwoFront {
         second: second as u8,
         cos,
         control: FrontControl::Cpu,
         send: if sky { SendRule::Air } else { SendRule::Ground },
         powers: false,
+        sky,
     })
 }
 
@@ -1436,7 +1443,9 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
             // poked in melonDS, neither record's byte changes the top screen
             // while the main record's changes the bottom one).
             look: if front == 0 { rec.look } else { 0 },
-            weather: rec.weather,
+            // A front in the sky has clear weather (Dual Strike's top screen
+            // draws no sandstorm there; crate::sky_front).
+            weather: if front == 1 && in_the_sky(ds, rec) { 0 } else { rec.weather },
             fog: rec.fog,
             labs: lab_cells(ds, rec.maps.0),
         });
@@ -1621,6 +1630,11 @@ mod tests {
             let t = b.missions[i].two_front.clone().unwrap();
             assert_eq!(t.control, FrontControl::Cpu, "the campaign's second front is the computer's");
             assert_eq!(b.missions[second as usize].look, 0, "mission {i}: the second front in the Normal look (Dual Strike's top screen)");
+            // The Black Arc's fronts are in the sky, with clear weather.
+            assert_eq!(t.sky, matches!(i, 8 | 14), "mission {i}: in the sky");
+            if t.sky {
+                assert_eq!(b.missions[second as usize].weather, 0, "mission {i}: clear weather in the sky");
+            }
             assert!(!t.powers);
             let rec = record(&ds, i).unwrap();
             assert_eq!(t.cos[0] == PICK, rec.cos[0].1 == 0x1C, "mission {i}: the player's tag CO is picked");

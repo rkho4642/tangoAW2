@@ -58,6 +58,8 @@ mod five_map_data;
 mod five_patches;
 pub mod invention_art;
 pub mod grand_bolt;
+pub mod sky_front;
+pub mod setup_phase;
 pub mod obelisk;
 pub mod oozium;
 mod obelisk_art;

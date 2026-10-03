@@ -354,6 +354,18 @@ fn install(core: &mut Core) {
     assert!(UNIT_MENU_COPY + MENU_ENTRY * (UNIT_MENU_LEN + 1) <= TEXTS && TEXTS + 0x20 <= ROM_END);
 }
 
+/// Front's menu entry (for crate::setup_phase's menu): this module's ROM
+/// written first (its stubs).
+pub fn front_entry(core: &mut Core) -> Vec<u8> {
+    install(core);
+    menu_entry(core, OPTIONS_AT, Stub::FrontUsable, Stub::FrontChosen, TEXT_FRONT)
+}
+
+/// A front is being set up or brought back (a swap's steps run).
+pub fn rebuilding(core: &Core) -> bool {
+    core.raw_read_8(BUSY, -1) != 0
+}
+
 /// A menu entry like `like`'s (its event id, its B handler), with our
 /// usability test, A handler and label.
 fn menu_entry(core: &Core, like: u32, usable: Stub, chosen: Stub, text: u16) -> Vec<u8> {
@@ -429,6 +441,9 @@ pub const STATE_LEN: u32 = LOCAL_KEEP + LOCAL_LEN - STATE;
 const SECOND_COS: u32 = STATE + STATE_LEN;
 const PICKED_FOR: u32 = SECOND_COS + 4;
 const PICKS_LEN: u32 = 5;
+/// crate::sky_front's state (a borrowed OBJ palette: 1 byte, then 32 at +4).
+pub const SKY_STATE: u32 = STATE + 0xC0;
+const SKY_LEN: u32 = 0x24;
 /// The store: the block, then [`EXTRA_LEN`] bytes of tangoAW2's state.
 const STORE: u32 = 0x0203_E500;
 const EXTRA: u32 = STORE + BLOCK_LEN;
@@ -535,6 +550,9 @@ fn reset(core: &mut Core) {
     if now != z {
         core.raw_write_range(STATE, -1, &z);
     }
+    if core.raw_read_8(SKY_STATE, -1) != 0 {
+        core.raw_write_8(SKY_STATE, -1, 0);
+    }
 }
 
 /// Every frame, before the game runs (crate::pvp, with the pack offline).
@@ -568,6 +586,8 @@ pub fn tick(core: &mut Core, on_: bool) {
     crate::ds_campaign_rules::omens_barrier_tick(core);
     // The panels (help line, view, result, which front).
     panel_tick(core);
+    // A front in the sky: its clouds and the Black Arc (crate::sky_front).
+    crate::sky_front::tick(core);
     let banner = core.raw_read_8(BANNER, -1);
     // (shown on the player's turn, [`want_panel`])
     if banner > 0 && core.raw_read_8(BUSY, -1) == 0 && core.raw_read_16(MAP_STATE, -1) == STATE_CURSOR {
@@ -1526,16 +1546,19 @@ enum Panel {
     Help = 1,
     View = 2,
     Result = 3,
+    /// Deploy's help line in the Setup phase (crate::setup_phase).
+    SetupHelp = 4,
 }
 
 impl Panel {
     /// The window, in BG2 cells: (x, y, width, height).
     fn rect(self) -> (u32, u32, u32, u32) {
         match self {
-            Panel::Help => (0, 16, 30, 4),
-            // (between the terrain and unit panels at the bottom corners;
-            // the CO panel takes a top corner)
-            Panel::View => (8, 14, 14, 6),
+            Panel::Help | Panel::SetupHelp => (0, 16, 30, 4),
+            // (at the top: the CO panel is not drawn while the other front
+            // is looked at, [`co_panel`]; the terrain and unit panels take
+            // the bottom corners)
+            Panel::View => (8, 0, 14, 6),
             Panel::Result => (5, 8, 20, 4),
         }
     }
@@ -1546,6 +1569,7 @@ impl Panel {
         let (px, py) = (8 * x as i32, 8 * y as i32);
         match self {
             Panel::Help => vec![(px + 12, py + 9, FRONT_HELP, false)],
+            Panel::SetupHelp => vec![(px + 12, py + 9, crate::setup_phase::DEPLOY_HELP, false)],
             Panel::View => vec![(px + 10, py + 9, VIEW_TITLE, false), (px + 10, py + 25, VIEW_BACK, true)],
             Panel::Result => {
                 let t = if core.raw_read_8(SECOND, -1) == SECOND_WON { RESULT_WON } else { RESULT_LOST };
@@ -1564,6 +1588,11 @@ fn want_panel(core: &Core) -> Option<Panel> {
     if menu_cursor(core, MAP_MENU_COPY) == Some(OPTIONS_AT + 1) {
         return Some(Panel::Help);
     }
+    match menu_cursor(core, crate::setup_phase::MENU) {
+        Some(crate::setup_phase::FRONT_AT) => return Some(Panel::Help),
+        Some(crate::setup_phase::DEPLOY_AT) => return Some(Panel::SetupHelp),
+        _ => {}
+    }
     let busy = core.raw_read_8(BUSY, -1);
     if core.raw_read_8(VIEW, -1) == 1 && busy == Stub::BeginViewIn as u8 && core.raw_read_8(MAP_LOCK, -1) == 0 {
         return Some(Panel::View);
@@ -1574,14 +1603,18 @@ fn want_panel(core: &Core) -> Option<Panel> {
     None
 }
 
-/// The panel drawn (its [`Panel`] value, 0 none).
+/// The panel drawn (its [`Panel`] value, 0 none), and where on BG2's
+/// screen (its first column and row: BG2 scrolls with the map).
 const PANEL: u32 = STATE + 0x18;
+const PANEL_AT: u32 = STATE + 0x19;
 /// BG2's cells under it, as they were (6 rows of 32 at most), in the staging
 /// buffer's tail.
 const PANEL_SAVED: u32 = STAGING + 0x1D80;
 const PANEL_ROWS: u32 = 6;
 const BG2_BUFFER_PTR: u32 = 0x0849_9580;
 const BG2_SCREEN: u32 = 0x0600_7800;
+const BG2HOFS: u32 = 0x0400_0018;
+const BG2VOFS: u32 = 0x0400_001A;
 const MAP_LOCK: u32 = 0x0300_40E8;
 /// AW2's window (its map menu's, BG palette 8): corners, edges, the fill
 /// (its two shades by row), the blank cell.
@@ -1623,7 +1656,9 @@ fn bg2_cells(core: &mut Core, at: u32, v: u16) {
 }
 
 /// Every frame of a two-front battle: the panel wanted drawn (BG2's cells
-/// under it kept, put back when it goes).
+/// under it kept, put back when it goes). BG2 scrolls with the map, so the
+/// window goes where the screen shows it: at the scroll's cell (none while
+/// the map moves between cells), moved when the scroll moves.
 fn panel_tick(core: &mut Core) {
     let want = want_panel(core);
     let now = core.raw_read_8(PANEL, -1);
@@ -1631,30 +1666,62 @@ fn panel_tick(core: &mut Core) {
     if !(0x0200_0000..0x0204_0000).contains(&buffer) {
         return;
     }
-    let drawn = [Panel::Help, Panel::View, Panel::Result].into_iter().find(|p| *p as u8 == now);
-    if drawn.is_some() && drawn != want {
-        let (_, y, _, h) = drawn.unwrap().rect();
+    let (hofs, vofs) = (core.raw_read_16(BG2HOFS, -1) as u32 & 0x1FF, core.raw_read_16(BG2VOFS, -1) as u32 & 0x1FF);
+    let aligned = hofs % 8 == 0 && vofs % 8 == 0;
+    let at = ((hofs / 8) % 32, (vofs / 8) % 32);
+    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp].into_iter().find(|p| *p as u8 == now);
+    let drawn_at = (core.raw_read_8(PANEL_AT, -1) as u32, core.raw_read_8(PANEL_AT + 1, -1) as u32);
+    let keep = drawn.is_some() && drawn == want && aligned && drawn_at == at;
+    if let Some(d) = drawn.filter(|_| !keep) {
+        // Put back the rows it covered.
+        let (_, y, _, h) = d.rect();
         let mut rows = vec![0u8; (64 * h) as usize];
         core.raw_read_range(PANEL_SAVED, -1, &mut rows);
-        for k in 0..32 * h {
-            let v = u16::from_le_bytes([rows[2 * k as usize], rows[2 * k as usize + 1]]);
-            bg2_cells(core, 32 * y + k, v);
+        for r in 0..h {
+            let row = (drawn_at.1 + y + r) % 32;
+            for k in 0..32 {
+                let i = (64 * r + 2 * k) as usize;
+                bg2_cells(core, 32 * row + k, u16::from_le_bytes([rows[i], rows[i + 1]]));
+            }
         }
         core.raw_write_8(PANEL, -1, 0);
     }
-    let Some(p) = want else { return };
+    let Some(p) = want.filter(|_| aligned) else { return };
     let (x, y, w, h) = p.rect();
     debug_assert!(h <= PANEL_ROWS);
     if core.raw_read_8(PANEL, -1) != p as u8 {
         let mut rows = vec![0u8; (64 * h) as usize];
-        core.raw_read_range(buffer + 64 * y, -1, &mut rows);
+        for r in 0..h {
+            let row = (at.1 + y + r) % 32;
+            core.raw_read_range(buffer + 64 * row, -1, &mut rows[(64 * r) as usize..(64 * r + 64) as usize]);
+        }
         core.raw_write_range(PANEL_SAVED, -1, &rows);
         core.raw_write_8(PANEL, -1, p as u8);
+        core.raw_write_8(PANEL_AT, -1, at.0 as u8);
+        core.raw_write_8(PANEL_AT + 1, -1, at.1 as u8);
     }
     for cy in 0..h {
         for cx in 0..w {
-            bg2_cells(core, 32 * (y + cy) + x + cx, window_cell(p, cx, cy));
+            let (col, row) = ((at.0 + x + cx) % 32, (at.1 + y + cy) % 32);
+            bg2_cells(core, 32 * row + col, window_cell(p, cx, cy));
         }
+    }
+}
+
+/// Every frame outside a two-front battle (crate::setup_phase): the Setup
+/// phase's help line drawn, and taken away after it.
+pub fn panels_outside(core: &mut Core) {
+    if on(core).is_none() && (crate::setup_phase::active(core) || core.raw_read_8(PANEL, -1) != 0) {
+        panel_tick(core);
+    }
+}
+
+/// `DrawArmyCoPanel` (`0x080436DC`, crate::tag's trap calls this first):
+/// while the other front is looked at, its army's panel is not drawn (its
+/// face's tiles are the turn's army's): the panel goes below the screen.
+pub fn co_panel(core: &mut Core) {
+    if core.raw_read_8(VIEW, -1) == 1 && on(core).is_some() {
+        core.gba_mut().cpu_mut().set_gpr(1, 200);
     }
 }
 
@@ -1783,14 +1850,15 @@ const MAP_CALLBACK: u32 = 0x0802_2049;
 
 /// At the sprite flush (crate::branding::flush).
 pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
-    if on(core).is_none() || core.raw_read_32(MAIN_CALLBACK, -1) != MAP_CALLBACK {
+    let setup = crate::setup_phase::active(core);
+    if (on(core).is_none() && !setup) || core.raw_read_32(MAIN_CALLBACK, -1) != MAP_CALLBACK {
         return at;
     }
     let mut sp = Sprites { at, end };
+    let mut pairs = free_tile_pairs().into_iter();
     // A panel's lines (its window is on BG2, [`panel_tick`]), in tiles of
     // ours: 8x16 sprites, a column of 8 pixels each.
     if let Some(p) = want_panel(core).filter(|p| core.raw_read_8(PANEL, -1) == *p as u8) {
-        let mut pairs = free_tile_pairs().into_iter();
         for (x, y, s, button) in p.lines(core) {
             let cols = render_line(core, s, button);
             for (k, chunk) in cols.chunks(8).enumerate() {
@@ -1811,13 +1879,21 @@ pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
                 sp.put_shaped(core, x + 8 * k as i32, y, t, 2 << 14);
             }
         }
-    } else if core.raw_read_8(LIVE, -1) == 1 && core.raw_read_8(BUSY, -1) == 0 {
-        // Which front is on the screen during its rounds: AW2's font,
-        // white outlined in black, at the top (no window: the game's own
-        // windows come and go there).
-        let cols = outlined(core, VIEW_TITLE);
+    }
+    // At the top, AW2's font white outlined in black (no window: the game's
+    // own windows come and go there): which front is on the screen during
+    // the second front's rounds; "Setup" while the Setup phase lasts
+    // (crate::setup_phase).
+    let title = if setup {
+        Some(crate::setup_phase::TITLE)
+    } else if on(core).is_some() && core.raw_read_8(LIVE, -1) == 1 && core.raw_read_8(BUSY, -1) == 0 {
+        Some(VIEW_TITLE)
+    } else {
+        None
+    };
+    if let Some(title) = title {
+        let cols = outlined(core, title);
         let x = 120 - cols.len() as i32 / 2;
-        let mut pairs = free_tile_pairs().into_iter();
         for (k, chunk) in cols.chunks(8).enumerate() {
             let Some(t) = pairs.next() else { break };
             let mut tiles = [0u8; 64];
@@ -1887,6 +1963,7 @@ mod tests {
         assert!(STATE >= 0x0203_E3E4, "after crate::grand_bolt's");
         assert!(STATE + STATE_LEN <= STORE);
         assert!(STORE + STORE_LEN <= RAM_END, "before the DS Campaign's records");
+        assert!(PICKED_FOR + PICKS_LEN <= SKY_STATE && SKY_STATE + SKY_LEN <= STORE);
         assert!(SECOND_COS + PICKS_LEN <= STORE && QUEUE + 12 * QUEUE_LEN <= QUEUE_ARMY);
         assert!(EXTRA_PENDING + EXTRA_LEN <= STAGING + 0x2000);
         // (after a mission saved halfway's record: the block, the mark, both fronts)

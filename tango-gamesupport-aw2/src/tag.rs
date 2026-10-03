@@ -975,6 +975,8 @@ fn ai_factory(core: &mut Core) {
 /// `DrawArmyCoPanel(x, y, army)`: where the panel is this frame.
 const DRAW_PANEL: u32 = 0x0804_36DC;
 fn draw_panel(core: &mut Core) {
+    // (a two-front battle's view of its other front draws no panel)
+    crate::two_front::co_panel(core);
     if !is_on(core) || !any(core) {
         return;
     }

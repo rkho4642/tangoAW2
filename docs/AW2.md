@@ -653,7 +653,8 @@ table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
 0x0862DA38..0x08630A37 (the DS Campaign's text ids 0x7400..0x7FFF),
 0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used),
 0x08E80000..0x08EFFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow and Means to an End's),
-0x08E70000..0x08E73FFF (two fronts: stubs, swap scripts, the menus' copies, labels; text ids 0x7FFD, 0x7FFE).
+0x08E70000..0x08E73FFF (two fronts: stubs, swap scripts, the menus' copies, labels; text ids 0x7FFD, 0x7FFE),
+0x08E74000..0x08E743FF (the DS Campaign's Setup phase: stubs, script, menu, label; text id 0x7FFC).
 Free RAM used: 0x0203E400..0x0203F3FF (two fronts: their state, the front off the screen), 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F600..0x0203F6FF (the DS
 Campaign's records; 0x0203E000..0x0203F73F was found unwritten at the title, Select Mode, in AW2 and DS battles), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
@@ -1461,16 +1462,30 @@ record id the map hands on, `0x02183CC0`):
   Means to an End, whose second front is green): poked in melonDS, the main
   record's byte changes the bottom screen (Lightning Strikes in Snow) and
   neither record's changes the top one.
+- **The top screen** is the 2D engine (engine B, read back in melonDS: its
+  BG layers, palettes and sprites matched against the .nds's files): the
+  map layer (BG0) draws the terrain and units. **In the sky** (Victory or
+  Death!'s and Omens and Signs' second fronts, the Black Arc's: their
+  deployments are all aircraft) it draws the units only: under them BG1 is
+  a field of clouds (`bmap/098` tiles, `bmap/099` 32x32 tilemap, `bmap/09a`
+  colours) blended over BG3, the ground far below (`bmap/092`, `093`,
+  `094`; `BLDCNT` 0x3C42, `BLDALPHA` 0x1008: clouds 8/16, ground 16/16);
+  the Black Arc is a 64x64 sprite (`bmap/0a7`, colours `bmap/0aa`) where a
+  sea map has its fortress (`bmap/0a6`, the bytes of AW2's own fortress
+  picture), its minicannons sprites in the same colours. No sandstorm is
+  drawn there.
 - **Turns.** Day 1: the main front's armies in order (the player, then Black
   Hole), then the second front's (in order), then day 2 on the main front;
   both fronts count the same day. The second front plays on the top screen
   (SWAP shows the top screen's info panel instead).
 - **Who plays it.** "In Campaign mode, the second front is controlled
   automatically" (the tutorial, bank 0x31): the player's second CO's army is
-  the computer's. Outside the campaign Dual Strike offers "Direct the
-  secondary front manually." / "Allow CPU to direct the secondary front."
-  (help lines in its text bank 0xC0). "CO Powers can't be used there,
-  either. The action is too fast."
+  the computer's. From Lightning Strikes on the campaign also lets the
+  player take it: Intel's Auto CO ("open Intel on the menu, and find Auto
+  CO. Touch Auto CO to turn it on or off", bank 0x34 text 24; Ring of Fire's
+  bank 0x29 text 23; help lines "Allow CPU to direct the secondary front." /
+  "Direct the secondary front manually.", bank 0xC0 texts 740, 741).
+  "CO Powers can't be used there, either. The action is too fast."
 - **Send** (the unit command table at arm9 `0x02166000`, 0x20 bytes an
   entry: "Send" twice, `0x021661E0` and `0x02166200`, their handler
   `0x020BCE50`): a unit leaves the main front for the second ("Keep in mind
@@ -1578,11 +1593,16 @@ Room, Survival, the Design Room, netplay and the pack off are untouched
   the battle's flags, the cursor, the skills byte for byte).
 - **Panels.** The help line ("View the other front.", while Front is
   highlighted, where AW2's map menu has its own), the view's title and its
-  B button ("Second front", "Back", bottom centre, between the terrain and
-  unit panels) and the second front's result ("Second front won!",
+  B button ("Second front", "Back", top centre: while the other front is
+  looked at its army's CO panel is not drawn, `co_panel` through
+  `tag`'s `DrawArmyCoPanel` trap, its face's tiles being the turn's army's;
+  the terrain and unit panels take the bottom corners) and the second
+  front's result ("Second front won!",
   "Second front lost.", on the player's turn): a window of AW2's own (its
   map menu's window cells on BG2, palette 8; the cells under it kept and
-  put back) and AW2's proportional font (the menus' glyphs `0x084C32E4`,
+  put back; BG2 scrolls with the map, so the window goes where the scroll
+  puts the screen, `BG2HOFS`/`BG2VOFS` read back, and waits while the map
+  moves between cells) and AW2's proportional font (the menus' glyphs `0x084C32E4`,
   widths `0x084C36E4`) drawn into free OBJ tiles (`heal_effect`'s, which it
   uses only during a structure's heal) as 8x16 sprites. During the second
   front's rounds "Second front" stands at the top in the same font, white
@@ -1617,6 +1637,19 @@ Room, Survival, the Design Room, netplay and the pack off are untouched
   the store, in slot 14 (AW2's writer splits a record over sectors of
   0xFAD bytes: two parts); Continue brings them back
   (`two_front_saved_halfway`, across a reboot).
+- **In the sky** (`sky_front.rs`, the description's `sky`): every cell is
+  drawn with the clouds (the picture's 16x16 at the cell's position,
+  repeating) by `wasteland`'s painter (`BlitMapRow`/`BlitMapColumn`, with
+  no look of Dual Strike's drawn), their 65 tiles in static terrain tiles
+  1.. (nothing else is drawn there) and BG palette 1 (and its fogged copy
+  5) in the clouds' colours blended over the ground's mean colour (one
+  colour for the ground: AW2 has one map layer); the cells keep their
+  terrain (sea: air units only). The fortress's picture (OBJ tile 0x130,
+  `LoadInventionGraphics`' base 0x48 + 0xE8) becomes the Black Arc's and
+  OBJ palette 10 (the structures' and minicannons') its colours while the
+  front is on the screen, both put back after (`two_front_looks_and_deployments`).
+  Its weather is clear (`ds_campaign_data`: Dual Strike draws no sandstorm
+  there).
 - **Means to an End**: its crystals stand on its second front only
   (`ds_campaign_data::MTE_CRYSTALS`, (1, 1), (8, 1), (14, 1), west to
   east); while the second front is on the screen each crystal shattered is
@@ -1633,7 +1666,8 @@ flags, the second front's COs and the mission they were picked for),
 staging buffer's tail (`0x02001D80..0x02001FFF`: the panel's BG2 cells,
 the incoming front's tangoAW2 state). ROM `0x08E70000..0x08E73FFF`
 (stubs, the three swap scripts, the menus' copies, the labels; text ids
-0x7FFD Send, 0x7FFE Front). Traps: `0x08034AF8`, `0x08034EF0`,
+0x7FFD Send, 0x7FFE Front); `0x0203E4C0..0x0203E4E3` `sky_front`'s
+borrowed OBJ palette. Traps: `0x08034AF8`, `0x08034EF0`,
 `0x0803BD14`, `0x0803BCDC`, `0x080743E8`, `0x080743AA` (the unit layers'
 rebuild after a Send returns there: alignment padding in
 `UnitSelectedEvent_Init`, never run). Hooks in other modules:
@@ -1647,14 +1681,17 @@ barrier, eruption cells, the Volcano), `grand_bolt::on` (the main front's),
 
 - One screen: the second front is seen during its rounds and through Front;
   Dual Strike shows it on the top screen all the time.
-- The fronts in the sky (Victory or Death!, Omens and Signs) are drawn as
-  AW2 sea in their look (they are sea cells in AW2's terms); Dual Strike
-  draws clouds there. The Black Arc is AW2's Sea Fortress picture (Dual
-  Strike's record names "0a6", the same bytes).
+- In the sky, the clouds are blended over one colour, not over Dual
+  Strike's ground picture (AW2 has one map layer); the minicannons keep
+  AW2's picture, in the Black Arc's colours; the terrain panel still says
+  Sea.
+- No Auto CO: the second front is always the computer's (the description's
+  `Manual` exists for it; Dual Strike's Intel item is not ported).
 - The second front's computer is AW2's own CPU: units with nothing in reach
   hold (Dual Strike's may advance); the player sends units to carry it.
-- No tag pairs yet (the hook above): the second front's CO does not join
-  the main front; nor does Black Hole's.
+- Tag pairs: the second front's winning CO joins its army on the main
+  front (`tag.rs`, through the hook above); Black Hole's CO does not when
+  the second front is lost.
 - The survivors' power is a battle's measure (price x bars), not Dual
   Strike's own formula (not read).
 - The swap's wipes take about a second each way.
@@ -1677,11 +1714,43 @@ units and structures are set up directly): `two_front_rounds`,
 `two_front_view_round_trip`, `two_front_menus_only_there`,
 `two_front_send`, `two_front_cpu_directs`, `two_front_saved_halfway`,
 `two_front_looks_and_deployments` (each front's look on its rounds, in the
-view and back; each second front's units per army as Dual Strike's
-record), and
+view and back; the Black Arc's picture and colours in the sky only and put
+back; each second front's units per army as Dual Strike's record), and
 one per mission above (each condition of each front triggered through the
 game's state); `ds_campaign_data`'s `two_fronts_are_dual_strikes` and
 `day_limits_are_dual_strikes` (with the .nds).
+
+## Setup phase (`setup_phase.rs`)
+
+**Dual Strike, as found** (melonDS): a campaign mission with a CO for the
+player to pick (its record's 0x1C; Jake's Trial, whose COs are set, has
+none) opens on its map with a "Setup" title and no day yet (funds 0). The
+cursor moves freely; the menu (Y) is Setup ("Select a CO.": the Select CO
+screen), CO, Intel, Options, Save and Deploy ("Begin battle with the
+current settings."): Deploy brings day 1 (bank 0xC0 texts 86, 87, 753,
+758; "You know you can scout the map before taking the field ... When
+you're ready to start fighting, tap the menu button and choose Deploy",
+bank 0x3A text 19).
+
+**Here**, AW2's way: the COs are picked on AW2's CO screen before the map,
+as before, so the menu has no Setup item. At the battle's first turn start
+(`MapState_TurnStart` `0x08034DCC`, state 5, day 1, army 1: before day 1's
+title, its funds and its opening events; trapped) the map goes to its
+cursor state instead, with "Setup" at the top (AW2's font, white outlined,
+`two_front`'s sprites). A, wherever the cursor is (`HandleMapCursorA`
+`0x0802E4B4`, trapped), opens the map menu (`0x0802D458`, as an empty cell
+does): a copy (`0x08E74080`) with CO, Intel, Options, Front (a two-front
+mission's: the second front looked at) and Deploy (End's looks, text id
+0x7FFC), Deploy's help line Dual Strike's (`two_front`'s panels). Deploy
+closes the menu and the turn starts. B, L, R and SELECT keep AW2's. No
+Save. The phase byte is `0x0203F706` (the DS Campaign's mission state).
+Compromise: no Setup item (the CO screen comes first); funds are not 0
+during the phase where the mission's header gives some.
+
+Tests (`tools/aw2test/tests/test_setup_phase.py`):
+`setup_phase_before_day_one`, `setup_phase_only_with_a_pick`,
+`setup_phase_two_fronts`; the harness's `wait_control` chooses Deploy for
+every other test (`DsCampaign.auto_deploy`).
 
 ## CO skills (`co_skills.rs`, `skills_panel.rs`)
 

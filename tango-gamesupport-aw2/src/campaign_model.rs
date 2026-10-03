@@ -179,6 +179,9 @@ pub struct TwoFront {
     pub send: SendRule,
     /// Whether CO powers may be used on the second front.
     pub powers: bool,
+    /// The second front is in the sky (drawn as clouds with its structure
+    /// in the sky, crate::sky_front; clear weather).
+    pub sky: bool,
 }
 
 /// The second front's CO is the player's pick ([`TwoFront::cos`]).
