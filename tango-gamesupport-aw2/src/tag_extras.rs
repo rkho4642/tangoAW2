@@ -3,19 +3,20 @@
 //!
 //! - **The Tag Power's screen.** Choosing Tag (a human army's or the
 //!   computer's), after the first CO's quote and before AW2's Super Power
-//!   screen: a band across the map as AW2's own SUPER POWER band (white
-//!   between red stripes), the two COs' portraits at its ends, the pair's
-//!   Tag Power name between them (a special pair's own, "Power Wrench";
-//!   Dual Strike's "Dual Strike" for any other) and "POWER 110%", the
-//!   pair's compatibility, as Dual Strike's tag screen shows them. It holds
-//!   the power's script where AW2's waits for the quote to close
-//!   (`sub_08039914`'s test), [`INTRO_FRAMES`] frames.
+//!   screen: Dual Strike's tag screen, full screen (crate::tag_screens):
+//!   the two COs' Dual Strike art facing each other over its background,
+//!   the pair's Tag Power name in its tag font (a special pair's own,
+//!   "Power Wrench"; Dual Strike's "Dual Strike" for any other) and
+//!   "POWER 110%", the pair's compatibility. It holds the power's script
+//!   where AW2's waits for the quote to close (`sub_08039914`'s test),
+//!   [`INTRO_FRAMES`] frames.
 //! - **Change.** The map menu's Change runs a script of its own (in ROM,
 //!   [`SCRIPT_CHANGE`]): the menu closes, the incoming CO says its tag-in
 //!   line (Dual Strike's CO record +0x34 or +0x38, in AW2's quote box,
-//!   `sub_08019818`), the band shows "CO SWAP" with the outgoing CO left
-//!   and the incoming right ([`SWAP_FRAMES`] frames), the COs swap and the
-//!   turn ends (`MapMenu_End`).
+//!   `sub_08019818`), Dual Strike's CO SWAP screen shows the incoming CO
+//!   ([`SWAP_FRAMES`] frames), the COs swap and the turn ends
+//!   (`MapMenu_End`). The computer's Change ([`cpu_change`]) runs the
+//!   same without the menu, at its turn's end, then ends its turn.
 //! - **Victory.** A special pair's army winning: the results screen's
 //!   quote (`GetVictoryQuoteTextId`, `0x0807A3AC`) is the pair's exchange,
 //!   two of its four victory lines (its CO record's list, the active CO's
@@ -25,12 +26,9 @@
 //!   special partners, each with its star rating (Dual Strike's 1..3, in
 //!   AW2's small star tiles), as Dual Strike's CO page's TAG box.
 //!
-//! The band is drawn on BG0 (the dialogue layer, free between the quote
-//! and the power's screen): 128 tiles at its character base + `0x5600`
-//! (the space crate::power_anim uses during a strike), BG palettes 8..10
-//! (saved and put back), its map's rows 6..13 (cleared after). RAM:
-//! [`STATE`] (`0x0203F300..0x0203F3FF`). Text ids 0x7305..0x7307, their
-//! strings in ROM after crate::tag's (`0x08781000..`).
+//! RAM: [`STATE`] (`0x0203F300..0x0203F3D7`). Text ids 0x7305..0x7307,
+//! their strings in ROM after crate::tag's (`0x08781000..`); the scripts
+//! at [`SCRIPT_CHANGE`] and [`SCRIPT_CPU_CHANGE`].
 
 use mgba::core::Core;
 
@@ -39,11 +37,11 @@ use crate::tag;
 // --- RAM ---------------------------------------------------------------------------
 
 pub const STATE: u32 = 0x0203_F300;
-/// The band shown: 0 none, 1 the Tag Power's, 2 Change's.
+/// The screen shown: 0 none, 1 the Tag Power's, 2 CO SWAP.
 const KIND: u32 = STATE;
 const ARMY: u32 = STATE + 1;
 const FRAME: u32 = STATE + 2;
-/// An army whose Tag Power's band is still to come (0 none).
+/// An army whose Tag Power's screen is still to come (0 none).
 const PENDING: u32 = STATE + 4;
 /// The CO page shows the TAG page (1).
 const TAG_PAGE: u32 = STATE + 5;
@@ -51,16 +49,19 @@ const SAVED_HOFS: u32 = STATE + 6;
 const SAVED_VOFS: u32 = STATE + 8;
 /// The CO page's star tiles borrowed (1), and them as they were.
 const STARS_BORROWED: u32 = STATE + 0x0A;
-/// The band's outgoing and incoming COs (Change).
+/// Change's outgoing and incoming COs.
 const SWAP_FROM: u32 = STATE + 0x0B;
 const SWAP_TO: u32 = STATE + 0x0C;
-/// The TAG page's CO; whether the sprites were on before the band.
+/// The TAG page's CO.
 const PAGE_CO: u32 = STATE + 0x0D;
-const SAVED_OBJ: u32 = STATE + 0x0E;
-const SAVED_PALETTES: u32 = STATE + 0x10; // 3 x 32
 const SAVED_STARS: u32 = STATE + 0x70; // 2 x 32
+/// The screen is up (1); the display's layer bits before it.
+const SCREEN_UP: u32 = STATE + 0xD0;
+const SAVED_DISP: u32 = STATE + 0xD2;
+/// The computer's Change: 0 none, 1 under way, 2 done (its turn ends).
+const CPU_CHANGE: u32 = STATE + 0xD4;
 #[cfg(test)]
-const STATE_END: u32 = STATE + 0xD0;
+const STATE_END: u32 = STATE + 0xD8;
 
 pub const INTRO_FRAMES: u16 = 150;
 pub const SWAP_FRAMES: u16 = 100;
@@ -80,8 +81,10 @@ const TAGBOX_AT: u32 = STRINGS + 0x300;
 const TAGHEAD_AT: u32 = STRINGS + 0x3F0;
 const TAG_HEADER: &[u8] = b"TAG\0\0\0";
 const STRING_MAX: usize = 0xF8;
-/// Change's script (AW2's proc commands, 8 bytes each).
+/// Change's script (AW2's proc commands, 8 bytes each), and the
+/// computer's.
 pub const SCRIPT_CHANGE: u32 = tag::ROM + 0x1400;
+pub const SCRIPT_CPU_CHANGE: u32 = tag::ROM + 0x1480;
 
 const CLOSE_TOP_MENU: u32 = 0x0801_A168;
 const LOCK_MAP: u32 = 0x0803_4F7C;
@@ -119,11 +122,26 @@ pub fn install(core: &mut Core) {
         cmd(OP_CALL, 0, MAP_MENU_END | 1),
         cmd(OP_END, 0, 0),
     ];
-    let bytes: Vec<u8> = script.iter().flatten().copied().collect();
-    let mut now = vec![0u8; bytes.len()];
-    core.raw_read_range(SCRIPT_CHANGE, -1, &mut now);
-    if now != bytes {
-        core.raw_write_range(SCRIPT_CHANGE, -1, &bytes);
+    // The computer's: no menu to close, and its turn ends in its own way
+    // (AiEndTurnStep, once the swap is done).
+    let cpu = [
+        cmd(OP_CALL, 0, LOCK_MAP | 1),
+        cmd(OP_SLEEP, 2, 0),
+        cmd(OP_CALL, 0, tag::stub_addr(tag::S_QUOTE) | 1),
+        cmd(OP_REPEAT, 0, WAIT_QUOTE | 1),
+        cmd(OP_SLEEP, 1, 0),
+        cmd(OP_REPEAT, 0, tag::stub_addr(tag::S_SWAP_FRAME) | 1),
+        cmd(OP_CALL, 0, UNLOCK_MAP | 1),
+        cmd(OP_CALL, 0, tag::stub_addr(tag::S_CPU_SWAP) | 1),
+        cmd(OP_END, 0, 0),
+    ];
+    for (at, s) in [(SCRIPT_CHANGE, &script[..]), (SCRIPT_CPU_CHANGE, &cpu[..])] {
+        let bytes: Vec<u8> = s.iter().flatten().copied().collect();
+        let mut now = vec![0u8; bytes.len()];
+        core.raw_read_range(at, -1, &mut now);
+        if now != bytes {
+            core.raw_write_range(at, -1, &bytes);
+        }
     }
     let mut head = [0u8; 6];
     core.raw_read_range(TAGHEAD_AT, -1, &mut head);
@@ -165,6 +183,10 @@ fn ds_record_word(co: u8, off: u32) -> Option<u32> {
 /// A special pair's texts: its Tag Power's name and its four victory lines
 /// (the entry of `a`'s record for partner `b`).
 pub fn pair_texts(a: u8, b: u8) -> Option<(Vec<u8>, [Vec<u8>; 4])> {
+    if crate::sturm_pairs::special(a, b).is_some() {
+        crate::ds_pack::pack()?;
+        return crate::sturm_pairs::texts(a, b);
+    }
     let (_, ptr) = tag::special_pair(a, b)?;
     let pack = crate::ds_pack::pack()?;
     let w = pack.arm9_at(ptr, 20)?;
@@ -251,32 +273,11 @@ fn co_name(core: &Core, co: u8) -> Vec<u8> {
     out
 }
 
-// --- The band ------------------------------------------------------------------------
+// --- The screens --------------------------------------------------------------------
 
 const PAL_BUFFER: u32 = 0x0300_20C0;
 const PAL_RAM: u32 = 0x0500_0000;
-const BG0CNT: u32 = 0x0300_2B6C;
-const DISPCNT: u32 = 0x0300_30CC;
-const DISPCNT_IO: u32 = 0x0400_0000;
-const BG0HOFS: u32 = 0x0300_1FF8;
-const BG0VOFS: u32 = 0x0300_1418;
-const VRAM: u32 = 0x0600_0000;
-const TILE_OFFSET: u32 = 0x5600;
-const BAND_PALETTES: [u32; 3] = [8, 9, 10];
-const ROW_TOP: u32 = 6;
-const ROW_BOTTOM: u32 = 13;
-/// The band's own colours (palette 10): the white, AW2's banner red, the
-/// dark line, the name's yellow.
-const BAND_COLOURS: [(usize, u16); 5] = [(1, 0x7FFF), (2, 0x0C5F), (3, 0x0842), (4, 0x03FF), (5, 0x6F7B)];
-const C_WHITE: u8 = 1;
-const C_RED: u8 = 2;
-const C_DARK: u8 = 3;
-const C_YELLOW: u8 = 4;
-
-fn bg0(core: &Core) -> (u32, u32) {
-    let cnt = core.raw_read_16(BG0CNT, -1) as u32;
-    (VRAM + ((cnt >> 2) & 3) * 0x4000, VRAM + ((cnt >> 8) & 0x1F) * 0x800)
-}
+const WIDTHS: u32 = 0x084C_36E4;
 
 fn write_palette(core: &mut Core, pal: u32, p: &[u8; 32]) {
     for base in [PAL_BUFFER, PAL_RAM] {
@@ -284,258 +285,50 @@ fn write_palette(core: &mut Core, pal: u32, p: &[u8; 32]) {
     }
 }
 
-/// Pixels (w x h, a byte each) as 4bpp tiles, row by row.
-fn tiles_of(px: &[u8], w: usize, h: usize) -> Vec<u8> {
-    let mut out = Vec::new();
-    for ty in 0..h / 8 {
-        for tx in 0..w / 8 {
-            for y in 0..8 {
-                for x in (0..8).step_by(2) {
-                    let a = px[(8 * ty + y) * w + 8 * tx + x] & 15;
-                    let b = px[(8 * ty + y) * w + 8 * tx + x + 1] & 15;
-                    out.push(a | b << 4);
-                }
-            }
-        }
-    }
-    out
+fn screen_ram() -> crate::tag_screens::Ram {
+    crate::tag_screens::Ram { up: SCREEN_UP, disp: SAVED_DISP, hofs: SAVED_HOFS, vofs: SAVED_VOFS }
 }
 
-const GLYPHS: u32 = 0x084C_32E4;
-const WIDTHS: u32 = 0x084C_36E4;
-
-/// Text in AW2's font, centred in `w` x 16 pixels on `ground`, its ink
-/// and (if any) an outline.
-fn text_px(core: &Core, s: &[u8], w: usize, ground: u8, ink: u8, outline: Option<u8>) -> Vec<u8> {
-    let mut px = vec![ground; w * 16];
-    let adv = |c: u8| core.raw_read_8(WIDTHS + c as u32, -1) as i32 + 1;
-    let total: i32 = s.iter().map(|&c| if c == b' ' { 4 } else { adv(c) }).sum();
-    let mut x = ((w as i32 - total) / 2).max(1);
-    let mut mask = vec![false; w * 16];
-    for &c in s {
-        if c == b' ' {
-            x += 4;
-            continue;
-        }
-        let cw = core.raw_read_8(WIDTHS + c as u32, -1) as usize;
-        let at = core.raw_read_32(GLYPHS + 4 * c as u32, -1);
-        if (0x0800_0000..0x0A00_0000).contains(&at) {
-            let stride = cw.div_ceil(2);
-            for r in 0..12usize {
-                for cx in 0..cw {
-                    let b = core.raw_read_8(at + (stride * (3 + r) + cx / 2) as u32, -1);
-                    let v = (b >> (4 * (cx & 1))) & 15;
-                    let (xx, yy) = (x + cx as i32, 2 + r as i32);
-                    if v == 0xA && (0..w as i32).contains(&xx) && (0..16).contains(&yy) {
-                        mask[yy as usize * w + xx as usize] = true;
-                    }
-                }
-            }
-        }
-        x += cw as i32 + 1;
-    }
-    for y in 0..16i32 {
-        for x in 0..w as i32 {
-            let i = y as usize * w + x as usize;
-            if mask[i] {
-                px[i] = ink;
-            } else if let Some(o) = outline {
-                let near = (-1..=1).any(|dy| {
-                    (-1..=1).any(|dx| {
-                        let (xx, yy) = (x + dx, y + dy);
-                        (0..w as i32).contains(&xx) && (0..16).contains(&yy) && mask[yy as usize * w + xx as usize]
-                    })
-                });
-                if near {
-                    px[i] = o;
-                }
-            }
-        }
-    }
-    px
-}
-
-/// The band's tiles and map: (tile number in the 128, pixels) per cell.
-struct Band {
-    tiles: Vec<u8>,
-    /// (column, row, tile index within ours, palette, flipped) per cell drawn.
-    cells: Vec<(u32, u32, u32, u32, bool)>,
-    palettes: [[u8; 32]; 3],
-}
-
-fn portrait(core: &Core, co: u8) -> (Vec<u8>, [u8; 32]) {
-    crate::tag_ui::portrait48(core, co)
-}
-
-fn build_band(core: &Core, left: u8, right: u8, title: &[u8], info: &[u8]) -> Band {
-    let mut tiles = Vec::new();
-    let mut cells = Vec::new();
-    // Tile 0: white; 1: the red stripe (a dark line at its band edge).
-    let white = vec![C_WHITE; 64];
-    tiles.extend(tiles_of(&white, 8, 8));
-    let mut red = vec![C_RED; 64];
-    for x in 0..8 {
-        red[7 * 8 + x] = C_DARK;
-    }
-    tiles.extend(tiles_of(&red, 8, 8));
-    let mut red_bottom = vec![C_RED; 64];
-    for x in 0..8 {
-        red_bottom[x] = C_DARK;
-    }
-    tiles.extend(tiles_of(&red_bottom, 8, 8));
-    for col in 0..30u32 {
-        cells.push((col, ROW_TOP, 1, 10, false));
-        cells.push((col, ROW_BOTTOM, 2, 10, false));
-        for row in ROW_TOP + 1..ROW_BOTTOM {
-            cells.push((col, row, 0, 10, false));
-        }
-    }
-    let mut palettes = [[0u8; 32]; 3];
-    // The portraits: 6x6 tiles, rows 7..12, at columns 1 and 23, the
-    // right one mirrored (the two face each other, as on Dual Strike's).
-    for (k, (co, col0, flip)) in [(left, 1u32, false), (right, 23u32, true)].into_iter().enumerate() {
-        let (t, p) = portrait(core, co);
-        palettes[k] = p;
-        let base = (tiles.len() / 32) as u32;
-        tiles.extend_from_slice(&t);
-        for r in 0..6u32 {
-            for c in 0..6u32 {
-                let src = if flip { 5 - c } else { c };
-                cells.push((col0 + c, ROW_TOP + 1 + r, base + 6 * r + src, 8 + k as u32, flip));
-            }
-        }
-    }
-    // The title (16 x 2 tiles, columns 7..22, rows 8..9) and the line under
-    // it (10 x 2 tiles, columns 10..19, rows 10..11).
-    for (s, w, col0, row0, ink, outline) in [(title, 128usize, 7u32, 8u32, C_YELLOW, Some(C_DARK)), (info, 80, 10, 10, C_DARK, None)] {
-        let px = text_px(core, s, w, C_WHITE, ink, outline);
-        let base = (tiles.len() / 32) as u32;
-        tiles.extend(tiles_of(&px, w, 16));
-        let cols = (w / 8) as u32;
-        for r in 0..2u32 {
-            for c in 0..cols {
-                cells.push((col0 + c, row0 + r, base + cols * r + c, 10, false));
-            }
-        }
-    }
-    let mut own = [0u8; 32];
-    for (i, c) in BAND_COLOURS {
-        own[2 * i..2 * i + 2].copy_from_slice(&c.to_le_bytes());
-    }
-    palettes[2] = own;
-    Band { tiles, cells, palettes }
-}
-
-fn draw_band(core: &mut Core, band: &Band) {
-    let (chars, screen) = bg0(core);
-    let first = TILE_OFFSET / 32;
-    let tiles = &band.tiles[..band.tiles.len().min(128 * 32)];
-    let mut now = vec![0u8; tiles.len()];
-    core.raw_read_range(chars + TILE_OFFSET, -1, &mut now);
-    if now != tiles {
-        core.raw_write_range(chars + TILE_OFFSET, -1, tiles);
-    }
-    for &(col, row, t, pal, flip) in &band.cells {
-        core.raw_write_16(screen + 2 * (32 * row + col), -1, ((first + t) | (flip as u32) << 10 | pal << 12) as u16);
-    }
-    core.raw_write_16(BG0HOFS, -1, 0);
-    core.raw_write_16(BG0VOFS, -1, 0);
-    for reg in [DISPCNT, DISPCNT_IO] {
-        let d = core.raw_read_16(reg, -1);
-        if d & 1 << 12 != 0 {
-            core.raw_write_16(reg, -1, d & !(1 << 12));
-        }
+/// The screen of `kind` now: the Tag Power's (the army's pair, its power's
+/// name, a special pair's or "Dual Strike", and its compatibility) or CO
+/// SWAP (the incoming CO).
+fn screen_of(core: &Core, kind: u8) -> Option<crate::tag_screens::Screen> {
+    let army = core.raw_read_8(ARMY, -1) as u32;
+    if kind == 1 {
+        let a = tag::army_co_of(core, army);
+        let b = tag::partner(core, army)?;
+        let name = pair_texts(a, b).map(|(n, _)| flat(&n)).unwrap_or_else(|| b"Dual Strike".to_vec());
+        Some(crate::tag_screens::Screen::Tag(a, b, name, tag::compatibility(a, b)))
+    } else {
+        Some(crate::tag_screens::Screen::Swap(core.raw_read_8(SWAP_TO, -1)))
     }
 }
 
-fn show_band(core: &mut Core, band: &Band) {
-    let d = core.raw_read_16(DISPCNT, -1);
-    core.raw_write_8(SAVED_OBJ, -1, ((d >> 12) & 1) as u8);
-    for (k, pal) in BAND_PALETTES.iter().enumerate() {
-        let mut old = [0u8; 32];
-        core.raw_read_range(PAL_BUFFER + 32 * pal, -1, &mut old);
-        core.raw_write_range(SAVED_PALETTES + 32 * k as u32, -1, &old);
-        write_palette(core, *pal, &band.palettes[k]);
-    }
-    core.raw_write_16(SAVED_HOFS, -1, core.raw_read_16(BG0HOFS, -1));
-    core.raw_write_16(SAVED_VOFS, -1, core.raw_read_16(BG0VOFS, -1));
-    // (The map's sprites, units and cursor, off while the band shows.)
-    draw_band(core, band);
-}
-
-fn hide_band(core: &mut Core) {
-    let (_, screen) = bg0(core);
-    for row in ROW_TOP..=ROW_BOTTOM {
-        core.raw_write_range(screen + 2 * 32 * row, -1, &[0u8; 64]);
-    }
-    for (k, pal) in BAND_PALETTES.iter().enumerate() {
-        let mut old = [0u8; 32];
-        core.raw_read_range(SAVED_PALETTES + 32 * k as u32, -1, &mut old);
-        write_palette(core, *pal, &old);
-    }
-    core.raw_write_16(BG0HOFS, -1, core.raw_read_16(SAVED_HOFS, -1));
-    core.raw_write_16(BG0VOFS, -1, core.raw_read_16(SAVED_VOFS, -1));
-    if core.raw_read_8(SAVED_OBJ, -1) == 1 {
-        for reg in [DISPCNT, DISPCNT_IO] {
-            let d = core.raw_read_16(reg, -1);
-            core.raw_write_16(reg, -1, d | 1 << 12);
-        }
-    }
-    core.raw_write_8(KIND, -1, 0);
-}
-
-/// The pair's band: its Tag Power's name (a special pair's, else "Dual
-/// Strike") and "POWER 1xx%".
-fn intro_band(core: &Core, a: u8, b: u8) -> Band {
-    let name = pair_texts(a, b).map(|(n, _)| clean(&n)).unwrap_or_else(|| b"Dual Strike".to_vec());
-    let info = format!("POWER {}%", tag::compatibility(a, b));
-    build_band(core, a, b, &name, info.as_bytes())
-}
-
-fn swap_band(core: &Core, from: u8, to: u8) -> Band {
-    build_band(core, from, to, b"CO SWAP", &co_name(core, to))
-}
-
-/// One frame of the band of `kind`; true once it is over (and taken away).
-fn band_frame(core: &mut Core, kind: u8, frames: u16) -> bool {
-    if core.raw_read_8(KIND, -1) != kind {
-        let army = core.raw_read_8(ARMY, -1) as u32;
-        let band = if kind == 1 {
-            let a = tag::army_co_of(core, army);
-            let Some(b) = tag::partner(core, army) else { return true };
-            intro_band(core, a, b)
-        } else {
-            let (from, to) = (core.raw_read_8(SWAP_FROM, -1), core.raw_read_8(SWAP_TO, -1));
-            swap_band(core, from, to)
-        };
-        core.raw_write_8(KIND, -1, kind);
-        core.raw_write_16(FRAME, -1, 0);
-        show_band(core, &band);
-        return false;
-    }
-    let f = core.raw_read_16(FRAME, -1) + 1;
-    core.raw_write_16(FRAME, -1, f);
+/// One frame of the screen of `kind`; true once it is over (and taken
+/// away). No picture (or no room for it): over at once.
+fn screen_frame(core: &mut Core, kind: u8, frames: u16) -> bool {
+    let first = core.raw_read_8(KIND, -1) != kind;
+    let f = if first { 0 } else { core.raw_read_16(FRAME, -1) + 1 };
+    let pic = screen_of(core, kind).and_then(|s| crate::tag_screens::picture(core, &s));
+    let Some(pic) = pic.filter(|p| crate::tag_screens::fits(core, p)) else {
+        crate::tag_screens::hide(core, &screen_ram());
+        core.raw_write_8(KIND, -1, 0);
+        return true;
+    };
     if f >= frames {
-        hide_band(core);
+        crate::tag_screens::hide(core, &screen_ram());
+        core.raw_write_8(KIND, -1, 0);
         return true;
     }
-    // Kept in place: the tiles (other text may borrow the space), the
-    // scroll and the sprites off.
-    let army = core.raw_read_8(ARMY, -1) as u32;
-    let band = if kind == 1 {
-        let a = tag::army_co_of(core, army);
-        let Some(b) = tag::partner(core, army) else { return false };
-        intro_band(core, a, b)
-    } else {
-        swap_band(core, core.raw_read_8(SWAP_FROM, -1), core.raw_read_8(SWAP_TO, -1))
-    };
-    draw_band(core, &band);
+    core.raw_write_8(KIND, -1, kind);
+    core.raw_write_16(FRAME, -1, f);
+    crate::tag_screens::show(core, &screen_ram(), &pic, f);
     false
 }
 
-// --- The Tag Power's band ------------------------------------------------------------
+// --- The Tag Power's screen ----------------------------------------------------------
 
-/// A Tag Power is chosen (crate::tag): its band comes after the quote.
+/// A Tag Power is chosen (crate::tag): its screen comes after the quote.
 pub fn tag_chosen(core: &mut Core, army: u32) {
     if crate::ds_pack::pack().is_some() {
         core.raw_write_8(PENDING, -1, army as u8);
@@ -543,7 +336,7 @@ pub fn tag_chosen(core: &mut Core, army: u32) {
 }
 
 /// `sub_08039914` after its test of the quote box (r0: open): while the
-/// band plays the script waits (no `Proc_Break`).
+/// screen shows the script waits (no `Proc_Break`).
 const WAIT_QUOTE_TEST: u32 = 0x0803_991C;
 const WAIT_QUOTE_DONE: u32 = 0x0803_9928;
 fn wait_quote(core: &mut Core) {
@@ -561,7 +354,7 @@ fn wait_quote(core: &mut Core) {
         core.raw_write_8(ARMY, -1, pending);
         core.raw_write_8(PENDING, -1, 0);
     }
-    if !band_frame(core, 1, INTRO_FRAMES) {
+    if !screen_frame(core, 1, INTRO_FRAMES) {
         core.gba_mut().cpu_mut().set_thumb_pc(WAIT_QUOTE_DONE);
     }
 }
@@ -583,10 +376,74 @@ pub fn change_chosen(core: &mut Core, army: u32) {
     cpu.set_thumb_pc(PROC_START);
 }
 
+/// The computer's Change at its turn's end (crate::tag's trap on
+/// `AiEndTurnStep`'s `EndCurrentArmyTurn` call): true while the turn is to
+/// wait (the call skipped). The first time its script starts (the quote,
+/// CO SWAP, the swap); while it runs the call waits; once it is done the
+/// turn ends.
+pub fn cpu_change(core: &mut Core, army: u32) -> bool {
+    match core.raw_read_8(CPU_CHANGE, -1) {
+        0 => {
+            let from = tag::army_co_of(core, army);
+            let to = tag::partner(core, army).unwrap_or(from);
+            core.raw_write_8(ARMY, -1, army as u8);
+            core.raw_write_8(SWAP_FROM, -1, from);
+            core.raw_write_8(SWAP_TO, -1, to);
+            core.raw_write_8(CPU_CHANGE, -1, 1);
+            true
+        }
+        1 => true,
+        _ => {
+            core.raw_write_8(CPU_CHANGE, -1, 0);
+            false
+        }
+    }
+}
+
+/// Whether the computer's Change is under way or done (its turn's end
+/// waits for it, and does not choose again).
+pub fn cpu_change_state(core: &Core) -> u8 {
+    core.raw_read_8(CPU_CHANGE, -1)
+}
+
+/// A turn starts: no computer's Change under way.
+pub fn cpu_change_reset(core: &mut Core) {
+    if core.raw_read_8(CPU_CHANGE, -1) != 0 {
+        core.raw_write_8(CPU_CHANGE, -1, 0);
+    }
+}
+
+/// The computer's script is done: its turn may end.
+pub fn cpu_change_done(core: &mut Core) {
+    core.raw_write_8(CPU_CHANGE, -1, 2);
+}
+
+/// One of AW2's power quotes for `co` (its CO table row +0x20: six text
+/// ids, `sub_080398D0` picks one), as AW2 stores it.
+fn aw2_power_quote(core: &Core, co: u8, k: usize) -> Option<Vec<u8>> {
+    let table = core.raw_read_32(tag::CO_TABLE_POOL, -1);
+    let id = core.raw_read_16(table + 0x104 * co as u32 + 0x20 + 2 * k as u32, -1) as u32;
+    let at = core.raw_read_32(TEXT_TABLE + 4 * id, -1);
+    if !(0x0800_0000..0x0A00_0000).contains(&at) {
+        return None;
+    }
+    let mut out = Vec::new();
+    for i in 0..STRING_MAX as u32 {
+        let c = core.raw_read_8(at + i, -1);
+        if c == 0 {
+            break;
+        }
+        out.push(c);
+    }
+    (!out.is_empty()).then_some(out)
+}
+
 /// The script's quote: the incoming CO's tag-in line in AW2's quote box.
 pub fn quote(core: &mut Core) {
     let to = core.raw_read_8(SWAP_TO, -1);
     let line = ds_record_word(to, DS_TAG_IN[pick(core)]).and_then(ds_text).map(|t| clean(&t));
+    // A CO Dual Strike lacks (AW2's Sturm): one of AW2's own power quotes.
+    let line = line.or_else(|| aw2_power_quote(core, to, pick(core)));
     let line = line.unwrap_or_else(|| b"It's my turn now!".to_vec());
     set_string(core, TAGIN_AT, &line);
     let cpu = core.gba_mut().cpu_mut();
@@ -596,9 +453,10 @@ pub fn quote(core: &mut Core) {
     cpu.set_thumb_pc(SHOW_QUOTE);
 }
 
-/// The script's band: a frame (a `PROC_REPEAT`; `Proc_Break` when over).
+/// The script's CO SWAP screen: a frame (a `PROC_REPEAT`; `Proc_Break`
+/// when over).
 pub fn swap_frame(core: &mut Core) {
-    if band_frame(core, 2, SWAP_FRAMES) {
+    if screen_frame(core, 2, SWAP_FRAMES) {
         core.gba_mut().cpu_mut().set_thumb_pc(PROC_BREAK);
     } else {
         let cpu = core.gba_mut().cpu_mut();
@@ -700,9 +558,24 @@ fn page_co(core: &Core) -> Option<u8> {
     (1..=5).contains(&army).then(|| tag::army_co_of(core, army))
 }
 
-/// The CO's special partners and their stars, Dual Strike's order.
+/// The CO's special partners and their stars, Dual Strike's order (and
+/// Sturm, tangoAW2's own, last; Sturm's own: crate::sturm_pairs's).
 pub fn partners_of(core: &Core, co: u8) -> Vec<(u8, u8)> {
     let _ = core;
+    if crate::ds_pack::pack().is_none() {
+        return Vec::new();
+    }
+    if co == crate::sturm_pairs::STURM {
+        return crate::sturm_pairs::partners();
+    }
+    let mut out = ds_partners(co);
+    if let Some(p) = crate::sturm_pairs::special(co, crate::sturm_pairs::STURM) {
+        out.push((crate::sturm_pairs::STURM, p.stars));
+    }
+    out
+}
+
+fn ds_partners(co: u8) -> Vec<(u8, u8)> {
     let Some(d) = tag::ds_id(co) else { return Vec::new() };
     let Some(pack) = crate::ds_pack::pack() else { return Vec::new() };
     let Some(list) = pack.arm9_at(DS_RECORDS + DS_RECORD * d as u32 + 0x6C, 0x18) else { return Vec::new() };
@@ -751,8 +624,8 @@ fn page_text(core: &mut Core) {
     core.gba_mut().cpu_mut().set_gpr(3, TEXT_TAGBOX as i32);
 }
 
-/// The TAG page's stars (at the sprite flush): a row of three after each
-/// partner's name, full for its rating.
+/// The TAG page's stars (at the sprite flush): after each partner's name
+/// its rating's full stars.
 const STAR_TILE: u32 = 0x320;
 const STAR_SOURCES: [u32; 2] = [0x0810_2C24, 0x0810_2C64];
 const OBJ_VRAM: u32 = 0x0601_0000;
@@ -808,13 +681,14 @@ pub fn flush(core: &mut Core, at: u32, end: u32) -> u32 {
     let co = core.raw_read_8(PAGE_CO, -1);
     let mut at = at;
     for (line, (_, stars)) in partners_of(core, co).iter().enumerate() {
-        for s in 0..3u8 {
+        // Only the rating's stars, full (1, 2 or 3), as Dual Strike's box.
+        for s in 0..(*stars).min(3) {
             if at + 8 > end {
                 return at;
             }
-            let x = STARS_X + 7 * s as i32;
+            let x = STARS_X + 9 * s as i32;
             let y = LINE_Y + LINE_STEP * line as i32;
-            let tile = STAR_TILE as u16 + (s < *stars) as u16;
+            let tile = STAR_TILE as u16 + 1;
             core.raw_write_16(at, -1, y as u16 & 0xFF);
             core.raw_write_16(at + 2, -1, x as u16 & 0x1FF);
             core.raw_write_16(at + 4, -1, tile | STAR_PALETTE << 12);
@@ -844,7 +718,7 @@ mod tests {
     #[test]
     fn layout() {
         assert!(STATE_END <= tag::STATE);
-        assert!(SAVED_OBJ < SAVED_PALETTES);
+        assert!(SAVED_STAR_PALETTE + 32 <= SCREEN_UP);
         assert!(SAVED_STARS + 64 <= STATE_END);
     }
 }

@@ -422,16 +422,22 @@ def tag_cpu(ctx):
     g.choose("End", g.MAP_MENU)
     ctx.require(e.wait_until(lambda: g.current_army() == 2, 900, step=8), "the computer's turn")
     seen = []
+    screen = False
     n = 0
     while g.current_army() == 2 and n < 30000:
         p, t = g.player(2), tag.partner(e, 2)
         st = (p["co"], p["co_mode"], t["phase"])
         if not seen or seen[-1] != st:
             seen.append(st)
+        if not screen and e.u8(EXTRAS) == 1 and e.u8(SCREEN_UP) == 1:
+            screen = True
+            e.wait(20)
+            ctx.shot(g, "cpu_tag_screen")
         e.wait(10)
         n += 10
     max_, sami = romlib.co_id("max"), romlib.co_id("sami")
     ctx.log(f"states {seen}")
+    ctx.check(screen, "the computer's Tag Power shows the tag screen")
     ctx.check((max_, 2, 1) in seen, "the computer's Tag Power: Max's Super Power first")
     ctx.check((sami, 2, 2) in seen, "then Sami's, in the same turn")
     t = tag.partner(e, 2)
@@ -442,6 +448,18 @@ def tag_cpu(ctx):
     g2.choose("End", g2.MAP_MENU)
     e2 = g2.e
     ctx.require(e2.wait_until(lambda: g2.current_army() == 2, 900, step=8), "the computer's turn")
+    # Its Change as the player's: Sami's tag-in line, then CO SWAP.
+    ctx.require(e2.wait_until(lambda: rom_string(e2, STRINGS) != b"", 30000, step=4), "the computer's Change: the tag-in line")
+    ds = romlib.DualStrike()
+    lines = [ds_text_of(ds_record(ds, "sami", off)) for off in (0x34, 0x38)]
+    ctx.check(rom_string(e2, STRINGS) in lines, f"Sami's tag-in line from the .nds ({rom_string(e2, STRINGS)!r})")
+    e2.wait(40)
+    ctx.shot(g2, "cpu_change_quote")
+    ctx.require(e2.wait_until(lambda: e2.u8(EXTRAS) == 2, 1200, step=4), "the computer's CO SWAP screen")
+    e2.wait(20)
+    full_screen_shown(ctx, e2, "computer's CO SWAP")
+    ctx.shot(g2, "cpu_change_screen")
+    ctx.eq(g2.player(2)["co"], max_, "Max still active while it shows")
     ctx.require(e2.wait_until(lambda: g2.current_army() == 1, 30000, step=30), "and back")
     ctx.eq((g2.player(2)["co"], tag.partner(e2, 2)["co"]), (sami, max_), "the computer Changed to Sami")
 
@@ -742,7 +760,7 @@ def tag_two_front_partner(ctx):
 
 # --- Dual Strike's tag screens (crate::tag_extras) --------------------------------------
 
-EXTRAS = 0x0203F300          # crate::tag_extras::STATE: +0 the band (1 Tag, 2 Change)
+EXTRAS = 0x0203F300          # crate::tag_extras::STATE: +0 the screen (1 Tag, 2 CO SWAP)
 STRINGS = 0x08781000         # its texts: tag-in +0, victory +0x100, TAG page +0x300
 
 
@@ -766,40 +784,55 @@ def ds_record(ds, co, off):
     return struct.unpack("<I", ds.a9(0x0215360C + 0x220 * d + off, 4))[0]
 
 
+SCREEN_UP = EXTRAS + 0xD0
+
+
+def full_screen_shown(ctx, e, what):
+    """The screen is up: BG0 alone (no sprites, no windows), its map the
+    picture's 30x20 cells in BG palettes 6..14."""
+    ctx.eq(e.u8(SCREEN_UP), 1, f"{what}: up")
+    ctx.eq(e.u16(0x030030CC) & 0xFF00, 0x0100, f"{what}: BG0 alone")
+    cnt = e.u16(0x03002B6C)
+    screen = 0x06000000 + ((cnt >> 8) & 0x1F) * 0x800
+    cells = [e.u16(screen + 2 * (32 * r + c)) for r in range(20) for c in range(30)]
+    ctx.check(all(6 <= c >> 12 <= 14 for c in cells), f"{what}: the picture's palettes 6..14")
+    tiles = {c & 0x3FF for c in cells}
+    ctx.check(len(tiles) > 100, f"{what}: a full picture ({len(tiles)} tiles)")
+
+
 @test(modes=("ds",))
 def tag_power_screen(ctx):
-    """Tag: after the first CO's quote, Dual Strike's tag screen as a band
-    across the map (BG0 rows 6..13: both portraits, the pair's Tag Power
-    name, POWER 110%) holds the power's script, then goes (its rows
-    cleared) and AW2's Super Power screen follows."""
+    """Tag: after the first CO's quote, Dual Strike's tag screen full
+    screen (both COs' art, the pair's Tag Power name, POWER 110%) holds
+    the power's script, then goes (the layers as they were) and AW2's
+    Super Power screen follows."""
     units = [(1, "tank", 10, 4), (2, "tank", 20, 10)]
     g = tag_battle(ctx, ["max", "olaf"], ["andy", None], units=units)
     e = g.e
     fill(g, 1)
+    layers = e.u16(0x030030CC) & 0xFF00
     g.open_map_menu()
     g.choose("Tag", g.MAP_MENU)
     seen = e.wait_until(lambda: e.u8(EXTRAS) == 1, 1200, step=4)
-    ctx.require(seen, "the tag band shows")
+    ctx.require(seen, "the tag screen shows")
     e.wait(20)
-    cnt = e.u16(0x03002B6C)
-    screen = 0x06000000 + ((cnt >> 8) & 0x1F) * 0x800
-    row = [e.u16(screen + 2 * (32 * 9 + c)) & 0x3FF for c in range(30)]
-    ctx.check(all(t >= 0x2B0 for t in row), f"row 9 of BG0 is the band's tiles ({row[:6]}...)")
-    ctx.shot(g, "tag_band")
-    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 0, 600, step=4), "the band goes")
-    row = [e.u16(screen + 2 * (32 * 9 + c)) for c in range(30)]
-    ctx.eq(row, [0] * 30, "its rows cleared")
+    full_screen_shown(ctx, e, "tag screen")
+    ctx.shot(g, "tag_screen")
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 0, 600, step=4), "the screen goes")
+    ctx.eq(e.u8(SCREEN_UP), 0, "taken away")
+    ctx.eq(e.u16(0x030030CC) & 0x1F00, layers & 0x1F00, "the layers as they were")
     ctx.require(e.wait_until(lambda: g.player(1)["co_mode"] == 2, 3000, step=10), "the Super Power follows")
 
 
 @test(modes=("ds",))
 def tag_change_line_and_band(ctx):
     """Change: the incoming CO says its Dual Strike tag-in line (its CO
-    record +0x38 on day 1, as Dual Strike's capture), the CO SWAP band
-    shows, then the COs swap and the turn ends."""
+    record +0x38 on day 1, as Dual Strike's capture), Dual Strike's CO
+    SWAP screen shows full screen, then the COs swap and the turn ends."""
     g = tag_battle(ctx, ["andy", "olaf"], ["max", None], units=[(1, "tank", 10, 4), (2, "tank", 20, 10)])
     e = g.e
     ds = romlib.DualStrike()
+    layers = e.u16(0x030030CC) & 0xFF00
     g.open_map_menu()
     g.choose("Change", g.MAP_MENU)
     ctx.require(e.wait_until(lambda: rom_string(e, STRINGS) != b"", 300, step=2), "the tag-in line")
@@ -807,8 +840,12 @@ def tag_change_line_and_band(ctx):
     ctx.eq(rom_string(e, STRINGS), want, "Max's tag-in line from the .nds")
     e.wait(40)
     ctx.shot(g, "change_quote")
-    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 2, 1200, step=4), "the CO SWAP band")
-    ctx.shot(g, "change_band")
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 2, 1200, step=4), "the CO SWAP screen")
+    e.wait(20)
+    full_screen_shown(ctx, e, "CO SWAP")
+    ctx.shot(g, "change_screen")
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 0, 600, step=4), "the screen goes")
+    ctx.eq(e.u16(0x030030CC) & 0x1F00, layers & 0x1F00, "the layers as they were")
     ctx.require(e.wait_until(lambda: g.current_army() == 2, 1500, step=8), "the turn ends")
     ctx.eq((g.player(1)["co"], tag.partner(e, 1)["co"]), (romlib.co_id("max"), romlib.co_id("andy")), "the COs swapped")
 
@@ -869,7 +906,7 @@ def tag_co_page(ctx):
     ctx.eq(rom_string(e, STRINGS + 0x300), b"Sonja\rEagle", "its partners, as Dual Strike's box lists them")
     stars = [s for s in oam(e) if (s[2] & 0x3FF) in (0x320, 0x321) and s[2] >> 12 == 12]
     full = [s for s in stars if s[2] & 0x3FF == 0x321]
-    ctx.eq((len(stars), len(full)), (6, 4), "three stars a partner, 3 + 1 full")
+    ctx.eq((len(stars), len(full)), (4, 4), "the ratings' full stars only: 1 + 3")
     ctx.shot(g, "co_page_tag")
     e.press("UP", 4)
     e.wait(40)
@@ -879,3 +916,125 @@ def tag_co_page(ctx):
     e.press("DOWN", 4)
     e.wait(40)
     ctx.eq((e.u32(0x03005940), e.u8(EXTRAS + 5)), (4, 0), "DOWN, DOWN: the unit charts")
+
+
+
+STURM_BOOST = [("sturm", "vonbolt", 25), ("hawke", "sturm", 20), ("sturm", "kindle", 5), ("sturm", "andy", -5)]
+
+
+@test(modes=("ds",))
+def tag_sturm_pairs(ctx):
+    """Sturm, who is not in Dual Strike: tangoAW2's own compatibility and
+    special pairs (aw2test.tag.STURM_PAIRS; Von Bolt 125 and 3 stars ..
+    Kindle 105, anyone else 95). In battle the Tag Power's firepower is
+    compatibility - 100 against the damage calculator; Sturm's TAG page
+    lists his five partners with their stars, Von Bolt's lists Sturm last;
+    the Teams slot's badge shows 3 stars for Sturm + Von Bolt; the Tag
+    Power screen shows "Black Apocalypse" (POWER 125%)."""
+    for a, b, want in STURM_BOOST:
+        ctx.eq(tag.compatibility(None, romlib.co_id(a), romlib.co_id(b)) - 100, want, f"{a}+{b}: tangoAW2's table")
+        units = [(1, "tank", 10, 10), (2, "tank", 11, 10), (1, "tank", 10, 12), (2, "tank", 11, 12)]
+        g = tag_battle(ctx, [a, "olaf"], [b, "max"], units=units)
+        e = g.e
+        e.w8(tag.rec(1) + 1, 1)
+        e.w8(tag.rec(2) + 1, 1)
+        ctx.eq(ctx.tag_firepower(g, 1, g.player(1)["co"]), want, f"{a}+{b}: the calculator's tag firepower")
+        ctx.attack(g, (10, 10), (10, 10), (11, 10))
+        e.w8(tag.rec(1) + 1, 0)
+        e.w8(tag.rec(2) + 1, 0)
+        ctx.attack(g, (10, 12), (10, 12), (11, 12))
+
+    def tag_page(g):
+        e = g.e
+        g.open_map_menu()
+        g.choose("CO", g.MAP_MENU)
+        e.wait(90)
+        for _ in range(4):
+            e.press("DOWN", 4)
+            e.wait(40)
+        ctx.eq((e.u32(0x03005940), e.u8(EXTRAS + 5)), (3, 1), "the TAG page")
+        stars = [s for s in oam(e) if (s[2] & 0x3FF) == 0x321 and s[2] >> 12 == 12]
+        return rom_string(e, STRINGS + 0x300), len(stars)
+
+    g = tag_battle(ctx, ["sturm", "olaf"], [None, None], units=[(1, "tank", 10, 4)])
+    names, stars = tag_page(g)
+    ctx.eq(names, b"Von Bolt\rHawke\rLash\rFlak\rAdder", "Sturm's partners, tangoAW2's order (Kindle, Jugger, Koal: 105, no special pair, not listed)")
+    ctx.eq(stars, 3 + 2 + 2 + 1 + 1, "their stars")
+    ctx.shot(g, "sturm_tag_page")
+    g = tag_battle(ctx, ["vonbolt", "olaf"], [None, None], units=[(1, "tank", 10, 4)])
+    names, stars = tag_page(g)
+    ctx.check(names.split(b"\r")[-1] == b"Sturm", f"Von Bolt's TAG page: Sturm last ({names!r})")
+    ctx.shot(g, "vonbolt_tag_page")
+
+    m = ctx.map()
+    g = ctx.boot_teams(m)
+    e = g.e
+    tag.set_teams_partner(e, 1, "vonbolt")
+    g.set_teams(["sturm", "olaf"], {1})
+    e.wait(20)
+    badge = [s for s in oam(e) if (s[2] & 0x3FF) == 0x151]
+    ctx.eq(len(badge), 3, "Teams: Sturm + Von Bolt's badge, 3 stars")
+    ctx.shot(g, "sturm_teams")
+
+    g = tag_battle(ctx, ["sturm", "olaf"], ["vonbolt", None], units=[(1, "tank", 10, 4), (2, "tank", 20, 10)])
+    e = g.e
+    fill(g, 1)
+    g.open_map_menu()
+    g.choose("Tag", g.MAP_MENU)
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 1, 1200, step=4), "the tag screen shows")
+    e.wait(20)
+    full_screen_shown(ctx, e, "Sturm + Von Bolt")
+    ctx.shot(g, "sturm_vonbolt_tag_screen")
+    ctx.require(e.wait_until(lambda: g.player(1)["co_mode"] == 2, 3000, step=10), "the Super Power follows")
+
+
+@test(modes=("ds",))
+def tag_sturm_words(ctx):
+    """Sturm's words as a partner: Change to him and he says one of AW2's
+    own Sturm power quotes (his CO table row +0x20); Sturm and Von Bolt
+    winning: tangoAW2's own exchange (Sturm's line, then "Von Bolt: "),
+    each line inside the box."""
+    g = tag_battle(ctx, ["vonbolt", "olaf"], ["sturm", None], units=[(1, "tank", 10, 4), (2, "tank", 20, 10)])
+    e = g.e
+    g.open_map_menu()
+    g.choose("Change", g.MAP_MENU)
+    ctx.require(e.wait_until(lambda: rom_string(e, STRINGS) != b"", 300, step=2), "the tag-in line")
+    aw2 = romlib.Image.load()
+    sturm = romlib.co_id("sturm")
+    quotes = [aw2.text(aw2.u16(0x085D3DD0 + 0x104 * sturm + 0x20 + 2 * k)) for k in range(6)]
+    got = rom_string(e, STRINGS)
+    ctx.check(got in [bytes(q) for q in quotes], f"one of AW2's Sturm quotes ({got!r})")
+    e.wait(110)  # the whole line typed
+    ctx.shot(g, "sturm_tag_in")
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 2, 1200, step=4), "CO SWAP")
+    e.wait(20)
+    ctx.shot(g, "sturm_co_swap")
+
+    m = ctx.map(spare=False)
+    m.unit(1, "tank", 10, 10).unit(2, "infantry", 11, 10)
+    g = ctx.boot_teams(m)
+    e = g.e
+    tag.set_teams_partner(e, 1, "vonbolt")
+    g.set_teams(["sturm", "olaf"], {1})
+    g.teams_to_rules()
+    g.set_rules()
+    g.start_battle()
+    g.wait_for_input()
+    inf = g.unit_at(11, 10)
+    a = g.unit_addr(inf["id"])
+    e.w16(a + 4, (e.u16(a + 4) & ~0x7F) | 1)
+    g.select(10, 10)
+    g.move_to(10, 10)
+    g.choose("Fire", g.ACTION_MENU)
+    g.pick_target(11, 10)
+    for _ in range(60):
+        if rom_string(e, STRINGS + 0x100) != b"":
+            break
+        e.wait(40)
+        e.press("A", 2)
+    t = rom_string(e, STRINGS + 0x100)
+    ctx.log(f"victory quote {t!r}")
+    ctx.check(t in (b"Bow before Black Hole!\rVon Bolt: Delicious.", b"Your world is ours.\rVon Bolt: Hhhh... yes."),
+              f"Sturm and Von Bolt's exchange ({t!r})")
+    e.wait(200)  # both lines typed
+    ctx.shot(g, "sturm_victory_quote")

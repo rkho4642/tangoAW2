@@ -45,8 +45,31 @@ def star_cost(uses):
     return 9000 * pct // 100
 
 
+# AW2's Sturm is not in Dual Strike: tangoAW2's own table for him
+# (crate::sturm_pairs, made up for tangoAW2): (partner, compatibility,
+# stars, Tag Power name); Kindle, Jugger and Koal 105, anyone else 95.
+STURM_PAIRS = [("vonbolt", 125, 3, b"Black Apocalypse"), ("hawke", 120, 2, b"Storm Front"),
+               ("lash", 115, 2, b"Mad Genius"), ("flak", 110, 1, b"Iron Fist"), ("adder", 110, 1, b"Viper's Nest")]
+STURM_TEAMMATES = ("kindle", "jugger", "koal")
+
+
+def sturm_compatibility(a, b):
+    sturm = romlib.co_id("sturm")
+    if sturm not in (a, b):
+        return None
+    o = b if a == sturm else a
+    for name, c, _, _ in STURM_PAIRS:
+        if romlib.co_id(name) == o:
+            return c
+    return 105 if o in [romlib.co_id(n) for n in STURM_TEAMMATES] else 95
+
+
 def compatibility(ds, a, b):
-    """Dual Strike's compatibility of the pair (CO record +0x84 + partner's id)."""
+    """Dual Strike's compatibility of the pair (CO record +0x84 + partner's
+    id); with Sturm, tangoAW2's own (STURM_PAIRS)."""
+    s = sturm_compatibility(a, b)
+    if s is not None:
+        return s
     ra = romlib.DS_CO_IDS.get(a)
     rb = romlib.DS_CO_IDS.get(b)
     if ra is None or rb is None:

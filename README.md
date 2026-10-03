@@ -116,9 +116,11 @@ Both press Ready; the game starts from power-on for both. Go to
   The DS Campaign's missions bring their pairs; in Versus, as in Dual
   Strike, any army (the computer's too) with a partner is a pair: on Teams
   press **START** on its CO, then **UP**/**DOWN** (None: single).
-  Dual Strike's words come with them: the pair's Tag Power screen, each CO's
-  tag-in line on Change, special pairs' star ratings (on Teams and on the CO
-  page's TAG page) and their victory lines.
+  Dual Strike's screens and words come with them: its full-screen Tag Power
+  and CO SWAP art, each CO's tag-in line on Change, special pairs' star ratings (on Teams and on the CO
+  page's TAG page) and their victory lines. Sturm, who is not in Dual
+  Strike, gets tangoAW2's own pairs with his Black Hole teammates (Von
+  Bolt's "Black Apocalypse" the strongest).
 
 <table>
 <tr>
