@@ -309,7 +309,13 @@ fn second_picture(core: &mut Core, x: u32, y: u32) -> Option<u32> {
     let table = core.raw_read_32(0x0803_FDCC, -1);
     let map_id = core.raw_read_8(0x0300_3FC2, -1) as u32;
     let named = core.raw_read_32(table + 0x5C * map_id + 0x10, -1);
-    if named == 0 || named == mine.aw2_picture() {
+    // (only the other of the two: a front in the sky names the Black Arc's
+    // picture for its fortress tiles, crate::sky_front)
+    let other = match mine {
+        Picture::MissilePad => Picture::Fortress,
+        Picture::Fortress => Picture::MissilePad,
+    };
+    if named != other.aw2_picture() {
         return None;
     }
     for i in 0..INVENTION_COUNT {
