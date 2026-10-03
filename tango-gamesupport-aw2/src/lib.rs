@@ -71,6 +71,7 @@ pub mod survival;
 pub mod survival_maps;
 pub mod suspend;
 pub mod two_front;
+pub mod ally_posture;
 pub mod tag;
 pub mod tag_extras;
 pub mod tag_screens;

@@ -1331,6 +1331,9 @@ fn two_front(ds: &Ds, rec: &Record) -> Option<crate::campaign_model::TwoFront> {
         send: if sky { SendRule::Air } else { SendRule::Ground },
         powers: false,
         sky,
+        // Intel > General in every two-front mission (Dual Strike's test,
+        // arm9 `0x020BDF48`, asks only for a second front).
+        posture: true,
     })
 }
 
@@ -1699,6 +1702,7 @@ mod tests {
                 assert_eq!(b.missions[second as usize].weather, 0, "mission {i}: clear weather in the sky");
             }
             assert!(!t.powers);
+            assert!(t.posture, "mission {i}: Intel > General");
             let rec = record(&ds, i).unwrap();
             assert_eq!(t.cos[0] == PICK, rec.cos[0].1 == 0x1C, "mission {i}: the player's tag CO is picked");
             // Each front's events: Dual Strike's records for it.

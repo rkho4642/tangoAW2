@@ -70,16 +70,17 @@ def two_front_auto_co_only_where_ds_has_it(ctx):
     """Intel's Auto CO item exists where Dual Strike's does: Lightning Strikes
     and Ring of Fire (its test reads their map records, 0xEA and 0xF5), "Auto
     CO On" at the start; Victory or Death!, Omens and Signs and Means to an
-    End keep AW2's campaign Intel (Status, Terms, Unit); a one-front mission and
+    End have Intel without it (Status, Terms, Unit, and General, Dual Strike's
+ally posture: test_ally_posture); a one-front mission and
     Versus have the game's Intel menu itself."""
     for m in TWO_FRONTS:
         e, g, d = start(ctx, m)
         names = tf.intel(g)["names"]
         if m in ALLOWED:
-            ctx.eq(names, ["Status", "Terms", "Unit", tf.AUTO_ON], f"mission {m}: Intel with Auto CO, on")
+            ctx.eq(names, ["Status", "Terms", "Unit", "General", tf.AUTO_ON], f"mission {m}: Intel with General and Auto CO, on")
             ctx.eq(e.u8(tf.MANUAL), 0, f"mission {m}: Auto CO on at the start")
         else:
-            ctx.eq(names, ["Status", "Terms", "Unit"], f"mission {m}: AW2's Intel, no Auto CO")
+            ctx.eq(names, ["Status", "Terms", "Unit", "General"], f"mission {m}: Intel with General, no Auto CO")
         e.close()
     e, g, d = boot(ctx)
     d.start(step=0)
@@ -183,13 +184,13 @@ def two_front_auto_co_in_setup(ctx):
     d.setup_menu()
     g.choose("Intel", dc.SETUP_MENU)
     m = g.wait_menu(e.u32(tf.INTEL_MENU_POOL))
-    names = [n.rstrip("\x1c") for n in m["names"]]
-    ctx.eq(names, ["Status", "Terms", "Unit", tf.AUTO_ON], "the Setup menu's Intel: Auto CO On")
+    names = [tf.label(n) for n in m["names"]]
+    ctx.eq(names, ["Status", "Terms", "Unit", "General", tf.AUTO_ON], "the Setup menu's Intel: General, Auto CO On")
     g.choose("Auto CO", m["table"])
     e.wait(20)
     e.wait(10)
     shot(ctx, e, "setup_intel_off")
-    ctx.eq([n.rstrip("\x1c") for n in g.menu()["names"]][-1], tf.AUTO_OFF, "chosen: Auto CO Off")
+    ctx.eq([tf.label(n) for n in g.menu()["names"]][-1], tf.AUTO_OFF, "chosen: Auto CO Off")
     tf.close_menus(g)
     d.auto_deploy = True
     d.wait_control()

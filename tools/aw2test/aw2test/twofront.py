@@ -42,6 +42,21 @@ MAP_LOCK = 0x030040E8
 INTEL_MENU_POOL = 0x0802D550
 GAME_INTEL_MENU = 0x0849ABC0
 AUTO_ON, AUTO_OFF = "Auto CO On", "Auto CO Off"
+# Intel > General (crate::ally_posture): each army's posture, 2 bits per
+# army XOR General (Dual Strike's numbers), and the item's labels by posture.
+POSTURES = STATE + 0x1D
+STRIKE, ASSAULT, GENERAL, DEFENSE = 0, 1, 2, 3
+POSTURE_NAMES = ["Strike", "Assault", "General", "Defense"]
+P_POSTURE = 0x0203FD3C    # the DS Campaign's record: the last choice (XOR General)
+
+
+def posture(e, army):
+    return ((e.u8(POSTURES) >> (2 * (army - 1))) & 3) ^ GENERAL
+
+
+def label(n):
+    """A menu label without its padding (AW2's narrow spaces, 0x18..0x1F)."""
+    return "".join(c for c in n if ord(c) >= 0x20)
 
 
 def intel(g, keep_open=False):
@@ -50,7 +65,7 @@ def intel(g, keep_open=False):
     g.open_map_menu()
     g.choose("Intel", g.MAP_MENU)
     m = g.wait_menu(g.e.u32(INTEL_MENU_POOL))
-    m["names"] = [n.rstrip("\x1c") for n in m["names"]]
+    m["names"] = [label(n) for n in m["names"]]
     if not keep_open:
         close_menus(g)
     return m
@@ -89,11 +104,42 @@ def set_auto_co(g, on, shot=None):
     if item != want:
         g.e.press("A", 4)
         g.e.wait(20)
-    after = [n.rstrip("\x1c") for n in g.menu()["names"]]
+    after = [label(n) for n in g.menu()["names"]]
     if shot:
         shot("after")
     close_menus(g)
     return item, next((n for n in after if n.startswith("Auto CO")), None)
+
+
+def set_posture(g, want, shot=None):
+    """Intel > General chosen until it reads `want` (a posture number);
+    `shot(name)` with the menu up at each label. Returns the labels seen."""
+    m = intel(g, keep_open=True)
+    names = m["names"]
+    idx = next((i for i, n in enumerate(names) if n in POSTURE_NAMES), None)
+    if idx is None:
+        close_menus(g)
+        raise NavError(f"no General in Intel ({names})")
+    for _ in range(len(names) + 2):
+        cur = g.e.u8(m["cursor_addr"])
+        if cur == idx:
+            break
+        g.e.press("DOWN" if cur < idx else "UP", 4)
+        g.e.wait(6)
+    g.e.wait(10)
+    seen = [label(g.menu()["names"][idx])]
+    if shot:
+        shot(seen[-1])
+    for _ in range(4):
+        if seen[-1] == POSTURE_NAMES[want]:
+            break
+        g.e.press("A", 4)
+        g.e.wait(20)
+        seen.append(label(g.menu()["names"][idx]))
+        if shot:
+            shot(seen[-1])
+    close_menus(g)
+    return seen
 
 
 def state(e):
