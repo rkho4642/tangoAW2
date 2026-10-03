@@ -6,7 +6,12 @@ The reference is Dual Strike's own drawing (bmap/000 or 001 tiles, the look's
 palette, the lower metatile table at arm9 0x02143F40, the upper one at
 0x02145F40 drawn into the cell above, the mountain picked by position from
 0x02169E58, the sea's and river's frames), with each AW2 tile id standing for
-the Dual Strike metatile tangoAW2's doc says (`source`). Two checks:
+the Dual Strike metatile tangoAW2's doc says (`source`); in fog, terrain
+sub-palettes 0-4 drawn with sub-palette 5; weather changes no colour. This
+reference was itself checked against Dual Strike's screen in melonDS
+(Frozen Fortress and Dark Ambition in Snow, Crystal Calamity and Healing
+Touch in Wasteland, Verdant Hills in fog, Crystal Calamity in rain: the 3D
+map flattened onto the grid, `tests/test_ds_frames.py`). Two checks:
 - `check_data`: every metatile of the look's data in the ROM image against
   Dual Strike's drawing (up to the colour reduction to AW2's 4 palettes);
 - `check_terrain`: the map on screen, cell by cell, read back from VRAM (BG3's
@@ -54,6 +59,7 @@ SEA0, RIVER0 = 0x100, 0x200
 # crate::grand_bolt with Dual Strike's own textures: not terrain metatiles.
 BOLT_TILES = (0x1A4, 0x194, 0x192)
 ROAD = 5
+FOG_PALETTE = 5
 
 
 def _road_shade():
@@ -135,6 +141,11 @@ class Reference:
         self.tiles = ds.file(ts)
         self.pal = u16s(ds.files[ps])
         self.pal[16 * 6:16 * 9] = u16s(ds.a9(BUILDING_COLOURS[look], 0x60))
+        # Dual Strike's fog: terrain sub-palettes 0-4 drawn with sub-palette
+        # 5, colour for colour (crate::ds_look::FOG_PALETTE).
+        self.fog_pal = list(self.pal)
+        for p in range(5):
+            self.fog_pal[16 * p:16 * p + 16] = self.pal[16 * FOG_PALETTE:16 * FOG_PALETTE + 16]
         self.lower = u16s(ds.a9(0x02143F40, 0x2000))
         self.upper = u16s(ds.a9(0x02145F40, 0x2000))
         self.pick = u16s(ds.a9(0x02169E58, 32))
@@ -184,19 +195,21 @@ class Reference:
     def picture(self, d):
         return draw(self.tiles, self.lower, self.pal, d)
 
-    def render_cell(self, d, below, tiles=None, road=False):
+    def render_cell(self, d, below, tiles=None, road=False, fog=False):
         """Dual Strike's drawing of a cell of metatile d (16x16 colours), the
-        upper part of the cell below (metatile `below`) over it. Where an
-        upper part lands on a quadrant, that quadrant is drawn at the first
-        frame (tangoAW2's composite tiles are not animated: a sea or river
-        cell under a peak keeps its first frame there)."""
-        cell = draw(tiles or self.tiles, self.lower, self.pal, d)
+        upper part of the cell below (metatile `below`) over it, in fog's
+        colours with `fog`. Where an upper part lands on a quadrant, that
+        quadrant is drawn at the first frame (tangoAW2's composite tiles are
+        not animated: a sea or river cell under a peak keeps its first frame
+        there)."""
+        pal = self.fog_pal if fog else self.pal
+        cell = draw(tiles or self.tiles, self.lower, pal, d)
         if road and ROAD_SHADE:
             cell = [[None if c is None else shade(c) for c in row] for row in cell]
         if below is None:
             return cell
-        up = draw(self.tiles, self.upper, self.pal, below)
-        still = draw(self.tiles, self.lower, self.pal, d)
+        up = draw(self.tiles, self.upper, pal, below)
+        still = draw(self.tiles, self.lower, pal, d)
         if road and ROAD_SHADE:
             still = [[None if c is None else shade(c) for c in row] for row in still]
         for side in (0, 1):
@@ -294,16 +307,24 @@ def check_data(ctx, e, look, max_err=MAX_ERROR):
         kinds[src[0]] = kinds.get(src[0], 0) + 1
         if src[0] == "aw2":
             continue
-        ours = draw(data.tiles, data.metatiles, data.clear_colours, m)
-        want = ref.render_cell(src[1], None, road=ref.classes[m] == ROAD and src[1] == m)
-        err, same = picture_error(ours, want)
-        if err > worst[0]:
-            worst = (err, m)
-        if err > max_err:
-            bad.append((hex(m), round(err, 2), round(same, 2)))
+        for fog in (False, True):
+            # Fog: palettes 4-7 (the clear set's second half).
+            colours = data.clear_colours[64:128] if fog else data.clear_colours
+            ours = draw(data.tiles, data.metatiles, colours, m)
+            want = ref.render_cell(src[1], None, road=ref.classes[m] == ROAD and src[1] == m, fog=fog)
+            err, same = picture_error(ours, want)
+            if err > worst[0]:
+                worst = (err, m)
+            if err > max_err:
+                bad.append((hex(m), "fog" if fog else "clear", round(err, 2), round(same, 2)))
     ctx.log(f"{NAMES[look]}: metatiles by source {kinds}; worst mean colour error {worst[0]:.2f} at {worst[1]}; "
             f"{data.pool} free tiles for the peaks' and treetops' composites")
-    ctx.check(not bad, f"{NAMES[look]}: every metatile drawn as Dual Strike draws it (bad: {bad[:8]})")
+    ctx.check(not bad, f"{NAMES[look]}: every metatile drawn as Dual Strike draws it, in fog too (bad: {bad[:8]})")
+    # Dual Strike's weather changes no colour: every weather's set is the
+    # clear one (fog half included), but for each palette's colour 0.
+    for name, set_ in (("rain", data.rain), ("snow", data.snow), ("sandstorm", data.sand)):
+        a, b = u16s(set_), data.clear_colours
+        ctx.check(all(a[k] == b[k] for k in range(128) if k % 16), f"{NAMES[look]}: the {name} colours are the clear ones")
     ctx.check(kinds.get("ds", 0) > 300, f"{NAMES[look]}: Dual Strike's terrain drawn ({kinds})")
     ctx.check(data.pool >= 64, f"{NAMES[look]}: room for the composites ({data.pool} tiles)")
     return data
@@ -330,44 +351,6 @@ def check_screen(ctx, g, look, label=""):
     check_terrain(ctx, g, look, label)
 
 
-# AW2's colour relations as crate::wasteland has them (x256 per 5-bit channel;
-# rows r, g, b, 1) and the sandstorm's (crate::sandstorm::sand_colour).
-FITS = {
-    "fog": [[136, 22, 14], [40, 156, 101], [19, 4, 117], [-305, -2, -335]],
-    "rain": [[211, -12, -6], [26, 251, 85], [7, 18, 171], [-296, -367, 89]],
-    "rain fog": [[106, 4, 12], [70, 157, 112], [7, 6, 107], [-219, 316, -442]],
-    "snow": [[170, -23, -60], [45, 256, 143], [-16, 10, 21], [1697, 715, 4306]],
-    "snow fog": [[143, -3, -11], [22, 199, 140], [-21, 2, 2], [1337, 68, 2424]],
-}
-SAND = (27, 21, 12)
-
-
-def fit(m, c):
-    v = [c & 31, (c >> 5) & 31, (c >> 10) & 31]
-    out = 0
-    for j in range(3):
-        x = v[0] * m[0][j] + v[1] * m[1][j] + v[2] * m[2][j] + m[3][j]
-        out |= max(0, min(31, (x + 128) // 256)) << (5 * j)
-    return out
-
-
-def sand(c):
-    return sum((((((c >> (5 * j)) & 31) * 5 + SAND[j] * 3) // 8) << (5 * j)) for j in range(3))
-
-
-def weather_colour(weather, fogged, look):
-    """Clear colour -> the colour on screen in this weather (and fog)."""
-    if weather == "sand":
-        clear_fog = lambda c: fit(FITS["fog"], c)
-        return (lambda c: sand(clear_fog(c))) if fogged else sand
-    if weather == "snow" and look == SNOW:
-        weather = "clear"
-    if weather == "clear":
-        return (lambda c: fit(FITS["fog"], c)) if fogged else (lambda c: c)
-    key = weather + (" fog" if fogged else "")
-    return lambda c: fit(FITS[key], c)
-
-
 _REFS = {}
 
 
@@ -382,7 +365,8 @@ def terrain_cells(e, look, max_err=MAX_ERROR):
     tiles, palette RAM) against Dual Strike's drawing of the same map (its
     mountain for the cell's position, the upper part of the cell below over
     it, the sea and river at the frame on screen), in the weather's and fog's
-    colours (AW2's relations, `FITS`). Returns (cells compared, cells over
+    colours (Dual Strike's: weather changes none, fog draws terrain
+    sub-palettes 0-4 with its fog sub-palette 5). Returns (cells compared, cells over
     `max_err` as ((x, y), tile, error), fogged cells among them, cells
     tangoAW2 draws with AW2's own tiles, which are left out), or None when the
     map's colours are none of the look's sets."""
@@ -423,8 +407,6 @@ def terrain_cells(e, look, max_err=MAX_ERROR):
         for x in xs:
             ids[(x, y)] = ref.ds_id(tiles[y * w + x], x, y, aw2_meta)
     checked, bad, fogged, aw2 = [], [], 0, 0
-    # Sand blown over fogged colours: the sandstorm set is the clear set's,
-    # fog half included (crate::wasteland).
     for y in ys:
         for x in xs:
             d = ids[(x, y)]
@@ -434,10 +416,8 @@ def terrain_cells(e, look, max_err=MAX_ERROR):
             below = ids.get((x, y + 1))
             fog = not seen[y * w + x]
             fogged += fog
-            to = weather_colour(weather, fog, look)
-            want = [[None if c is None else to(c) for c in row]
-                    for row in ref.render_cell(d, below if below in TALL else None, ds_tiles,
-                                               road=ref.classes[tiles[y * w + x]] == ROAD)]
+            want = ref.render_cell(d, below if below in TALL else None, ds_tiles,
+                                   road=ref.classes[tiles[y * w + x]] == ROAD, fog=fog)
             px, py = ((x - cx) & 15) * 2, ((y - cy) & 15) * 2
             q = [tilemap[(py + dy) * 32 + px + dx] for dy in (0, 1) for dx in (0, 1)]
             err, _ = picture_error(draw(vram, None, pal, None, quads=q), want)

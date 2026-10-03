@@ -434,11 +434,21 @@ converted from the .nds at run time.
   together the two closest colours (the less used goes into the other: the
   colours stay Dual Strike's own, and one unlike the rest, a wood's green,
   stays). Mean colour error per pixel is under 1.5 (squared, 5-bit
-  channels) on every metatile. BG palettes 8-15 are untouched. Fog, rain and
-  snow sets come from the clear set by AW2's own colour relations
-  (least-squares fits of AW2's clear set to its fog, rain and snow sets); the
-  Snow look keeps its colours in snow weather. Sandstorm blows sand over the
-  clear set.
+  channels) on every metatile. BG palettes 8-15 are untouched.
+- **Fog and weather, as Dual Strike's screen has them** (melonDS: Verdant
+  Hills in fog, Crystal Calamity with its weather poked to rain and snow,
+  Healing Touch in a sandstorm, Dark Ambition in snow). A fogged cell's
+  terrain (sub-palettes 0-4) is drawn with the look's sub-palette 5, index
+  for index (the dark violet greys of its fog), whatever the weather; rain
+  (which brings fog), snow and sandstorm change no colour (only their
+  particles fall or blow). So AW2's fog palettes 4-7 are Dual Strike's fog
+  colours: each colour of palettes 0-3 takes the fog colour of the Dual
+  Strike colours folded into it, by their pixels (`Look::fog`; AW2's own
+  fog relation only for a colour no Dual Strike tile has), worst mean error
+  per metatile 4.7 (Snow); the rain, snow and sandstorm sets are the clear
+  set (they were AW2's colour relations and a sand tint until checked). An
+  upper part over a cell takes that cell's fog, not its own cell's: one
+  palette per tile.
 - **Roads.** Dual Strike's Wasteland and Desert roads are faint tracks;
   `ds_look::ROAD_SHADE` (0: Dual Strike's own) draws every road this many
   5-bit steps darker (the darker colours go into the palettes with the
@@ -485,6 +495,25 @@ converted from the .nds at run time.
   view: tangoAW2's four Wasteland Versus maps (`test_ds_maps.py`) and every
   Survival map in a Dual Strike look (`test_survival.py`); every DS Campaign
   mission's first view (`test_ds_campaign.py`).
+- **Checked against Dual Strike's screen.** Dual Strike draws its map in
+  3D, tilted (about 13 to 16.6 pixels a cell from top to bottom). Missions
+  were started in melonDS (`ds_script`) from its campaign map with the
+  mission record id the map hands on (`0x02183CC0`) poked, the cursor swept
+  over every cell with the bottom screen's 3D layer alone on (BG0,
+  `BLDCNT` off), each camera's view fitted to the reference's drawing (a
+  homography per camera position) and flattened back onto the 16-pixel grid
+  (each pixel the brighter of several frames: Dual Strike's cloud shadows
+  drift over the map). Snow (Frozen Fortress, Dark Ambition in snow) and
+  Wasteland (Crystal Calamity, Healing Touch) match the reference colour for
+  colour (median distance to the nearest colour of the cell under 1 on a
+  5-bit scale; tangoAW2's screen the same), tiles and shapes too (woods,
+  three mountains by position, peaks over the cell above, roads, rivers,
+  sea and shores, pipes, bridges, lava); fog and weather did not (above).
+  `tests/test_ds_frames.py` compares such captures (kept outside the repo:
+  `$AW2TEST_DS_FRAMES`, a manifest of flattened pictures) with the
+  reference. Dual Strike's map palette function (`0x020F92B8`) has one
+  special case, Means to an End's map (0xF8); the look picks the rest.
+  Which cells are lit in fog is the game's rules, not the look.
 
 ## Black Crystal and Black Obelisk (`obelisk.rs`, `five/obelisk_art.py`)
 

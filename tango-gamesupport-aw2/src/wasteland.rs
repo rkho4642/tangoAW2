@@ -24,10 +24,10 @@
 //!   the cell above, as composite tiles made in the look's free tiles.
 //! - Colours: AW2 draws its terrain with BG palettes 0-3 (and 4-7, the
 //!   same darkened for fog), one set per weather (`0x0849BD20`, loaded by
-//!   `sub_08035020`). A look's clear set is its converted palettes; fog,
-//!   rain and snow are AW2's own relation to its clear colours (fitted once
-//!   over its 60 terrain colours), sandstorm the clear set blown over with
-//!   sand ([`crate::sandstorm`]). The Snow look keeps its colours in snow.
+//!   `sub_08035020`). A look's clear set is its converted palettes, its fog
+//!   half Dual Strike's fog colours ([`crate::ds_look::Look::fog`]); as in
+//!   Dual Strike, weather changes no colour: the rain, snow and sandstorm
+//!   sets are the clear set (checked against melonDS frames).
 //! - Storage: the last byte of the design-map record (+0x723, after the
 //!   unit cells), as [`MAGIC`] | biome, saved with the map
 //!   ([`crate::design5::save_record`]'s trap) and read when a design map is
@@ -147,14 +147,10 @@ const SOURCES: [(u8, crate::ds_look::Source); 4] = [
     (GRAND_BOLT_LOOK, crate::ds_look::Source { tiles: "bmap/001", palette: "bmap/00b" }),
 ];
 
-/// AW2's own colour relations, fitted over its 60 terrain colours (x256,
-/// per 5-bit channel): rows are the clear colour's r, g, b and 1, columns
-/// the result's r, g, b.
+/// AW2's own fog relation, fitted over its 60 terrain colours (x256, per
+/// 5-bit channel): rows are the clear colour's r, g, b and 1, columns the
+/// result's r, g, b. Only for a colour no Dual Strike tile has.
 const FOG: [[i32; 3]; 4] = [[136, 22, 14], [40, 156, 101], [19, 4, 117], [-305, -2, -335]];
-const RAIN_FIT: [[i32; 3]; 4] = [[211, -12, -6], [26, 251, 85], [7, 18, 171], [-296, -367, 89]];
-const RAIN_FOG: [[i32; 3]; 4] = [[106, 4, 12], [70, 157, 112], [7, 6, 107], [-219, 316, -442]];
-const SNOW_FIT: [[i32; 3]; 4] = [[170, -23, -60], [45, 256, 143], [-16, 10, 21], [1697, 715, 4306]];
-const SNOW_FOG: [[i32; 3]; 4] = [[143, -3, -11], [22, 199, 140], [-21, 2, 2], [1337, 68, 2424]];
 
 fn apply(m: &[[i32; 3]; 4], c: u16) -> u16 {
     let v = [(c & 31) as i32, ((c >> 5) & 31) as i32, ((c >> 10) & 31) as i32];
@@ -220,22 +216,26 @@ pub fn derive(core: &Core, b: u8) -> Option<Built> {
     let aw2 = aw2_terrain(core)?;
     let files = crate::ds_look::from_pack(src)?;
     let look = crate::ds_look::build(&aw2, &files.pack())?;
-    let (aw2_clear, aw2_rain, aw2_snow) = (aw2.clear, read_set(core, RAIN), read_set(core, SNOW_SET));
-    let mut clear = aw2_clear.clone();
-    let (mut rain, mut snow) = (aw2_rain, aw2_snow);
+    let (mut clear, mut rain, mut snow) = (aw2.clear, read_set(core, RAIN), read_set(core, SNOW_SET));
     for i in 0..64 {
         if i % 16 == 0 {
             continue;
         }
         let c = look.colours[i];
-        clear[i] = c;
-        clear[64 + i] = apply(&FOG, c);
-        rain[i] = apply(&RAIN_FIT, c);
-        rain[64 + i] = apply(&RAIN_FOG, c);
-        // A snowy look stays as it is in snow.
-        (snow[i], snow[64 + i]) = if b == SNOW { (c, apply(&FOG, c)) } else { (apply(&SNOW_FIT, c), apply(&SNOW_FOG, c)) };
+        // Dual Strike's own fog colour (its fog sub-palette), AW2's
+        // relation for a colour no Dual Strike tile has.
+        let f = match look.fog[i] {
+            crate::ds_look::NO_FOG => apply(&FOG, c),
+            f => f,
+        };
+        // Weather changes no colour in Dual Strike (rain and snow fall,
+        // sand blows over the map: AW2's particles, crate::sandstorm's).
+        for set in [&mut clear, &mut rain, &mut snow] {
+            set[i] = c;
+            set[64 + i] = f;
+        }
     }
-    let sand = clear.iter().map(|&c| crate::sandstorm::sand_colour(c)).collect();
+    let sand = clear.clone();
     Some(Built { look, colours: Colours { clear, rain, snow, sand } })
 }
 
@@ -739,17 +739,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fits_keep_black_and_white_sane() {
-        // White fogs to a light grey-blue, rain darkens it; black stays dark.
+    fn fog_fit_and_literal_lz() {
+        // White fogs to a light grey-blue; black stays dark.
         let white = 0x7FFF;
         let f = apply(&FOG, white);
         assert!((f & 31) < 31 && (f & 31) > 15);
-        assert!(apply(&RAIN_FIT, 0) & 31 <= 2);
-        // Snow whitens a sand colour; its fog is darker.
-        let sand = (20 << 10) | (26 << 5) | 30;
-        let (s, sf) = (apply(&SNOW_FIT, sand), apply(&SNOW_FOG, sand));
-        assert!((s >> 10) & 31 > (sand >> 10) & 31);
-        assert!((sf >> 5) & 31 < (s >> 5) & 31);
+        assert!(apply(&FOG, 0) & 31 <= 2);
         assert_eq!(lz_literal(&[1, 2, 3]), vec![0x10, 3, 0, 0, 0, 1, 2, 3]);
     }
 }

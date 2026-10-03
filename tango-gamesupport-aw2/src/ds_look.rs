@@ -58,9 +58,11 @@
 //! grouping with the least mean colour error per tile, trying every
 //! partition), each group cut to 15 colours by repeatedly folding together
 //! the two closest colours (the less used goes; colours stay Dual Strike's
-//! own, and a colour unlike the others, a wood's green, stays). Fog, rain,
-//! snow and sandstorm sets come from the clear set by AW2's own colour
-//! relations ([`crate::wasteland`]).
+//! own, and a colour unlike the others, a wood's green, stays). Fog is
+//! Dual Strike's: a fogged cell's terrain is drawn with its sub-palette 5,
+//! index for index, so each colour of the 4 takes the fog colour of the
+//! Dual Strike colours folded into it ([`Look::fog`]: AW2's palettes 4-7).
+//! Weather changes no colour ([`crate::wasteland`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -113,6 +115,12 @@ const ROAD_CLASS: u8 = 5;
 /// Strike's own roads.
 pub const ROAD_SHADE: u16 = 0;
 const TRANSPARENT: u16 = 0x8000;
+/// Dual Strike's fog: a fogged cell's terrain (sub-palettes 0-4) is drawn
+/// with sub-palette 5, colour for colour (the same index); weather changes
+/// no colour (checked in melonDS: Verdant Hills, Crystal Calamity in rain).
+const FOG_PALETTE: usize = 5;
+/// [`Look::fog`]: a colour no tile has.
+pub const NO_FOG: u16 = 0x8000;
 
 /// [`Look::tall`]: not tall.
 pub const NOT_TALL: u8 = 0xFF;
@@ -142,6 +150,9 @@ pub struct Look {
     pub metatiles: Vec<u16>,
     /// Palettes 0-3 (clear; 4-7 still AW2's, filled by the caller).
     pub colours: Vec<u16>,
+    /// Palettes 4-7: each colour of palettes 0-3 as Dual Strike draws it
+    /// in fog ([`FOG_PALETTE`]), [`NO_FOG`] where no tile has it.
+    pub fog: Vec<u16>,
     /// What each AW2 metatile was drawn from (for tests and the doc).
     pub kinds: Vec<Kind>,
     /// Per AW2 metatile: the upper part it puts over the cell above (an
@@ -650,6 +661,25 @@ pub fn build(aw2: &Aw2, ds: &Pack) -> Option<Look> {
     let (_, part, blocks) = best?;
     let block_of = |p: u8| part.iter().position(|b| b.contains(&p));
 
+    // Fog: each colour of the 4 palettes takes the fogged colour of the
+    // Dual Strike colours folded into it (weighted by their pixels): a
+    // terrain sub-palette's index `i` fogs to sub-palette 5's `i`.
+    let mut votes: BTreeMap<usize, BTreeMap<u16, u64>> = BTreeMap::new();
+    for (&p, w) in &by_pal {
+        let Some(b) = block_of(p) else { continue };
+        for (&c, &n) in w {
+            let Some(i) = (1..16).find(|&i| dp.get(16 * p as usize + i) == Some(&c)) else { continue };
+            let f = if (p as usize) < FOG_PALETTE { dp.get(16 * FOG_PALETTE + i).copied().unwrap_or(c) } else { c };
+            *votes.entry(16 * b + 1 + nearest(&blocks[b], c)).or_default().entry(f).or_default() += n;
+        }
+    }
+    let mut fog = vec![NO_FOG; 64];
+    for (k, v) in &votes {
+        if let Some((&f, _)) = v.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))) {
+            fog[*k] = f;
+        }
+    }
+
     // Tiles: Dual Strike's at their own index (so the animated ones stay
     // where the frames go), pictures in the static slots left.
     let mut tiles = vec![0u8; TILE * TILES];
@@ -793,7 +823,7 @@ pub fn build(aw2: &Aw2, ds: &Pack) -> Option<Look> {
         let id = ds.mountain_pick.get(i).copied().unwrap_or(TALL[0] as u16) as usize;
         *p = TALL[..MOUNTAINS].iter().position(|&d| d == id).unwrap_or(0) as u8;
     }
-    Some(Look { tiles, sea: sea_out, river: river_out, metatiles, colours, kinds, tall, mountains, mountain_pick, overlays, pool })
+    Some(Look { tiles, sea: sea_out, river: river_out, metatiles, colours, fog, kinds, tall, mountains, mountain_pick, overlays, pool })
 }
 
 #[cfg(test)]
