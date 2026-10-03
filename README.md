@@ -119,7 +119,6 @@ with **SELECT → File → Save**; play it from **Versus → Design Maps**.
   computer-controlled).
 - Five-army battles and Survival runs can't be suspended.
 - The mini maps show Black Hole's buildings in neutral grey.
-- DS Campaign: the tag screens are still pictures.
 
 ## How it's tested
 
