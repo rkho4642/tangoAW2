@@ -256,6 +256,8 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
         0x0235_172C => crate::onyx::charge_percent(core) >= 90,
         0x0235_1738 => crate::onyx::charged(core),
         0x0235_16C8 => crate::onyx::countdown_expired(core),
+        // Reclaim the Skies: its 30 minutes run out (the same test).
+        0x0235_0900 => crate::onyx::countdown_expired(core),
         0x0235_05E8 => alive_inventions(core, 9) == 0,
         0x0235_0610 => alive_inventions(core, 4) == 0,
         // A stealth of the army moving now (or the one acting) on half its

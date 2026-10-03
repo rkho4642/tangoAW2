@@ -655,6 +655,8 @@ const AFTER_VICTORY_OR_DEATH: usize = 8;
 const AFTER_CRYSTAL_CALAMITY: usize = CRYSTAL_CALAMITY;
 /// Crystal Calamity (record index): the Black Onyx (crate::onyx).
 pub const CRYSTAL_CALAMITY: usize = 18;
+/// Reclaim the Skies (record index): its 30-minute time limit (crate::onyx).
+pub const RECLAIM_THE_SKIES: usize = 3;
 const AFTER_MEANS_TO_AN_END: usize = 24;
 
 /// Narration: each text over its picture (crate::ds_story_art, a magic
@@ -1365,10 +1367,15 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         if rec.objective != 0 {
             entries.push(rec.objective);
         }
-        // Crystal Calamity's header has a seventh list (+0x18), which Dual
-        // Strike tests every frame: the Black Onyx's warning, its laser,
-        // the 50 minutes running out (crate::onyx).
-        let realtime_list = if rec.index == CRYSTAL_CALAMITY { ds.u32(rec.header + 0x18).filter(|&l| l != 0) } else { None };
+        // Crystal Calamity's and Reclaim the Skies' headers have a seventh
+        // list (+0x18), which Dual Strike tests every frame: the Black
+        // Onyx's warning, its laser, the 50 minutes running out; the 30
+        // minutes running out (crate::onyx).
+        let realtime_list = if [CRYSTAL_CALAMITY, RECLAIM_THE_SKIES].contains(&rec.index) {
+            ds.u32(rec.header + 0x18).filter(|&l| l != 0)
+        } else {
+            None
+        };
         if let Some(l) = realtime_list {
             entries.extend(trigger_scripts(ds, l));
         }

@@ -1502,8 +1502,20 @@ hits, phase, countdown state, charge). Without the pack nothing of it
 runs. Tests: `tests/test_ds_onyx.py` (the clock and the panel, the warning
 and the laser with its damage and dialogues, a silo's hit, the
 destruction, the time running out, saved halfway, the objective).
-Reclaim the Skies has a seventh list too (a 30-minute countdown, op 0x5A
-108000, its loss `0x02350900`): not converted yet.
+Reclaim the Skies has a seventh list too: its day-1 script (after the
+opening dialogue) starts a 30-minute countdown (op 0x5A, 108000 frames),
+shown on the top screen as MM:SS over a missile's flight; the list's one
+record tests `0x02350900` (the same code as `0x023516C8`: the countdown at
+0) and its script (op 0x41) gives Black Hole the win ("Noooo! The
+missile...", DEFEAT). Checked in melonDS (scratchpad `rel051/rts`): the
+count is `[0x02189394]` frames run (its MM:SS copy `0x02175BBC`, set each
+second), it runs with a menu open and stops on the START screen.
+*Here* the same clock (`onyx::STATE` +0 is 2: the countdown without the
+satellite; `ds_campaign_data::RECLAIM_THE_SKIES`), the list run as Crystal
+Calamity's, the panel the time alone (its text tiles, by the screen's
+edge); saved halfway with the clock's state (mark `T`; a save made before
+it continues with the clock running while time is left). Tests:
+`tests/test_ds_reclaim_timer.py` (the clock, the time out, saved halfway).
 
 Tests: `tools/aw2test/tests/test_ds_campaign.py` (the sub-menu with and
 without the pack, AW2's campaign unchanged to its first mission card,

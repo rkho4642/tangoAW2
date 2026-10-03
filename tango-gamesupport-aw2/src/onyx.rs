@@ -378,11 +378,35 @@ fn install(core: &mut Core) {
 
 // --- State ------------------------------------------------------------------------
 
+/// [`ON`]: Crystal Calamity's satellite (and its countdown); Reclaim the
+/// Skies' countdown alone.
+const ON_ONYX: u8 = 1;
+const ON_CLOCK: u8 = 2;
+
+/// The mission in a DS Campaign session (its main front) with a real-time
+/// countdown, and what [`ON`] holds for it.
+fn timed_mission(core: &Core) -> Option<(usize, u8)> {
+    if !crate::ds_campaign::active(core) || crate::two_front::second_live(core) {
+        return None;
+    }
+    match crate::ds_campaign::mission(core) as usize {
+        crate::ds_campaign_data::CRYSTAL_CALAMITY => Some((crate::ds_campaign_data::CRYSTAL_CALAMITY, ON_ONYX)),
+        crate::ds_campaign_data::RECLAIM_THE_SKIES => Some((crate::ds_campaign_data::RECLAIM_THE_SKIES, ON_CLOCK)),
+        _ => None,
+    }
+}
+
 /// Crystal Calamity (its main front) in a DS Campaign session.
 fn mission_is(core: &Core) -> bool {
-    crate::ds_campaign::active(core)
-        && crate::ds_campaign::mission(core) as usize == crate::ds_campaign_data::CRYSTAL_CALAMITY
-        && !crate::two_front::second_live(core)
+    timed_mission(core).is_some_and(|(_, on)| on == ON_ONYX)
+}
+
+/// The battle's countdown is ours to run: Crystal Calamity's (with the
+/// satellite) or Reclaim the Skies' (Dual Strike's 30-minute limit, op
+/// 0x5A 108000, its list's `0x02350900` the same test as `0x023516C8`).
+pub fn clock_on(core: &Core) -> bool {
+    let on = core.raw_read_8(ON, -1);
+    on != 0 && timed_mission(core).is_some_and(|(_, m)| m == on) && crate::ds_campaign::in_battle(core)
 }
 
 /// Crystal Calamity's battle.
@@ -392,7 +416,7 @@ fn mission_on(core: &Core) -> bool {
 
 /// The satellite is in this battle.
 pub fn on(core: &Core) -> bool {
-    core.raw_read_8(ON, -1) == 1 && mission_on(core)
+    core.raw_read_8(ON, -1) == ON_ONYX && mission_on(core)
 }
 
 pub fn hits_left(core: &Core) -> u8 {
@@ -433,17 +457,23 @@ fn set_phase(core: &mut Core, p: u8) {
 /// Every map start: Crystal Calamity's satellite is set up (9 hits, no
 /// charge, Black Hole's army noted); any other map has none.
 pub fn map_start(core: &mut Core) {
-    if !mission_is(core) {
+    let Some((_, on)) = timed_mission(core) else {
         if core.raw_read_8(ON, -1) != 0 {
             core.raw_write_8(ON, -1, 0);
         }
         return;
-    }
+    };
+    // (the stubs: the real-time list's way back, [`MAIN_STUB`])
     install(core);
     for a in STATE..STATE_END {
         core.raw_write_8(a, -1, 0);
     }
-    core.raw_write_8(ON, -1, 1);
+    if on == ON_CLOCK {
+        // (Reclaim the Skies: the countdown, no satellite)
+        core.raw_write_8(ON, -1, ON_CLOCK);
+        return;
+    }
+    core.raw_write_8(ON, -1, ON_ONYX);
     core.raw_write_8(HITS_LEFT, -1, HITS);
     core.raw_write_8(PHASE, -1, CHARGING);
     note_army(core);
@@ -464,9 +494,10 @@ pub fn set_countdown(core: &mut Core, n: u32) {
     core.raw_write_8(CLOCK, -1, if n > 0 { CLOCK_RUNNING } else { c & !CLOCK_RUNNING });
 }
 
-/// Dual Strike's `0x023516C8`: the countdown has run out.
+/// Dual Strike's `0x023516C8` (Reclaim the Skies' `0x02350900`): the
+/// countdown has run out.
 pub fn countdown_expired(core: &Core) -> bool {
-    on(core) && core.raw_read_8(CLOCK, -1) & CLOCK_OUT != 0
+    clock_on(core) && core.raw_read_8(CLOCK, -1) & CLOCK_OUT != 0
 }
 
 /// The battle's clock runs this frame: the battle map runs its own frame
@@ -490,9 +521,10 @@ fn map_waits(core: &Core) -> bool {
 /// Every frame of a DS Campaign session (crate::ds_campaign::tick): the
 /// countdown and the charge.
 pub fn tick(core: &mut Core) {
-    if !on(core) {
+    if !clock_on(core) {
         return;
     }
+    let onyx = on(core);
     if clock_runs(core) {
         let clock = core.raw_read_8(CLOCK, -1);
         if clock & CLOCK_RUNNING != 0 {
@@ -505,12 +537,14 @@ pub fn tick(core: &mut Core) {
             }
             // (`0x020F232C`: while it has hits left, below full)
             let c = charge(core);
-            if hits_left(core) > 0 && c < FULL {
+            if onyx && hits_left(core) > 0 && c < FULL {
                 core.raw_write_16(CHARGE, -1, c + 1);
             }
         }
     }
-    animate(core);
+    if onyx {
+        animate(core);
+    }
 }
 
 /// The phases' animations, a frame each while the battle shows.
@@ -578,9 +612,8 @@ pub fn fire(core: &mut Core) -> bool {
 // --- The real-time list ----------------------------------------------------------------
 
 fn realtime_list(core: &Core) -> u32 {
-    crate::ds_campaign::campaign(core)
-        .and_then(|c| c.model.built.missions.get(crate::ds_campaign_data::CRYSTAL_CALAMITY))
-        .map_or(0, |m| m.realtime)
+    let Some((mission, _)) = timed_mission(core) else { return 0 };
+    crate::ds_campaign::campaign(core).and_then(|c| c.model.built.missions.get(mission)).map_or(0, |m| m.realtime)
 }
 
 /// The battle map's frame: while the map waits, AW2's list runner tests the
@@ -591,7 +624,7 @@ fn map_frame(core: &mut Core) {
         core.raw_write_8(LIST_RAN, -1, 0);
         return;
     }
-    if !on(core) || !map_waits(core) {
+    if !clock_on(core) || !map_waits(core) {
         return;
     }
     let list = realtime_list(core);
@@ -663,10 +696,15 @@ fn launch_setup(core: &mut Core) {
 /// hits, phase, clock, the charge.
 pub const SAVED_LEN: usize = 6;
 const SAVED_MARK: u8 = b'O';
+/// Reclaim the Skies' countdown alone: the mark and the clock (+3).
+const SAVED_CLOCK_MARK: u8 = b'T';
 
 pub fn saved(core: &Core) -> [u8; SAVED_LEN] {
     let mut b = [0u8; SAVED_LEN];
-    if core.raw_read_8(ON, -1) == 1 {
+    if core.raw_read_8(ON, -1) == ON_CLOCK {
+        b = [SAVED_CLOCK_MARK, 0, 0, core.raw_read_8(CLOCK, -1), 0, 0];
+    }
+    if core.raw_read_8(ON, -1) == ON_ONYX {
         let c = charge(core).to_le_bytes();
         // (a phase in progress is saved as charging: its animation is not)
         let p = match phase(core) {
@@ -681,6 +719,26 @@ pub fn saved(core: &Core) -> [u8; SAVED_LEN] {
 
 /// A mission saved halfway is continued: its satellite as it was saved.
 pub fn restore(core: &mut Core, b: &[u8]) {
+    if b.len() >= SAVED_LEN && b[0] == SAVED_CLOCK_MARK && timed_mission(core).is_some_and(|(_, on)| on == ON_CLOCK) {
+        install(core);
+        for a in STATE..STATE_END {
+            core.raw_write_8(a, -1, 0);
+        }
+        core.raw_write_8(ON, -1, ON_CLOCK);
+        core.raw_write_8(CLOCK, -1, b[3]);
+        return;
+    }
+    if timed_mission(core).is_some_and(|(_, on)| on == ON_CLOCK) {
+        // (saved before the clock was kept: running while time is left)
+        install(core);
+        for a in STATE..STATE_END {
+            core.raw_write_8(a, -1, 0);
+        }
+        core.raw_write_8(ON, -1, ON_CLOCK);
+        let running = core.raw_read_32(COUNTDOWN, -1) > 0;
+        core.raw_write_8(CLOCK, -1, if running { CLOCK_RUNNING } else { 0 });
+        return;
+    }
     if b.len() < SAVED_LEN || b[0] != SAVED_MARK || !mission_is(core) {
         return;
     }
@@ -1026,6 +1084,10 @@ fn text_now(core: &Core) -> Vec<u8> {
             }
         }
     }
+    if core.raw_read_8(ON, -1) != ON_ONYX {
+        // (Reclaim the Skies: the time alone)
+        return px;
+    }
     // A diamond for each hit still needed (outlined; filled while it is).
     let left = hits_left(core) as usize;
     for k in 0..HITS as usize {
@@ -1065,12 +1127,12 @@ fn text_now(core: &Core) -> Vec<u8> {
 }
 
 fn shows(core: &Core) -> bool {
-    on(core) && core.raw_read_32(MAIN_CALLBACK, -1) == MAP_CALLBACK && !crate::heal_effect::playing(core) && art().is_some()
+    clock_on(core) && core.raw_read_32(MAIN_CALLBACK, -1) == MAP_CALLBACK && !crate::heal_effect::playing(core) && art().is_some()
 }
 
 fn panel_shows(core: &Core) -> bool {
     shows(core)
-        && phase(core) != GONE
+        && (phase(core) != GONE || !on(core))
         && core.raw_read_8(CLOCK, -1) & (CLOCK_RUNNING | CLOCK_OUT) != 0
         && !crate::setup_phase::active(core)
 }
@@ -1220,8 +1282,11 @@ pub fn flush_sprites(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
         }
     }
     if panel {
-        let sat = to_tiles(&satellite_now(core, art), 32, 32);
-        write_if_changed(core, OBJ_TILES + 32 * SAT_TILE as u32, &sat);
+        let onyx = on(core);
+        if onyx {
+            let sat = to_tiles(&satellite_now(core, art), 32, 32);
+            write_if_changed(core, OBJ_TILES + 32 * SAT_TILE as u32, &sat);
+        }
         let text = text_now(core);
         let tw = 8 * TEXT_TILES.len();
         for (k, &t) in TEXT_TILES.iter().enumerate() {
@@ -1232,10 +1297,18 @@ pub fn flush_sprites(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
             write_if_changed(core, OBJ_TILES + 32 * t as u32, &to_tiles(&col, 8, 32));
         }
         let (x, y) = panel_at(core, start, at);
-        // 32x32: square, size 2; 8x32: tall, size 1.
-        sprites.push((x, y, SAT_TILE, 0, 2 << 14));
+        // 32x32: square, size 2; 8x32: tall, size 1 (the time alone: by
+        // the screen's edge, where the satellite would be on the left).
+        let tx = if onyx {
+            sprites.push((x, y, SAT_TILE, 0, 2 << 14));
+            x + 32
+        } else if x < 120 {
+            x
+        } else {
+            x + 32
+        };
         for (k, &t) in TEXT_TILES.iter().enumerate() {
-            sprites.push((x + 32 + 8 * k as i32, y, t, 2 << 14, 1 << 14));
+            sprites.push((tx + 8 * k as i32, y, t, 2 << 14, 1 << 14));
         }
     }
     for (x, y, tile, attr0, attr1) in sprites {
