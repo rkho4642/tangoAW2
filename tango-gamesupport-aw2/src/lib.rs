@@ -71,6 +71,7 @@ pub mod suspend;
 pub mod two_front;
 pub mod tag;
 pub mod tag_extras;
+pub mod tag_screens;
 pub mod tag_ui;
 pub mod versus_rules;
 pub mod pvp;

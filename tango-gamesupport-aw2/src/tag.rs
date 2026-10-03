@@ -669,7 +669,9 @@ const A_CHANGE2: u32 = 7;
 pub const S_QUOTE: u32 = 8;
 pub const S_SWAP_FRAME: u32 = 9;
 pub const S_SWAP: u32 = 10;
-const STUBS_N: u32 = 10;
+/// The computer's Change script's swap (crate::tag_extras::cpu_change).
+pub const S_CPU_SWAP: u32 = 11;
+const STUBS_N: u32 = 11;
 const MAGIC_ID: u32 = 0x5441_4700;
 
 /// `MapMenu_SuperPower`.
@@ -820,6 +822,12 @@ fn landing(core: &mut Core) {
             swap(core, army);
             return_to(core, 0);
         }
+        S_CPU_SWAP => {
+            power_off(core, army);
+            swap(core, army);
+            crate::tag_extras::cpu_change_done(core);
+            return_to(core, 0);
+        }
         A_CHANGE2 => {
             second_half(core, army);
             tail_call(core, SUPER_POWER);
@@ -852,6 +860,7 @@ fn turn_start(core: &mut Core) {
         set_phase(core, army, 0);
         core.raw_write_8(rec(army) + P_CPU_SECOND, -1, 0);
     }
+    crate::tag_extras::cpu_change_reset(core);
 }
 
 // --- The computer ---------------------------------------------------------------------
@@ -899,6 +908,7 @@ fn ai_super(core: &mut Core) {
 const AI_END: u32 = 0x0806_1ACE;
 const AI_END_RETURN: u32 = 0x0806_1AEE;
 const PAY_FOR_POWER: u32 = 0x0804_438C;
+const PROC_START: u32 = 0x0801_C8F4;
 fn ai_end(core: &mut Core) {
     if !is_on(core) {
         return;
@@ -919,9 +929,27 @@ fn ai_end(core: &mut Core) {
             cpu.set_thumb_pc(PAY_FOR_POWER);
         }
         0 => {
-            if cpu_wants_change(core, army) {
+            let under_way = crate::tag_extras::cpu_change_state(core) != 0;
+            if !under_way && !cpu_wants_change(core, army) {
+                return;
+            }
+            if !crate::ds_weather::is_on(core) {
                 power_off(core, army);
                 swap(core, army);
+                return;
+            }
+            // With the pack: the incoming CO's line and CO SWAP first
+            // (crate::tag_extras's script); the turn ends once it is done.
+            if crate::tag_extras::cpu_change(core, army) {
+                let cpu = core.gba_mut().cpu_mut();
+                if under_way {
+                    cpu.set_thumb_pc(AI_END_RETURN);
+                } else {
+                    cpu.set_gpr(0, crate::tag_extras::SCRIPT_CPU_CHANGE as i32);
+                    cpu.set_gpr(1, 3);
+                    cpu.set_gpr(14, (AI_END_RETURN | 1) as i32);
+                    cpu.set_thumb_pc(PROC_START);
+                }
             }
         }
         _ => {}

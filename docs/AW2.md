@@ -663,7 +663,7 @@ scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203E800..0x0203F09F (the Teams screen's borrowed tiles while partners show), 0x0203F100..0x0203F2FF
 (the Rules screen's borrowed label tiles), 0x0203F400..0x0203F4FF (tag pairs), 0x0203FF00.. (earlier
 features). Free ROM: 0x08780000..0x0878FFFF (the tag map menu, its stubs and strings, the Rules rows' help
-lines). `factory.rs` has a test that no two traps share
+lines), 0x08790000..0x0879FFFF (what the tag screens cover, while they show). `factory.rs` has a test that no two traps share
 an address.
 
 The new COs' music (`ds_music.rs`): each new CO's turn plays its own Dual
@@ -1980,26 +1980,41 @@ stay out.
   defence path, 1000+ a run, has the flag clear). `tag_boost_pairs` checks
   the whole 28x28 table and a representative set against the damage
   calculator.
-- **The tag screens** (`tag_extras.rs`): the Tag Power's band (both COs'
-  portraits facing each other, the pair's Tag Power name or "Dual Strike",
-  "POWER 1xx%") after the first quote, holding the power's script
-  (`sub_08039914`'s quote test, `0x0803991C`) 150 frames, on BG0 (128 tiles
-  at its character base + `0x5600`, BG palettes 8..10 saved and put back,
-  the map's sprites off meanwhile); Change runs a script of its own (ROM
-  `0x08781400`: close the menu, the incoming CO's Dual Strike tag-in line,
-  CO record +0x34 or +0x38 by the day, in AW2's quote box `sub_08019818`,
-  the "CO SWAP" band 100 frames, the swap, `MapMenu_End`); a special
-  pair's win puts the pair's exchange (one of its two by the day, the other
-  if only that fits) in the results screen's quote box
-  (`GetVictoryQuoteTextId` `0x0807A3AC`), the active CO's line alone when
-  neither fits; the CO page (`0x080852A8`, its input `0x08084C90`) gets a
-  TAG page between the Super Power's and the unit charts: header "TAG",
-  the CO's special partners with three of AW2's small stars each (OBJ
-  tiles 0x320/0x321 and palette 12 borrowed). Text ids 0x7305..0x7307,
-  strings at `0x08781000..`; RAM `0x0203F300..0x0203F3CF`.
-- **Left out**: Dual Strike's full-screen tag art (its tag screen is a band
-  in AW2's style with the Teams portraits); the computer's Change swaps
-  without the line and band; tag skills. Market Crash and other meter
+- **The tag screens** (`tag_extras.rs`, `tag_screens.rs`): Dual Strike's
+  tag screen full screen after the first quote, holding the power's script
+  (`sub_08039914`'s quote test, `0x0803991C`) 150 frames, then AW2's Super
+  Power screen; Change runs a script of its own (ROM `0x08781400`: close the
+  menu, the incoming CO's Dual Strike tag-in line, CO record +0x34 or +0x38
+  by the day, in AW2's quote box `sub_08019818`, Dual Strike's CO SWAP
+  screen 100 frames, the swap, `MapMenu_End`); the computer's Change the
+  same (ROM `0x08781480`, started from the trap on `AiEndTurnStep`'s
+  `EndCurrentArmyTurn` call `0x08061ACE`, which waits until the swap is
+  done). The screens are converted from the .nds at run time:
+  `ohashi/res_tagbreak` (the bokeh: LZ77 tiles at +0x380, map at +0x2628,
+  palette the last 32 bytes; its first block is the power meter's
+  sprites), `res_tagbreak_union` / `_black` / `_mix` (the emblem by the
+  pair's sides: tiles, a 32x64 map, two palettes; drawn faint),
+  `res_tagbreakfont` (the power's name: 32x32 glyphs, A..Z, a..z from 32),
+  `res_changefont` (16x32 glyphs, A..Z then the star), the COs' Dual Strike
+  body art facing each other (it faces right: the right one mirrored;
+  AW2's Sturm, whom Dual Strike lacks, his AW2 art; CO SWAP: the
+  incoming CO on Dual Strike's red, `CO★SWAP` across it), "POWER 1xx%" in
+  AW2's font on a white plate. Dual Strike spreads them over both 256x192
+  screens; on 240x160 the COs keep Dual Strike's scale from the head down.
+  The picture is fitted as the narration pictures (`ds_story_art::fit`:
+  4bpp tiles, nine palettes) and drawn on BG0 alone (BG0's character base
+  and map, BG palettes 6..14, faded in from white); what it covers is kept
+  at ROM `0x08790000..0x087987FF` and put back. A special pair's win puts
+  the pair's exchange (one of its two by the day, the other if only that
+  fits) in the results screen's quote box (`GetVictoryQuoteTextId`
+  `0x0807A3AC`), the active CO's line alone when neither fits; the CO page
+  (`0x080852A8`, its input `0x08084C90`) gets a TAG page between the Super
+  Power's and the unit charts: header "TAG", the CO's special partners,
+  each with its rating's full stars (1..3, OBJ tile 0x321 and palette 12
+  borrowed). Text ids 0x7305..0x7307, strings at `0x08781000..`; RAM
+  `0x0203F300..0x0203F3D7`.
+- **Left out**: the tag screens' animation (Dual Strike slides the COs in
+  and flashes the name; here a still picture faded in); tag skills. Market Crash and other meter
   drains reach only the active CO. The pad bot (`aw2test/bot.py`) fires
   Tag Powers but no longer wins four missions where the computer fights as
   a pair (The Long March, Verdant Hills, Into the Woods, Pincer Strike):
