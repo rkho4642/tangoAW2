@@ -20,6 +20,7 @@ SENDING = STATE + 0x08
 QUEUED = STATE + 0x14     # units sent before the second front started
 WINNER = STATE + 0x15
 STARTED = STATE + 0x16    # the second front has had its first round
+MANUAL = STATE + 0x1B     # Intel > Auto CO off, a bit per army (army - 1)
 STATE_LEN = 0xA0
 SECOND_COS = STATE + STATE_LEN
 STORE = 0x0203E500        # the front not on the screen (AW2's suspend block)
@@ -38,6 +39,61 @@ GAME_MAP_MENU = 0x0849AAC0
 GAME_UNIT_MENU = 0x0849AE28
 INVENTIONS = 0x02028360
 MAP_LOCK = 0x030040E8
+INTEL_MENU_POOL = 0x0802D550
+GAME_INTEL_MENU = 0x0849ABC0
+AUTO_ON, AUTO_OFF = "Auto CO On", "Auto CO Off"
+
+
+def intel(g, keep_open=False):
+    """Map menu > Intel: the Intel menu (its items; with `keep_open` it stays
+    up, else B twice back to the map)."""
+    g.open_map_menu()
+    g.choose("Intel", g.MAP_MENU)
+    m = g.wait_menu(g.e.u32(INTEL_MENU_POOL))
+    m["names"] = [n.rstrip("\x1c") for n in m["names"]]
+    if not keep_open:
+        close_menus(g)
+    return m
+
+
+def close_menus(g):
+    for _ in range(3):
+        if g.menu() is None:
+            break
+        g.e.press("B", 4)
+        g.e.wait(20)
+    g.wait_for_input()
+
+
+def set_auto_co(g, on, shot=None):
+    """Intel > Auto CO set `on` (chosen once if it is not); `shot(name)` is
+    called with the menu up before and after. Returns the item's labels
+    seen (before, after)."""
+    m = intel(g, keep_open=True)
+    names = m["names"]
+    item = next((n for n in names if n.startswith("Auto CO")), None)
+    if item is None:
+        close_menus(g)
+        raise NavError(f"no Auto CO in Intel ({names})")
+    want = AUTO_ON if on else AUTO_OFF
+    idx = names.index(item)
+    for _ in range(len(names) + 2):
+        cur = g.e.u8(m["cursor_addr"])
+        if cur == idx:
+            break
+        g.e.press("DOWN" if cur < idx else "UP", 4)
+        g.e.wait(6)
+    g.e.wait(10)
+    if shot:
+        shot("before")
+    if item != want:
+        g.e.press("A", 4)
+        g.e.wait(20)
+    after = [n.rstrip("\x1c") for n in g.menu()["names"]]
+    if shot:
+        shot("after")
+    close_menus(g)
+    return item, next((n for n in after if n.startswith("Auto CO")), None)
 
 
 def state(e):

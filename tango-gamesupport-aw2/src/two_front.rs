@@ -39,6 +39,13 @@
 //!   sendable unit ever has): the unit leaves the main front once its move
 //!   ends and is written into the second front's state, by its army's HQ
 //!   there (or where the army stands), on a cell it can enter.
+//! - **Who plays a second-front turn**: per army, by the description's
+//!   [`FrontControl`] and the army's owner (its controller on the main
+//!   front: a human, local or a netplay peer, or the computer), never by
+//!   "the player". Intel > Auto CO (Dual Strike's, where the description is
+//!   `AutoCo`) lets an army's owner give its second-front turns to the
+//!   computer or take them; off, the owner plays them with that front's
+//!   CO, funds and units, and may save there.
 //! - **The second front's end.** The second front's own events (Dual
 //!   Strike's records for it) end its battle as AW2's events end a battle;
 //!   then, instead of AW2's results, the front's result shows and the main
@@ -204,9 +211,12 @@ enum Stub {
     SendUsable,
     SendChosen,
     Bonus,
+    AutoOnUsable,
+    AutoOffUsable,
+    AutoChosen,
 }
 
-const STUBS: [Stub; 20] = [
+const STUBS: [Stub; 23] = [
     Stub::BeginRound,
     Stub::BeginViewIn,
     Stub::BeginViewOut,
@@ -227,6 +237,9 @@ const STUBS: [Stub; 20] = [
     Stub::SendUsable,
     Stub::SendChosen,
     Stub::Bonus,
+    Stub::AutoOnUsable,
+    Stub::AutoOffUsable,
+    Stub::AutoChosen,
 ];
 
 /// The ROM area: the mark, the stubs (16 bytes each), the scripts, the
@@ -241,15 +254,40 @@ const SCRIPT_OVER: u32 = ROM + 0x900;
 const MAP_MENU_COPY: u32 = ROM + 0xC00;
 const UNIT_MENU_COPY: u32 = ROM + 0xE00;
 const TEXTS: u32 = ROM + 0x1000;
+const INTEL_MENU_COPY: u32 = ROM + 0x1100;
 /// The menu items' labels (AW2 text ids read from the text table's free
 /// tail, crate::campaign_model::TEXT_TABLE; the DS Campaign's texts use
-/// 0x7400..: these are the last two).
+/// 0x7400..: these are the last ones, crate::setup_phase's Deploy 0x7FFC
+/// among them).
 const TEXT_FRONT: u16 = 0x7FFE;
 const TEXT_SEND: u16 = 0x7FFD;
+const TEXT_AUTO_ON: u16 = 0x7FFB;
+const TEXT_AUTO_OFF: u16 = 0x7FFA;
+/// The first of the menus' own text ids (a campaign's texts stay below).
+pub const TEXT_IDS_FROM: u16 = TEXT_AUTO_OFF;
 const TEXT_TABLE: u32 = crate::campaign_model::TEXT_TABLE;
 /// The game's menu glyphs: the icon then the name, as its own items.
 const LABEL_FRONT: &[u8] = b"\x09\x86Front\0";
 const LABEL_SEND: &[u8] = b"\x09\x8bSend\0";
+/// Dual Strike's Auto CO items (bank 0xC0 texts 102, 103: no icon; the
+/// `\x1C` pads "On" to "Off"'s width, as AW2's own "Music On").
+const LABEL_AUTO_ON: &[u8] = b"Auto CO On\x1c\0";
+const LABEL_AUTO_OFF: &[u8] = b"Auto CO Off\0";
+
+/// The Intel menu (Status, Terms, Unit, Rules; `0x0802D504` opens it, its
+/// table from the literal pool word), and Auto CO's two items in the copy
+/// after them, one shown at a time, as the Options menu's Music On / Music
+/// Off: chosen, the setting flips and the menu is redrawn in place
+/// (`0x08019E68`, what Music's handler calls).
+const INTEL_MENU: u32 = 0x0849_ABC0;
+const INTEL_MENU_POOL: u32 = 0x0802_D550;
+const INTEL_MENU_LEN: u32 = 4;
+/// Terms: the item whose event id (0: no help line of the game's) and B
+/// handler Auto CO's take.
+const TERMS_AT: u32 = 1;
+pub const AUTO_ON_AT: u32 = 4;
+pub const AUTO_OFF_AT: u32 = 5;
+const REFRESH_MENU: u32 = 0x0801_9E68;
 
 /// A script slot record: {pointer, immediate, op}. Ops (`StepSlotScript`'s
 /// table `0x0848A160`): 2 call, 0x17 wait for 1, 0x18 wait for 0, 0x1E
@@ -347,11 +385,24 @@ fn install(core: &mut Core) {
     let send = menu_entry_from(core, UNIT_MENU + MENU_ENTRY * SEND_AT, Stub::SendUsable, Stub::SendChosen, TEXT_SEND);
     units[(MENU_ENTRY * SEND_AT) as usize..(MENU_ENTRY * (SEND_AT + 1)) as usize].copy_from_slice(&send);
     core.raw_write_range(UNIT_MENU_COPY, -1, &units);
+    // The Intel menu: the game's four items, then Auto CO On / Auto CO Off.
+    let mut intel = vec![0u8; (MENU_ENTRY * INTEL_MENU_LEN) as usize];
+    core.raw_read_range(INTEL_MENU, -1, &mut intel);
+    for (usable, text) in [(Stub::AutoOnUsable, TEXT_AUTO_ON), (Stub::AutoOffUsable, TEXT_AUTO_OFF)] {
+        intel.extend(menu_entry_from(core, INTEL_MENU + MENU_ENTRY * TERMS_AT, usable, Stub::AutoChosen, text));
+    }
+    let mut end = vec![0u8; MENU_ENTRY as usize];
+    core.raw_read_range(INTEL_MENU + MENU_ENTRY * INTEL_MENU_LEN, -1, &mut end);
+    intel.extend(end);
+    core.raw_write_range(INTEL_MENU_COPY, -1, &intel);
     // Labels and the help line.
     core.raw_write_range(TEXTS, -1, LABEL_FRONT);
     core.raw_write_range(TEXTS + 0x10, -1, LABEL_SEND);
+    core.raw_write_range(TEXTS + 0x20, -1, LABEL_AUTO_ON);
+    core.raw_write_range(TEXTS + 0x30, -1, LABEL_AUTO_OFF);
     core.raw_write_32(ROM, -1, ROM_MAGIC);
-    assert!(UNIT_MENU_COPY + MENU_ENTRY * (UNIT_MENU_LEN + 1) <= TEXTS && TEXTS + 0x20 <= ROM_END);
+    assert!(UNIT_MENU_COPY + MENU_ENTRY * (UNIT_MENU_LEN + 1) <= TEXTS && TEXTS + 0x40 <= INTEL_MENU_COPY);
+    assert!(INTEL_MENU_COPY + intel.len() as u32 <= ROM_END);
 }
 
 /// Front's menu entry (for crate::setup_phase's menu): this module's ROM
@@ -421,6 +472,14 @@ const STARTED: u32 = STATE + 0x16;
 /// The looked-at front's current army's controller, while it shows the
 /// cursor (put back before it is captured).
 const VIEW_CTL: u32 = STATE + 0x17;
+/// Intel > Auto CO, per army (bit `army - 1`): set, Auto CO is off and the
+/// army's owner plays its second-front turns ([`FrontControl::AutoCo`]).
+/// (Set means off: a battle saved before the setting existed reads 0, Dual
+/// Strike's default, on.)
+const MANUAL: u32 = STATE + 0x1B;
+/// A Continue is bringing the second front back (1, until the battle is on
+/// the screen).
+const CONTINUED: u32 = STATE + 0x1C;
 const QUEUE: u32 = STATE + 0x20;
 const QUEUE_LEN: u32 = 8;
 const QUEUE_ARMY: u32 = QUEUE + 12 * QUEUE_LEN;
@@ -567,15 +626,23 @@ pub fn tick(core: &mut Core, on_: bool) {
         // a Continue on its way): a battle starts on its main front (its
         // state is cleared when it starts, [`map_start`], or comes with a
         // mission saved halfway, [`restore_saved`]).
-        if core.raw_read_8(LIVE, -1) != 0 {
+        // (but a Continue on the second front, between its block restored
+        // and the battle's frame callbacks, [`restore_saved`])
+        if core.raw_read_8(LIVE, -1) != 0 && core.raw_read_8(CONTINUED, -1) == 0 {
             core.raw_write_8(LIVE, -1, 0);
         }
         return;
+    }
+    if core.raw_read_8(CONTINUED, -1) != 0 {
+        core.raw_write_8(CONTINUED, -1, 0);
     }
     if core.raw_read_8(SECOND, -1) == SECOND_IDLE && core.raw_read_8(STORE_KIND, -1) == 0 {
         // (the battle's first frame: the second front is to be fought)
         core.raw_write_8(SECOND, -1, SECOND_ON);
         fill_second_cos(core, &b);
+        // Auto CO as the description starts it, per army.
+        let manual = (0..4).filter(|&k| b.fronts.control[k] == FrontControl::AutoCo { on: false }).fold(0u8, |m, k| m | 1 << k);
+        core.raw_write_8(MANUAL, -1, manual);
     }
     sync_header(core, &b);
     // Means to an End: the crystals on the second front guard the main
@@ -599,14 +666,18 @@ pub fn tick(core: &mut Core, on_: bool) {
 /// battle is on, the game's otherwise.
 pub fn menus(core: &mut Core, on_: bool) {
     let ours = on_ && on(core).is_some() && core.raw_read_32(ROM, -1) == ROM_MAGIC;
-    for (pool, game, copy) in [(MAP_MENU_POOL, MAP_MENU, MAP_MENU_COPY), (UNIT_MENU_POOL, UNIT_MENU, UNIT_MENU_COPY)] {
+    for (pool, game, copy) in [
+        (MAP_MENU_POOL, MAP_MENU, MAP_MENU_COPY),
+        (UNIT_MENU_POOL, UNIT_MENU, UNIT_MENU_COPY),
+        (INTEL_MENU_POOL, INTEL_MENU, INTEL_MENU_COPY),
+    ] {
         let want = if ours { copy } else { game };
         if core.raw_read_32(pool, -1) != want {
             core.raw_write_32(pool, -1, want);
         }
     }
     // The labels: text ids from the free tail of the text table.
-    for (id, at) in [(TEXT_FRONT, TEXTS), (TEXT_SEND, TEXTS + 0x10)] {
+    for (id, at) in [(TEXT_FRONT, TEXTS), (TEXT_SEND, TEXTS + 0x10), (TEXT_AUTO_ON, TEXTS + 0x20), (TEXT_AUTO_OFF, TEXTS + 0x30)] {
         let entry = TEXT_TABLE + 4 * id as u32;
         if ours && core.raw_read_32(entry, -1) != at {
             core.raw_write_32(entry, -1, at);
@@ -873,7 +944,9 @@ pub fn magic(core: &mut Core, id: u32) {
             start_script_instead(core, SCRIPT_VIEW)
         }
         (Stub::SaveUsable, Some(_)) => {
-            if core.raw_read_8(LIVE, -1) == 1 {
+            // On either front (Dual Strike's menu has Save on a player's
+            // second-front turn too); the game's own test.
+            if core.raw_read_8(BUSY, -1) != 0 {
                 return return_to(core, 1);
             }
             core.gba_mut().cpu_mut().set_thumb_pc(0x0802_C644)
@@ -883,7 +956,25 @@ pub fn magic(core: &mut Core, id: u32) {
             return_to(core, r)
         }
         (Stub::SendChosen, Some(b)) => send_chosen(core, &b),
-        (_, None) => return_to(core, if matches!(s, Stub::FrontUsable | Stub::SendUsable | Stub::SaveUsable) { 1 } else { 0 }),
+        (Stub::AutoOnUsable | Stub::AutoOffUsable, Some(b)) => {
+            // Shown to the army whose setting it is, on its main-front turn:
+            // On while its Auto CO is on, Off while it is off.
+            let shown = auto_co_army(core, &b).is_some_and(|a| auto_co(core, a) == (s == Stub::AutoOnUsable));
+            return_to(core, if shown { 0 } else { 1 })
+        }
+        (Stub::AutoChosen, Some(b)) => {
+            if let Some(a) = auto_co_army(core, &b) {
+                let m = core.raw_read_8(MANUAL, -1) ^ (1 << (a - 1));
+                core.raw_write_8(MANUAL, -1, m);
+            }
+            // The menu redrawn in place (its other item shown), as Music
+            // On / Off's handler does.
+            core.gba_mut().cpu_mut().set_thumb_pc(REFRESH_MENU)
+        }
+        (_, None) => return_to(
+            core,
+            if matches!(s, Stub::FrontUsable | Stub::SendUsable | Stub::SaveUsable | Stub::AutoOnUsable | Stub::AutoOffUsable) { 1 } else { 0 },
+        ),
         (s, Some(b)) => swap_step(core, s, &b),
     }
 }
@@ -1108,12 +1199,7 @@ fn setup_second(core: &mut Core, b: &Battle) {
         core.raw_write_8(TEAMS + 1 + k, -1, h[0x44 + k as usize]);
         let co = core.raw_read_8(SECOND_COS + k, -1);
         core.raw_write_8(COS + 1 + k, -1, if present { co } else { 0 });
-        let human = present && (k == 0 || b.main.cos[k as usize].0 == 0x1C);
-        let ctl = match (present, human, b.fronts.control) {
-            (false, _, _) => 0,
-            (true, true, FrontControl::Manual) => 1,
-            _ => 2,
-        };
+        let ctl = if present { second_controller(core, b, k + 1) } else { 0 };
         core.raw_write_8(CONTROLLERS + 1 + k, -1, ctl);
     }
     core.raw_write_8(TURN_LIMIT, -1, 0);
@@ -1155,24 +1241,90 @@ fn arrive(core: &mut Core, b: &Battle) {
         let mut e = vec![0u8; EXTRA_LEN as usize];
         core.raw_read_range(EXTRA_PENDING, -1, &mut e);
         set_extras(core, &e);
+        // Who plays each army's turns here now (Auto CO may have changed
+        // since this front's last round).
+        set_controllers(core, b);
     }
 }
 
-/// The second front's armies' controllers (set when it starts: AW2's
-/// campaign start would make every army not Black Hole's the player's).
-fn controllers(core: &mut Core, b: &Battle) {
+/// The army's owner: its controller on the main front (1 a human, local or
+/// a netplay peer's by its seat; 2 the computer), read from the main front's
+/// block in the store while the second front is on the screen.
+fn owner(core: &Core, army: u32) -> u8 {
+    let at = if core.raw_read_8(LIVE, -1) == 1 && core.raw_read_8(STORE_KIND, -1) == 1 {
+        STORE + B_PLAYERS + PLAYER * army + 0x1B
+    } else {
+        players(core) + PLAYER * army + 0x1B
+    };
+    match core.raw_read_8(at, -1) {
+        0 => 2,
+        c => c,
+    }
+}
+
+/// The army's Auto CO is on (bit clear in [`MANUAL`]).
+fn auto_co(core: &Core, army: u32) -> bool {
+    (1..=4).contains(&army) && core.raw_read_8(MANUAL, -1) & (1 << (army - 1)) == 0
+}
+
+/// The army whose Intel > Auto CO the menu shows now: the current army, on
+/// its main-front turn, while the second front is fought, when the
+/// description gives it the choice.
+fn auto_co_army(core: &Core, b: &Battle) -> Option<u32> {
+    if core.raw_read_8(LIVE, -1) != 0 || core.raw_read_8(SECOND, -1) != SECOND_ON || core.raw_read_8(BUSY, -1) != 0 {
+        return None;
+    }
+    let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
+    (1..=4).contains(&army).then_some(army).filter(|&a| matches!(b.fronts.control[a as usize - 1], FrontControl::AutoCo { .. }))
+}
+
+/// Who plays `army`'s turns on the second front (its controller byte
+/// there): by the description's [`FrontControl`] and the army's owner.
+fn second_controller(core: &Core, b: &Battle, army: u32) -> u8 {
+    match b.fronts.control[army as usize - 1] {
+        FrontControl::Cpu => 2,
+        FrontControl::Owner => owner(core, army),
+        FrontControl::AutoCo { .. } if auto_co(core, army) => 2,
+        FrontControl::AutoCo { .. } => owner(core, army),
+    }
+}
+
+/// The second front's armies' controllers, by [`second_controller`] (in
+/// its players and gPlaySt), whenever it comes on the screen.
+fn set_controllers(core: &mut Core, b: &Battle) {
     if core.raw_read_8(LIVE, -1) != 1 {
         return;
     }
     let p = players(core);
-    let h = header(core, b.fronts.second);
     for a in 1..=4u32 {
         let at = p + PLAYER * a + 0x1B;
         if core.raw_read_8(at, -1) == 0 {
             continue;
         }
-        let human = b.fronts.control == FrontControl::Manual && (a == 1 || b.main.cos[a as usize - 1].0 == 0x1C);
-        core.raw_write_8(at, -1, if human { 1 } else { 2 });
+        let ctl = second_controller(core, b, a);
+        if core.raw_read_8(at, -1) != ctl {
+            core.raw_write_8(at, -1, ctl);
+        }
+        if core.raw_read_8(CONTROLLERS + a, -1) != ctl {
+            core.raw_write_8(CONTROLLERS + a, -1, ctl);
+        }
+    }
+}
+
+/// The second front's armies when it starts: their controllers (AW2's
+/// campaign start would make every army not Black Hole's the player's), no
+/// CO skills yet, the front's own colours and teams.
+fn controllers(core: &mut Core, b: &Battle) {
+    if core.raw_read_8(LIVE, -1) != 1 {
+        return;
+    }
+    set_controllers(core, b);
+    let p = players(core);
+    let h = header(core, b.fronts.second);
+    for a in 1..=4u32 {
+        if core.raw_read_8(p + PLAYER * a + 0x1B, -1) == 0 {
+            continue;
+        }
         crate::co_skills::set(core, a, &[]);
         // Its colours and teams: the front's own (the campaign's start would
         // colour an army by its CO's country).
@@ -1533,9 +1685,14 @@ impl Sprites {
 /// [`flush_sprites`]).
 pub const FRONT_HELP: &str = "View the other front.";
 pub const VIEW_TITLE: &str = "Second front";
+pub const VIEW_MAIN_TITLE: &str = "Main front";
 pub const VIEW_BACK: &str = "Back";
 pub const RESULT_WON: &str = "Second front won!";
 pub const RESULT_LOST: &str = "Second front lost.";
+/// Auto CO's help lines (Dual Strike's, bank 0xC0 texts 740, 741): the
+/// setting as it is.
+pub const AUTO_ON_HELP: &str = "Allow CPU to direct the secondary front.";
+pub const AUTO_OFF_HELP: &str = "Direct the secondary front manually.";
 
 // --- Panels: AW2's window on BG2, AW2's font in sprites --------------------------------
 
@@ -1548,13 +1705,15 @@ enum Panel {
     Result = 3,
     /// Deploy's help line in the Setup phase (crate::setup_phase).
     SetupHelp = 4,
+    /// Auto CO's help line (the Intel menu).
+    AutoHelp = 5,
 }
 
 impl Panel {
     /// The window, in BG2 cells: (x, y, width, height).
     fn rect(self) -> (u32, u32, u32, u32) {
         match self {
-            Panel::Help | Panel::SetupHelp => (0, 16, 30, 4),
+            Panel::Help | Panel::SetupHelp | Panel::AutoHelp => (0, 16, 30, 4),
             // (at the top: neither the CO panel nor the terrain and unit
             // panels are drawn while the other front is looked at,
             // [`co_panel`], [`info_panels`])
@@ -1570,7 +1729,16 @@ impl Panel {
         match self {
             Panel::Help => vec![(px + 12, py + 9, FRONT_HELP, false)],
             Panel::SetupHelp => vec![(px + 12, py + 9, crate::setup_phase::DEPLOY_HELP, false)],
-            Panel::View => vec![(px + 10, py + 9, VIEW_TITLE, false), (px + 10, py + 25, VIEW_BACK, true)],
+            Panel::AutoHelp => {
+                let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
+                let t = if auto_co(core, army) { AUTO_ON_HELP } else { AUTO_OFF_HELP };
+                vec![(px + 12, py + 9, t, false)]
+            }
+            Panel::View => {
+                // (the front looked at: the main one from a second-front turn)
+                let t = if core.raw_read_8(LIVE, -1) == 0 { VIEW_MAIN_TITLE } else { VIEW_TITLE };
+                vec![(px + 10, py + 9, t, false), (px + 10, py + 25, VIEW_BACK, true)]
+            }
             Panel::Result => {
                 let t = if core.raw_read_8(SECOND, -1) == SECOND_WON { RESULT_WON } else { RESULT_LOST };
                 let tw = font_width(core, t) as i32;
@@ -1587,6 +1755,9 @@ fn want_panel(core: &Core) -> Option<Panel> {
     }
     if menu_cursor(core, MAP_MENU_COPY) == Some(OPTIONS_AT + 1) {
         return Some(Panel::Help);
+    }
+    if matches!(menu_cursor(core, INTEL_MENU_COPY), Some(AUTO_ON_AT | AUTO_OFF_AT)) {
+        return Some(Panel::AutoHelp);
     }
     match menu_cursor(core, crate::setup_phase::MENU) {
         Some(crate::setup_phase::FRONT_AT) => return Some(Panel::Help),
@@ -1669,7 +1840,7 @@ fn panel_tick(core: &mut Core) {
     let (hofs, vofs) = (core.raw_read_16(BG2HOFS, -1) as u32 & 0x1FF, core.raw_read_16(BG2VOFS, -1) as u32 & 0x1FF);
     let aligned = hofs % 8 == 0 && vofs % 8 == 0;
     let at = ((hofs / 8) % 32, (vofs / 8) % 32);
-    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp].into_iter().find(|p| *p as u8 == now);
+    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp, Panel::AutoHelp].into_iter().find(|p| *p as u8 == now);
     let drawn_at = (core.raw_read_8(PANEL_AT, -1) as u32, core.raw_read_8(PANEL_AT + 1, -1) as u32);
     let keep = drawn.is_some() && drawn == want && aligned && drawn_at == at;
     if let Some(d) = drawn.filter(|_| !keep) {
@@ -1949,6 +2120,20 @@ pub fn saved_state(core: &Core) -> Option<Vec<u8>> {
     Some(b)
 }
 
+/// DS CAMPAIGN's Continue over a two-front battle saved on its front `live`
+/// (crate::suspend, before AW2's resume runs): on the second front, its map
+/// header in the battle's map table entry, as a swap puts it before the
+/// game's `InitGameSettings` and the terrain read it.
+pub fn continue_on(core: &mut Core, live: u8) {
+    let Some(b) = battle(core) else { return };
+    if live != 1 {
+        return;
+    }
+    if let (Some(at), Some(h)) = (table_entry(core), header(core, b.fronts.second)) {
+        core.raw_write_range(at, -1, &h);
+    }
+}
+
 /// The length [`saved_state`] gives.
 pub const SAVED_LEN: u32 = STATE_LEN + PICKS_LEN + STORE_LEN;
 
@@ -1960,8 +2145,15 @@ pub fn restore_saved(core: &mut Core, b: &[u8]) {
     }
     core.raw_write_range(STATE, -1, &b[..(STATE_LEN + PICKS_LEN) as usize]);
     core.raw_write_range(STORE, -1, &b[(STATE_LEN + PICKS_LEN) as usize..]);
-    // (saved on the main front, outside any swap)
-    core.raw_write_8(LIVE, -1, 0);
+    // (saved outside any swap: on the main front, or on the second during
+    // a player's turn there, [`continue_on`]; the block AW2 restored is the
+    // live front's, its look set before the map's graphics load)
+    let live = if b[0] == 1 && core.raw_read_8(STORE_KIND, -1) == 1 { 1 } else { 0 };
+    core.raw_write_8(LIVE, -1, live);
+    core.raw_write_8(CONTINUED, -1, live);
+    if let Some(m) = live_info(core) {
+        crate::ds_campaign::set_look(core, m);
+    }
     core.raw_write_8(BUSY, -1, 0);
     core.raw_write_8(VIEW, -1, 0);
     core.raw_write_8(PASS, -1, 0);
@@ -1990,7 +2182,8 @@ mod tests {
         assert!(SCRIPT_ROUND + swap_script(Stub::BeginRound).len() as u32 <= SCRIPT_VIEW);
         assert!(SCRIPT_VIEW + swap_script(Stub::BeginViewIn).len() as u32 <= SCRIPT_OVER);
         assert!(SCRIPT_OVER + swap_script(Stub::BeginOver).len() as u32 <= MAP_MENU_COPY);
-        assert!(stub_at(Stub::Bonus) + 16 <= SCRIPT_ROUND);
+        assert!(stub_at(Stub::AutoChosen) + 16 <= SCRIPT_ROUND);
+        assert!(MANUAL < QUEUE && MANUAL > PANEL_AT + 1);
         assert!(MAP_MENU_COPY + MENU_ENTRY * (MAP_MENU_LEN + 2) <= UNIT_MENU_COPY);
     }
 }
