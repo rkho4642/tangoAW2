@@ -431,8 +431,15 @@ def tag_cpu(ctx):
             seen.append(st)
         if not screen and e.u8(EXTRAS) == 1 and e.u8(SCREEN_UP) == 1:
             screen = True
-            e.wait(20)
+            ctx.require(screen_at(e, 330 - TAG_START), "the computer's tag screen sliding")
+            mid = rows_in(bg_map(e, 1), range(18, 28))
+            full_screen_shown(ctx, e, "the computer's tag screen")
+            ctx.shot(g, "cpu_tag_screen_slide")
+            ctx.require(screen_at(e, 560 - TAG_START), "and done")
+            final = rows_in(bg_map(e, 1), range(18, 28))
+            ctx.check(mid and final and mid[0] > final[0], f"its partner slides in ({mid[:1]} -> {final[:1]})")
             ctx.shot(g, "cpu_tag_screen")
+            power_digits(ctx, os.path.join(ctx.out, "cpu_tag_screen.bmp"), tag.compatibility(romlib.DualStrike(), romlib.co_id("max"), romlib.co_id("sami")), "the computer's pair")
         e.wait(10)
         n += 10
     max_, sami = romlib.co_id("max"), romlib.co_id("sami")
@@ -456,8 +463,8 @@ def tag_cpu(ctx):
     e2.wait(40)
     ctx.shot(g2, "cpu_change_quote")
     ctx.require(e2.wait_until(lambda: e2.u8(EXTRAS) == 2, 1200, step=4), "the computer's CO SWAP screen")
-    e2.wait(20)
-    full_screen_shown(ctx, e2, "computer's CO SWAP")
+    ctx.require(screen_at(e2, 262 - SWAP_START), "the computer's CO SWAP, stopped")
+    full_screen_shown(ctx, e2, "computer's CO SWAP", cos_bg=2)
     ctx.shot(g2, "cpu_change_screen")
     ctx.eq(g2.player(2)["co"], max_, "Max still active while it shows")
     ctx.require(e2.wait_until(lambda: g2.current_army() == 1, 30000, step=30), "and back")
@@ -785,19 +792,105 @@ def ds_record(ds, co, off):
 
 
 SCREEN_UP = EXTRAS + 0xD0
+SCREEN_FRAME = EXTRAS + 2
+DISPCNT = 0x030030CC
+BGCNT = (0x03002B6C, 0x03001FE8, 0x030030B4, 0x0300251C)
+BLDCNT, BLDY = 0x030030E0, 0x03001FFC
+# crate::tag_screens: the BGs' maps at screen blocks 28 + n; the text's
+# palettes (13 the name or CO SWAP, 14 the POWER box), the COs' (10, 11 and
+# 12 for a tile both share).
+MAPS = 0x0600E000
+TAG_START, SWAP_START = 141, 157    # Dual Strike's frames the screens start at
 
 
-def full_screen_shown(ctx, e, what):
-    """The screen is up: BG0 alone (no sprites, no windows), its map the
-    picture's 30x20 cells in BG palettes 6..14."""
+def screen_at(e, t, limit=1500):
+    """Run until the screen's frame counter (crate::tag_extras) reaches t."""
+    return e.wait_until(lambda: e.u8(EXTRAS) != 0 and e.u16(SCREEN_FRAME) >= t, limit, step=1)
+
+
+def bg_map(e, n):
+    """BG n's 30x20 map entries (rows of 30)."""
+    b = e.read(MAPS + 0x800 * n, 0x800)
+    return [[b[64 * r + 2 * c] | b[64 * r + 2 * c + 1] << 8 for c in range(30)] for r in range(20)]
+
+
+def rows_in(m, cols):
+    """The map's rows with an entry in `cols`."""
+    return [r for r in range(20) if any(m[r][c] for c in cols)]
+
+
+def palettes_of(m):
+    return {e >> 12 for row in m for e in row if e}
+
+
+def full_screen_shown(ctx, e, what, cos_bg=1):
+    """The screen has the display: no sprites or windows, BG0 the text
+    (palettes 13/14), the COs' BG in palettes 10..12 (12: tiles they share)
+    over several rows of tiles."""
     ctx.eq(e.u8(SCREEN_UP), 1, f"{what}: up")
-    ctx.eq(e.u16(0x030030CC) & 0xFF00, 0x0100, f"{what}: BG0 alone")
-    cnt = e.u16(0x03002B6C)
-    screen = 0x06000000 + ((cnt >> 8) & 0x1F) * 0x800
-    cells = [e.u16(screen + 2 * (32 * r + c)) for r in range(20) for c in range(30)]
-    ctx.check(all(6 <= c >> 12 <= 14 for c in cells), f"{what}: the picture's palettes 6..14")
-    tiles = {c & 0x3FF for c in cells}
-    ctx.check(len(tiles) > 100, f"{what}: a full picture ({len(tiles)} tiles)")
+    d = e.u16(DISPCNT)
+    ctx.eq(d & 0xF000, 0, f"{what}: no sprites, no windows")
+    ctx.check(d & 0x0100 and d & (0x100 << cos_bg), f"{what}: BG0 and the COs' BG{cos_bg} on ({d:#06x})")
+    for n in (0, cos_bg):
+        cnt = e.u16(BGCNT[n])
+        ctx.eq((cnt >> 8) & 0x1F, 28 + n, f"{what}: BG{n}'s map at screen block {28 + n}")
+    cos = bg_map(e, cos_bg)
+    ctx.check(palettes_of(cos) <= {10, 11, 12} and len(rows_in(cos, range(30))) >= 10, f"{what}: the COs' layer ({sorted(palettes_of(cos))}, {len(rows_in(cos, range(30)))} rows)")
+    ctx.check(palettes_of(bg_map(e, 0)) <= {13, 14}, f"{what}: the text's layer, its palettes {sorted(palettes_of(bg_map(e, 0)))}")
+
+
+def read_bmp(path):
+    """A 240x160 24-bit BMP (the runner's shots) as rows of (r, g, b)."""
+    import struct
+    b = open(path, "rb").read()
+    off, w, h = struct.unpack_from("<I", b, 10)[0], *struct.unpack_from("<ii", b, 18)
+    stride = (3 * w + 3) & ~3
+    rows = [[(b[off + stride * y + 3 * x + 2], b[off + stride * y + 3 * x + 1], b[off + stride * y + 3 * x]) for x in range(w)] for y in range(abs(h))]
+    return rows if h < 0 else rows[::-1]
+
+
+def power_digits(ctx, path, want, what):
+    """The POWER box's digits on the shot are Dual Strike's for `want` (its
+    sprite cells, `res_tagbreak`'s first block: digit d the 16x16 cell at
+    tile 42 + 4d, over the box's cells 82 (32x32) and 98 (16x32); the box at
+    (26, 122), the digits from (25, 134) every 12, overlapping): the black
+    pixels of the digits' strip exactly the three digits' over the box's,
+    and not those of `want` - 1 or + 1."""
+    tiles = romlib.DualStrike().file("ohashi/res_tagbreak")
+
+    def px(k, w, x, y):
+        t = k + (y // 8) * (w // 8) + x // 8
+        b = tiles[32 * t + 4 * (y % 8) + (x % 8) // 2]
+        return (b >> (4 * (x % 2))) & 15
+
+    def box(x, y):
+        x, y = x - 26, y - 122
+        if 0 <= x < 32 and 0 <= y < 32:
+            return px(82, 32, x, y)
+        if 32 <= x < 48 and 0 <= y < 32:
+            return px(98, 16, x - 32, y)
+        return 0
+
+    def digit_px(v, x, y):
+        digits = f"{v:03d}"
+        return [px(42 + 4 * int(digits[k]), 16, x - 25 - 12 * k, y - 134) for k in range(3) if 0 <= x - 25 - 12 * k < 16]
+
+    # Where the box or a digit draws (elsewhere the COs show through).
+    region = [(x, y) for y in range(134, 150) for x in range(25, 65) if box(x, y) or any(digit_px(want, x, y))]
+
+    def black(v):
+        out = set()
+        for (x, y) in region:
+            d = digit_px(v, x, y)
+            if 15 in d or (all(v == 0 for v in d) and box(x, y) == 15):
+                out.add((x, y))
+        return out
+
+    img = read_bmp(path)
+    shot = {(x, y) for (x, y) in region if max(img[y][x]) < 40}
+    ctx.log(f"{what}: digits' black pixels: shot {len(shot)}, {want:03d} {len(black(want))}, differing {len(shot ^ black(want))}")
+    ctx.check(shot == black(want), f"{what}: POWER digits {want:03d} drawn from Dual Strike's cells")
+    ctx.check(all(shot != black(v) for v in (want - 1, want + 1) if 0 <= v < 1000), f"{what}: and not {want - 1:03d} or {want + 1:03d}")
 
 
 @test(modes=("ds",))
@@ -810,17 +903,53 @@ def tag_power_screen(ctx):
     g = tag_battle(ctx, ["max", "olaf"], ["andy", None], units=units)
     e = g.e
     fill(g, 1)
-    layers = e.u16(0x030030CC) & 0xFF00
+    layers = e.u16(DISPCNT) & 0xFF00
+    cnts = [e.u16(a) for a in BGCNT]
     g.open_map_menu()
     g.choose("Tag", g.MAP_MENU)
-    seen = e.wait_until(lambda: e.u8(EXTRAS) == 1, 1200, step=4)
-    ctx.require(seen, "the tag screen shows")
-    e.wait(20)
+    seen = e.wait_until(lambda: e.u8(EXTRAS) == 1, 1200, step=1)
+    ctx.require(seen, "the tag screen starts")
+    t0 = e.frame
+    # The map first: it dims (darkened), the screen not yet up.
+    ctx.require(screen_at(e, 20), "frame 20")
+    ctx.eq((e.u8(SCREEN_UP), e.u16(BLDCNT)), (0, 0x00FF), "the map dims before the screen (darkened)")
+    ctx.shot(g, "tag_0_map")
+    # The screen from white: the emblem alone, the COs at the start of their
+    # slide (the partner on the right 94 pixels low), no POWER box yet.
+    ctx.require(screen_at(e, 305 - TAG_START), "Dual Strike's frame 305")
     full_screen_shown(ctx, e, "tag screen")
-    ctx.shot(g, "tag_screen")
-    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 0, 600, step=4), "the screen goes")
+    ctx.eq(e.u16(DISPCNT) & 0x0E00, 0x0A00, "the COs (BG1) and the emblem (BG3), no bokeh yet")
+    start_rows = rows_in(bg_map(e, 1), range(18, 28))
+    ctx.check(palettes_of(bg_map(e, 0)) == set(), "no text yet")
+    ctx.shot(g, "tag_1_start")
+    ctx.require(screen_at(e, 340 - TAG_START), "mid-slide")
+    mid_rows = rows_in(bg_map(e, 1), range(18, 28))
+    ctx.shot(g, "tag_2_mid_slide")
+    # The POWER box up, counting from 000.
+    ctx.require(screen_at(e, 384 - TAG_START), "the box up")
+    ctx.shot(g, "tag_3_box")
+    power_digits(ctx, os.path.join(ctx.out, "tag_3_box.bmp"), 0, "before the count")
+    ctx.require(screen_at(e, 560 - TAG_START), "after the count and the name")
+    final_rows = rows_in(bg_map(e, 1), range(18, 28))
+    ctx.log(f"the partner's top row: start {start_rows[:1]}, mid {mid_rows[:1]}, final {final_rows[:1]}")
+    ctx.check(start_rows and mid_rows and final_rows and start_rows[0] > mid_rows[0] > final_rows[0], "the partner slides up into place")
+    ctx.check(10 <= start_rows[0] - final_rows[0] <= 12, "from 94 pixels below, as Dual Strike's")
+    ctx.eq(e.u16(DISPCNT) & 0x0F00, 0x0F00, "the bokeh blended in (BG2) over the emblem")
+    ctx.eq(e.u16(BLDCNT), 0x0844, "the bokeh over the emblem, alpha")
+    ctx.eq((e.u16(0x03002020), e.u16(0x03002B28)), (14, 4), "Dual Strike's final EVA/EVB")
+    ctx.check(13 in palettes_of(bg_map(e, 0)), "the power's name on BG0")
+    ctx.shot(g, "tag_4_final")
+    power_digits(ctx, os.path.join(ctx.out, "tag_4_final.bmp"), 110, "the pair's compatibility")
+    # The burst raised over the COs and blended in.
+    ctx.require(screen_at(e, 640 - TAG_START), "the burst")
+    ctx.eq(e.u16(BLDCNT), 0x2648, "the burst (BG3) over the COs, the bokeh and the backdrop")
+    ctx.shot(g, "tag_5_burst")
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 0, 900, step=1), "the screen goes")
+    ctx.log(f"the screen took {e.frame - t0} frames")
+    ctx.check(560 <= e.frame - t0 <= 600, f"as long as Dual Strike's (576 frames for 110%): {e.frame - t0}")
     ctx.eq(e.u8(SCREEN_UP), 0, "taken away")
-    ctx.eq(e.u16(0x030030CC) & 0x1F00, layers & 0x1F00, "the layers as they were")
+    ctx.eq(e.u16(DISPCNT) & 0x1F00, layers & 0x1F00, "the layers as they were")
+    ctx.eq([e.u16(a) for a in BGCNT], cnts, "the BGs as they were")
     ctx.require(e.wait_until(lambda: g.player(1)["co_mode"] == 2, 3000, step=10), "the Super Power follows")
 
 
@@ -840,12 +969,35 @@ def tag_change_line_and_band(ctx):
     ctx.eq(rom_string(e, STRINGS), want, "Max's tag-in line from the .nds")
     e.wait(40)
     ctx.shot(g, "change_quote")
-    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 2, 1200, step=4), "the CO SWAP screen")
-    e.wait(20)
-    full_screen_shown(ctx, e, "CO SWAP")
-    ctx.shot(g, "change_screen")
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 2, 1200, step=1), "the CO SWAP screen")
+    t0 = e.frame
+    ctx.require(screen_at(e, 8), "frame 8")
+    ctx.eq((e.u8(SCREEN_UP), e.u16(BLDCNT)), (0, 0x00FF), "the map fades to black first")
+    ctx.check(e.u16(BLDY) >= 8, "darkened")
+    ctx.require(screen_at(e, 215 - SWAP_START), "the COs coming in")
+    full_screen_shown(ctx, e, "CO SWAP", cos_bg=2)
+    # Mid-slide: the outgoing CO (mirrored) on the left, the incoming on the
+    # right; the letters opening (two so far: C, O).
+    m = bg_map(e, 2)
+    early = (rows_in(m, range(0, 4)), rows_in(m, range(26, 30)))
+    letters = len({c for r in range(9, 13) for c in range(8, 22) if bg_map(e, 0)[r][c]})
+    ctx.shot(g, "change_1_slide")
+    ctx.require(screen_at(e, 262 - SWAP_START), "stopped")
+    m = bg_map(e, 2)
+    cols = [c for c in range(30) if any(m[r][c] for r in range(20))]
+    ctx.check(cols[0] == 0 and cols[-1] == 29, f"stopped back to back across the screen ({cols[0]}..{cols[-1]})")
+    text = bg_map(e, 0)
+    logo = sorted({c for r in range(20) for c in range(30) if text[r][c]})
+    ctx.check(logo and logo[0] == 8 and logo[-1] == 21, f"CO*SWAP across columns 8..21 ({logo[:1]}..{logo[-1:]})")
+    ctx.check(letters < len(logo), f"the letters opened one after another ({letters} columns, then {len(logo)})")
+    ctx.log(f"mid-slide rows at the edges {early}")
+    ctx.shot(g, "change_2_stopped")
+    ctx.require(screen_at(e, 280 - SWAP_START), "the burst")
+    ctx.eq(e.u16(BLDCNT), 0x2442, "the burst (BG1) over the COs and the red")
+    ctx.shot(g, "change_3_burst")
     ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 0, 600, step=4), "the screen goes")
-    ctx.eq(e.u16(0x030030CC) & 0x1F00, layers & 0x1F00, "the layers as they were")
+    ctx.check(185 <= e.frame - t0 <= 200, f"as long as Dual Strike's (191 frames): {e.frame - t0}")
+    ctx.eq(e.u16(DISPCNT) & 0x1F00, layers & 0x1F00, "the layers as they were")
     ctx.require(e.wait_until(lambda: g.current_army() == 2, 1500, step=8), "the turn ends")
     ctx.eq((g.player(1)["co"], tag.partner(e, 1)["co"]), (romlib.co_id("max"), romlib.co_id("andy")), "the COs swapped")
 
@@ -982,9 +1134,24 @@ def tag_sturm_pairs(ctx):
     g.open_map_menu()
     g.choose("Tag", g.MAP_MENU)
     ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 1, 1200, step=4), "the tag screen shows")
-    e.wait(20)
+    # Sturm (AW2's art, to his waist, carried on down) slides in as Dual
+    # Strike's COs do, Von Bolt up into place beside him.
+    def sides():
+        m = bg_map(e, 1)
+        sturm = all(any(m[r][c] >> 12 in (10, 12) for c in range(0, 8)) for r in range(20))
+        return sturm, rows_in(m, range(18, 28))
+
+    ctx.require(screen_at(e, 310 - TAG_START), "sliding")
     full_screen_shown(ctx, e, "Sturm + Von Bolt")
+    sturm_early, early = sides()
+    ctx.shot(g, "sturm_vonbolt_slide")
+    ctx.require(screen_at(e, 600 - TAG_START), "done")
+    sturm_late, late = sides()
+    ctx.check(sturm_early and sturm_late, "Sturm's art down his whole side, sliding and at rest")
+    ctx.check(early and late and early[0] > late[0], f"Von Bolt slides up into place ({early[:1]} -> {late[:1]})")
+    ctx.check(13 in palettes_of(bg_map(e, 0)), "the name (Black Apocalypse)")
     ctx.shot(g, "sturm_vonbolt_tag_screen")
+    power_digits(ctx, os.path.join(ctx.out, "sturm_vonbolt_tag_screen.bmp"), 125, "Sturm + Von Bolt")
     ctx.require(e.wait_until(lambda: g.player(1)["co_mode"] == 2, 3000, step=10), "the Super Power follows")
 
 

@@ -3,18 +3,20 @@
 //!
 //! - **The Tag Power's screen.** Choosing Tag (a human army's or the
 //!   computer's), after the first CO's quote and before AW2's Super Power
-//!   screen: Dual Strike's tag screen, full screen (crate::tag_screens):
-//!   the two COs' Dual Strike art facing each other over its background,
-//!   the pair's Tag Power name in its tag font (a special pair's own,
-//!   "Power Wrench"; Dual Strike's "Dual Strike" for any other) and
-//!   "POWER 110%", the pair's compatibility. It holds the power's script
-//!   where AW2's waits for the quote to close (`sub_08039914`'s test),
-//!   [`INTRO_FRAMES`] frames.
+//!   screen: Dual Strike's tag screen, full screen and animated as Dual
+//!   Strike's (crate::tag_screens): the two COs' Dual Strike art sliding in
+//!   to face each other over its emblem and background, the POWER box
+//!   counting to the pair's compatibility, the pair's Tag Power name (a
+//!   special pair's own, "Power Wrench"; Dual Strike's "Dual Strike" for
+//!   any other) popping in a letter at a time, with Dual Strike's sounds.
+//!   It holds the power's script where AW2's waits for the quote to close
+//!   (`sub_08039914`'s test), [`crate::tag_screens::length`] frames (576
+//!   for a 110% pair, as Dual Strike's).
 //! - **Change.** The map menu's Change runs a script of its own (in ROM,
 //!   [`SCRIPT_CHANGE`]): the menu closes, the incoming CO says its tag-in
 //!   line (Dual Strike's CO record +0x34 or +0x38, in AW2's quote box,
-//!   `sub_08019818`), Dual Strike's CO SWAP screen shows the incoming CO
-//!   ([`SWAP_FRAMES`] frames), the COs swap and the turn ends
+//!   `sub_08019818`), Dual Strike's CO SWAP screen (the two COs crossing,
+//!   CO★SWAP opening, 191 frames as Dual Strike's), the COs swap and the turn ends
 //!   (`MapMenu_End`). The computer's Change ([`cpu_change`]) runs the
 //!   same without the menu, at its turn's end, then ends its turn.
 //! - **Victory.** A special pair's army winning: the results screen's
@@ -45,8 +47,6 @@ const FRAME: u32 = STATE + 2;
 const PENDING: u32 = STATE + 4;
 /// The CO page shows the TAG page (1).
 const TAG_PAGE: u32 = STATE + 5;
-const SAVED_HOFS: u32 = STATE + 6;
-const SAVED_VOFS: u32 = STATE + 8;
 /// The CO page's star tiles borrowed (1), and them as they were.
 const STARS_BORROWED: u32 = STATE + 0x0A;
 /// Change's outgoing and incoming COs.
@@ -54,17 +54,17 @@ const SWAP_FROM: u32 = STATE + 0x0B;
 const SWAP_TO: u32 = STATE + 0x0C;
 /// The TAG page's CO.
 const PAGE_CO: u32 = STATE + 0x0D;
+/// The screen's back layer (crate::tag_screens::Ram::back) and its display
+/// shadows kept (1).
+const SCREEN_BACK: u32 = STATE + 0x0E;
+const SCREEN_KEPT: u32 = STATE + 0x0F;
 const SAVED_STARS: u32 = STATE + 0x70; // 2 x 32
-/// The screen is up (1); the display's layer bits before it.
+/// The screen has the display (1).
 const SCREEN_UP: u32 = STATE + 0xD0;
-const SAVED_DISP: u32 = STATE + 0xD2;
 /// The computer's Change: 0 none, 1 under way, 2 done (its turn ends).
 const CPU_CHANGE: u32 = STATE + 0xD4;
 #[cfg(test)]
 const STATE_END: u32 = STATE + 0xD8;
-
-pub const INTRO_FRAMES: u16 = 150;
-pub const SWAP_FRAMES: u16 = 100;
 
 // --- ROM ---------------------------------------------------------------------------
 
@@ -286,12 +286,12 @@ fn write_palette(core: &mut Core, pal: u32, p: &[u8; 32]) {
 }
 
 fn screen_ram() -> crate::tag_screens::Ram {
-    crate::tag_screens::Ram { up: SCREEN_UP, disp: SAVED_DISP, hofs: SAVED_HOFS, vofs: SAVED_VOFS }
+    crate::tag_screens::Ram { up: SCREEN_UP, kept: SCREEN_KEPT, back: SCREEN_BACK }
 }
 
 /// The screen of `kind` now: the Tag Power's (the army's pair, its power's
 /// name, a special pair's or "Dual Strike", and its compatibility) or CO
-/// SWAP (the incoming CO).
+/// SWAP (the outgoing and incoming COs).
 fn screen_of(core: &Core, kind: u8) -> Option<crate::tag_screens::Screen> {
     let army = core.raw_read_8(ARMY, -1) as u32;
     if kind == 1 {
@@ -300,31 +300,32 @@ fn screen_of(core: &Core, kind: u8) -> Option<crate::tag_screens::Screen> {
         let name = pair_texts(a, b).map(|(n, _)| flat(&n)).unwrap_or_else(|| b"Dual Strike".to_vec());
         Some(crate::tag_screens::Screen::Tag(a, b, name, tag::compatibility(a, b)))
     } else {
-        Some(crate::tag_screens::Screen::Swap(core.raw_read_8(SWAP_TO, -1)))
+        Some(crate::tag_screens::Screen::Swap(core.raw_read_8(SWAP_FROM, -1), core.raw_read_8(SWAP_TO, -1)))
     }
 }
 
-/// One frame of the screen of `kind`; true once it is over (and taken
-/// away). No picture (or no room for it): over at once.
-fn screen_frame(core: &mut Core, kind: u8, frames: u16) -> bool {
+/// One frame of the screen of `kind`: the sound effect to play now (a
+/// song), and true once it is over (and taken away). No screen (no pack):
+/// over at once.
+fn screen_frame(core: &mut Core, kind: u8) -> (Option<u16>, bool) {
     let first = core.raw_read_8(KIND, -1) != kind;
     let f = if first { 0 } else { core.raw_read_16(FRAME, -1) + 1 };
-    let pic = screen_of(core, kind).and_then(|s| crate::tag_screens::picture(core, &s));
-    let Some(pic) = pic.filter(|p| crate::tag_screens::fits(core, p)) else {
+    let Some(s) = screen_of(core, kind) else {
         crate::tag_screens::hide(core, &screen_ram());
         core.raw_write_8(KIND, -1, 0);
-        return true;
+        return (None, true);
     };
-    if f >= frames {
-        crate::tag_screens::hide(core, &screen_ram());
-        core.raw_write_8(KIND, -1, 0);
-        return true;
-    }
     core.raw_write_8(KIND, -1, kind);
     core.raw_write_16(FRAME, -1, f);
-    crate::tag_screens::show(core, &screen_ram(), &pic, f);
-    false
+    let (sound, over) = crate::tag_screens::frame(core, &screen_ram(), &s, f);
+    if over {
+        core.raw_write_8(KIND, -1, 0);
+    }
+    (sound, over)
 }
+
+/// AW2's sound-effect call (`sub_0803B4DC(song)`).
+const PLAY_SE: u32 = 0x0803_B4DC;
 
 // --- The Tag Power's screen ----------------------------------------------------------
 
@@ -354,8 +355,20 @@ fn wait_quote(core: &mut Core) {
         core.raw_write_8(ARMY, -1, pending);
         core.raw_write_8(PENDING, -1, 0);
     }
-    if !screen_frame(core, 1, INTRO_FRAMES) {
-        core.gba_mut().cpu_mut().set_thumb_pc(WAIT_QUOTE_DONE);
+    let (sound, over) = screen_frame(core, 1);
+    if !over {
+        // Still up: the script waits (the function returns without
+        // `Proc_Break`), through AW2's sound-effect call on a frame with a
+        // sound.
+        let cpu = core.gba_mut().cpu_mut();
+        match sound {
+            Some(song) => {
+                cpu.set_gpr(0, song as i32);
+                cpu.set_gpr(14, (WAIT_QUOTE_DONE | 1) as i32);
+                cpu.set_thumb_pc(PLAY_SE);
+            }
+            None => cpu.set_thumb_pc(WAIT_QUOTE_DONE),
+        }
     }
 }
 
@@ -456,10 +469,15 @@ pub fn quote(core: &mut Core) {
 /// The script's CO SWAP screen: a frame (a `PROC_REPEAT`; `Proc_Break`
 /// when over).
 pub fn swap_frame(core: &mut Core) {
-    if screen_frame(core, 2, SWAP_FRAMES) {
-        core.gba_mut().cpu_mut().set_thumb_pc(PROC_BREAK);
+    let (sound, over) = screen_frame(core, 2);
+    let cpu = core.gba_mut().cpu_mut();
+    if over {
+        cpu.set_thumb_pc(PROC_BREAK);
+    } else if let Some(song) = sound {
+        // AW2's sound-effect call, returning where this would have.
+        cpu.set_gpr(0, song as i32);
+        cpu.set_thumb_pc(PLAY_SE);
     } else {
-        let cpu = core.gba_mut().cpu_mut();
         let lr = cpu.gpr(14) as u32;
         cpu.set_thumb_pc(lr & !1);
     }
