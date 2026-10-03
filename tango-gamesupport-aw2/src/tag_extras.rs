@@ -28,7 +28,8 @@
 //!   special partners, each with its star rating (Dual Strike's 1..3, in
 //!   AW2's small star tiles), as Dual Strike's CO page's TAG box.
 //!
-//! RAM: [`STATE`] (`0x0203F300..0x0203F3D7`). Text ids 0x7305..0x7307,
+//! RAM: [`STATE`] (`0x0203F500..0x0203F5D7`: after crate::tag's, clear of
+//! crate::two_front's store, which ends at `0x0203F396`). Text ids 0x7305..0x7307,
 //! their strings in ROM after crate::tag's (`0x08781000..`); the scripts
 //! at [`SCRIPT_CHANGE`] and [`SCRIPT_CPU_CHANGE`].
 
@@ -38,7 +39,7 @@ use crate::tag;
 
 // --- RAM ---------------------------------------------------------------------------
 
-pub const STATE: u32 = 0x0203_F300;
+pub const STATE: u32 = 0x0203_F500;
 /// The screen shown: 0 none, 1 the Tag Power's, 2 CO SWAP.
 const KIND: u32 = STATE;
 const ARMY: u32 = STATE + 1;
@@ -735,7 +736,8 @@ mod tests {
 
     #[test]
     fn layout() {
-        assert!(STATE_END <= tag::STATE);
+        assert!(STATE >= tag::STATE_END && STATE_END <= 0x0203_F600, "between the tag pairs and the DS Campaign's records");
+        assert!(STATE >= crate::two_front::STORE_END, "clear of the stored front");
         assert!(SAVED_STAR_PALETTE + 32 <= SCREEN_UP);
         assert!(SAVED_STARS + 64 <= STATE_END);
     }

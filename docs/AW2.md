@@ -662,7 +662,7 @@ Campaign's records; 0x0203E000..0x0203F73F was found unwritten at the title, Sel
 scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203FDC8..0x0203FDFB, stun, battle distance, Teams list),
 0x0203E800..0x0203F09F (the Teams screen's borrowed tiles while partners show), 0x0203F100..0x0203F2FF
-(the Rules screen's borrowed label tiles), 0x0203F400..0x0203F4FF (tag pairs), 0x0203FF00.. (earlier
+(the Rules screen's borrowed label tiles), 0x0203F400..0x0203F4FF (tag pairs), 0x0203F500..0x0203F5D7 (the tag screens, the CO page's TAG box), 0x0203FF00.. (earlier
 features). Free ROM: 0x08780000..0x0878FFFF (the tag map menu, its stubs and strings, the Rules rows' help
 lines), 0x08790000..0x087A042F (what the tag screens cover, while they show). `factory.rs` has a test that no two traps share
 an address.
@@ -2439,7 +2439,7 @@ stay out.
   digits are drawn as Dual Strike's affine sprites scale them (nearest
   pixel, the same steps). A tile both COs share takes a palette of both
   COs' colours. Every frame is a function of the screen and its frame
-  count in RAM (`0x0203F302`), written during VBlank, so netplay, rollback
+  count in RAM (`0x0203F502`), written during VBlank, so netplay, rollback
   and replays draw the same, and the battle's random numbers are untouched
   (the same luck and the same computer turn after the 150-frame still
   screen of 0.5.1 and after the animation). What it covers (BG VRAM, the BG
@@ -2452,7 +2452,8 @@ stay out.
   Power's and the unit charts: header "TAG", the CO's special partners,
   each with its rating's full stars (1..3, OBJ tile 0x321 and palette 12
   borrowed). Text ids 0x7305..0x7307, strings at `0x08781000..`; RAM
-  `0x0203F300..0x0203F3D7`.
+  `0x0203F500..0x0203F5D7` (0.5.0 had it at `0x0203F300..`, inside the two
+  fronts' store, whose tail it could overwrite).
 - **Sturm** (`sturm_pairs.rs`): AW2's Sturm is not in Dual Strike, so
   his pairs are **tangoAW2's own data, made up for tangoAW2** (symmetric,
   with the pack only): Von Bolt 125 (3 stars, "Black Apocalypse"), Hawke

@@ -543,6 +543,9 @@ const SKILLS_LEN: u32 = 30;
 const EX_STUN: u32 = EX_SKILLS + SKILLS_LEN;
 pub const EXTRA_LEN: u32 = EX_STUN + crate::co_powers::STUN_STATE_LEN as u32;
 pub const STORE_LEN: u32 = BLOCK_LEN + EXTRA_LEN;
+/// The store's end (crate::tag_extras's state comes after it).
+#[cfg(test)]
+pub const STORE_END: u32 = STORE + STORE_LEN;
 #[cfg(test)]
 const RAM_END: u32 = 0x0203_F600;
 

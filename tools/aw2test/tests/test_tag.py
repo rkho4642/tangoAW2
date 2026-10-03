@@ -767,7 +767,7 @@ def tag_two_front_partner(ctx):
 
 # --- Dual Strike's tag screens (crate::tag_extras) --------------------------------------
 
-EXTRAS = 0x0203F300          # crate::tag_extras::STATE: +0 the screen (1 Tag, 2 CO SWAP)
+EXTRAS = 0x0203F500          # crate::tag_extras::STATE: +0 the screen (1 Tag, 2 CO SWAP)
 STRINGS = 0x08781000         # its texts: tag-in +0, victory +0x100, TAG page +0x300
 
 
