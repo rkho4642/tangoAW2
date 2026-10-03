@@ -1506,12 +1506,32 @@ record id the map hands on, `0x02183CC0`):
   (SWAP shows the top screen's info panel instead).
 - **Who plays it.** "In Campaign mode, the second front is controlled
   automatically" (the tutorial, bank 0x31): the player's second CO's army is
-  the computer's. From Lightning Strikes on the campaign also lets the
-  player take it: Intel's Auto CO ("open Intel on the menu, and find Auto
-  CO. Touch Auto CO to turn it on or off", bank 0x34 text 24; Ring of Fire's
-  bank 0x29 text 23; help lines "Allow CPU to direct the secondary front." /
-  "Direct the secondary front manually.", bank 0xC0 texts 740, 741).
-  "CO Powers can't be used there, either. The action is too fast."
+  the computer's. **Auto CO** (melonDS, the states of each mission's battle
+  and its Setup phase): Intel's menu (Status, Terms, Unit, General, then
+  Auto CO) has a last item "Auto CO On" (bank 0xC0 text 102; its help line
+  "Allow CPU to direct the secondary front.", text 740) in **Lightning
+  Strikes and Ring of Fire only**: its test (arm9 `0x020BE908`, its twin
+  `0x020BE7A8` for "Auto CO Off") shows it only on the front whose map
+  record is 0xEA or 0xF5 (`cmp r0, #0xEA` / `#0xF5` on the record's +0x34)
+  while the other front is not over; Victory or Death!, Omens and Signs and
+  Means to an End have no such item. It is **on at the start** ("If it
+  sounds too hard, I'd leave it on", bank 0x34 text 24). A chooses it and
+  the item becomes "Auto CO Off" in place (text 103; "Direct the secondary
+  front manually.", text 741), the menu staying open; A again turns it back.
+  It is the controller byte of the player's army on the second front (its
+  player record's +0x1A: 2 the computer, 1 the player; the test reads it,
+  the item flips it). It is on the **main front's** Intel only (the second
+  front's Intel is Status and Unit), in the Setup phase and on any later
+  main-front turn ("You can turn Auto CO on or off anytime", bank 0x29
+  text 23): turned on on day 2, day 2's second front was the computer's
+  again. **Off**: after the main front's armies (the player's End, Black
+  Hole's turn), the second front comes to the bottom screen with its own
+  "Day 1" banner and waits for the player: the player's army there with
+  its CO (the tag CO, the second front's: Jake), its own funds (5000 where
+  the main front had 6000) and units; its menu CO, Intel, Options, Save,
+  End (no Power: "CO Powers can't be used there, either. The action is too
+  fast."); End: Black Hole's turn there (the computer's, top screen), then
+  the next day on the main front.
 - **Send** (the unit command table at arm9 `0x02166000`, 0x20 bytes an
   entry: "Send" twice, `0x021661E0` and `0x02166200`, their handler
   `0x020BCE50`): a unit leaves the main front for the second ("Keep in mind
@@ -1548,8 +1568,9 @@ record id the map hands on, `0x02183CC0`):
 description names the second front (`second`: an index of `Built::headers`,
 the second front's header, and of `Built::missions`, its look, weather, fog
 and armies), each army's CO there (`cos`: AW2 ids, or `PICK`: the player
-picks it on the CO screen after the main front's picks), who directs the
-player's armies there (`control`: `Cpu` or `Manual`), what may be sent
+picks it on the CO screen after the main front's picks), who directs each
+army there (`control`, per army slot: `Cpu`, `Owner` or `AutoCo { on }`,
+below), what may be sent
 (`send`: `None`, `Air`, `Ground`) and whether CO powers work there
 (`powers`). The second front's header carries its own event lists (for
 Dual Strike's missions: its records of the shared list,
@@ -1560,7 +1581,9 @@ fog. The look is set at every swap and view (`ds_campaign::set_look` from
 `two_front::arrive`, before the map's graphics load; the biome is in the
 weather block, so the suspend block carries it too). Dual
 Strike's source fills it from the record (`ds_campaign_data::two_front`: a
-front whose deployment is aircraft only is in the sky). Nothing in
+front whose deployment is aircraft only is in the sky; `AutoCo { on: true }`
+for every army of the missions whose records Dual Strike's Auto CO test
+names, read from its two `cmp` instructions, `Cpu` elsewhere). Nothing in
 `two_front.rs` is Dual Strike's: a custom campaign's mission describes its
 second front the same way.
 
@@ -1607,8 +1630,7 @@ Room, Survival, the Design Room, netplay and the pack off are untouched
   the main front plays a round, then the second front, then the next day.
 - **Front** (the map menu: the game's table copied with Front after
   Options, `MAP_MENU_POOL` `0x0802D49C` pointing at the copy while the gate
-  is on; Save's test made ours, hidden while the second front is on the
-  screen): the same swap, the other front shown with the map cursor (its
+  is on; Save's test made ours, hidden during a swap): the same swap, the other front shown with the map cursor (its
   army made the player's for as long, as AW2's dispatch gives a player's
   army the cursor) and every button but the D-pad kept from the game; B
   swaps back. The front looked at is put back as it was (its block still in
@@ -1619,7 +1641,8 @@ Room, Survival, the Design Room, netplay and the pack off are untouched
   the battle's flags, the cursor, the skills byte for byte).
 - **Panels.** The help line ("View the other front.", while Front is
   highlighted, where AW2's map menu has its own), the view's title and its
-  B button ("Second front", "Back", top centre: while the other front is
+  B button ("Second front", or "Main front" when a human's second-front
+  turn looks back at it; "Back"; top centre: while the other front is
   looked at its army's CO panel is not drawn, `co_panel` through
   `tag`'s `DrawArmyCoPanel` trap, its face's tiles being the turn's army's;
   nor the terrain and unit panels, put below the screen in their frame
@@ -1661,11 +1684,43 @@ Room, Survival, the Design Room, netplay and the pack off are untouched
   and `SetArmyCoIdsFromList` `sub_0803BCDC`, trapped while it shows):
   Lightning Strikes' main CO is fixed (Rachel) and the player picks the
   second front's.
-- **A mission saved halfway** keeps both fronts: the block of the main front
-  (the only front the player saves on), then "T2FT", the two-front state and
+- **Who plays a second-front turn** (`control`, per army; the engine never
+  asks who "the player" is). An army's **owner** is its controller on the
+  main front (AW2's per-army controller byte, the player record's +0x1B: 1
+  a human, local or a netplay peer by its seat, 2 the computer), read from
+  the main front's block in the store. The army's controller on the second
+  front, written into its player record and gPlaySt each time the second
+  front comes on the screen (set up or brought back): `Cpu` 2; `Owner` the
+  owner's; `AutoCo` the owner's while that army's Auto CO is off, 2 while it
+  is on (a computer owner's army is the computer's either way). AW2's own
+  turn dispatch then gives a human's army the cursor and the computer's its
+  CPU turn, as on any map: a human plays the second front's turn with that
+  front's CO, funds, units and rules (CO powers as the description says).
+- **Auto CO** (`AutoCo`): Intel's menu (the game's table `0x0849ABC0`,
+  opened by `0x0802D504` from its pool word `0x0802D550`, pointed at a copy
+  while the gate is on) gets Dual Strike's two items after AW2's own,
+  "Auto CO On" and "Auto CO Off" (no icon, as Dual Strike's), one shown at a
+  time, as AW2's Options menu shows Music On / Music Off: shown to the
+  current army on its main-front turn (the Setup phase's Intel too) while
+  the second front is fought and its description is `AutoCo`; chosen, the
+  army's setting flips and the menu is redrawn in place (`0x08019E68`, what
+  Music's handler calls). Its help line is Dual Strike's for the setting
+  as it is (`two_front`'s panels). The setting is a bit per army
+  (`0x0203E41B`, set means off: a save from before reads on), started from
+  the description's `on`, saved with the battle; a change takes effect at
+  the second front's next round. Not on the second front (Dual Strike's
+  isn't either).
+- **A mission saved halfway** keeps both fronts: the block of the front on
+  the screen (the main front, or the second during a human's turn there:
+  Dual Strike offers Save on both), then "T2FT", the two-front state and
   the store, in slot 14 (AW2's writer splits a record over sectors of
   0xFAD bytes: two parts); Continue brings them back
-  (`two_front_saved_halfway`, across a reboot).
+  (`two_front_saved_halfway`, `two_front_auto_co_saved`, across a reboot).
+  Saved on the second front, Continue first writes that front's header into
+  the map table entry (read from the record in Flash before AW2's resume
+  runs, `suspend::resume_ds`), so `InitGameSettings` and the terrain load
+  its map; its look is set once the block is restored, and the front stays
+  live until the battle is on the screen (`0x0203E41C`).
 - **In the sky** (`sky_front.rs`, the description's `sky`): every cell is
   drawn with the clouds (the picture's 16x16 at the cell's position,
   repeating) by `wasteland`'s painter (`BlitMapRow`/`BlitMapColumn`, with
@@ -1693,9 +1748,13 @@ the second front's course, the swap, the view, the queue, the shared
 flags, the second front's COs and the mission they were picked for),
 `0x0203E500..0x0203F396` the store (block and tangoAW2's state); the
 staging buffer's tail (`0x02001D80..0x02001FFF`: the panel's BG2 cells,
-the incoming front's tangoAW2 state). ROM `0x08E70000..0x08E73FFF`
-(stubs, the three swap scripts, the menus' copies, the labels; text ids
-0x7FFD Send, 0x7FFE Front); `0x0203E4C0..0x0203E4E3` `sky_front`'s
+the incoming front's tangoAW2 state; the state's `0x0203E41B` is Auto CO's
+bits, `0x0203E41C` a Continue on the second front). ROM
+`0x08E70000..0x08E73FFF` (stubs, the three swap scripts, the menus'
+copies: map menu, unit menu, Intel at `0x08E71100`; the labels; text ids
+0x7FFA Auto CO Off, 0x7FFB Auto CO On, 0x7FFD Send, 0x7FFE Front: a
+campaign's texts stay below 0x7FFA); pool words `0x0802D49C`,
+`0x0802D59C`, `0x0802D550`; `0x0203E4C0..0x0203E4E3` `sky_front`'s
 borrowed OBJ palette. Traps: `0x08034AF8`, `0x08034EF0`,
 `0x0803BD14`, `0x0803BCDC`, `0x080743E8`, `0x080743AA` (the unit layers'
 rebuild after a Send returns there: alignment padding in
@@ -1715,8 +1774,9 @@ barrier, eruption cells, the Volcano), `grand_bolt::on` (the main front's),
   Strike's ground picture (AW2 has one map layer); the minicannons keep
   AW2's picture, in the Black Arc's colours; the terrain panel still says
   Sea.
-- No Auto CO: the second front is always the computer's (the description's
-  `Manual` exists for it; Dual Strike's Intel item is not ported).
+- Auto CO: a human's second-front turn is on the one screen (Dual Strike
+  brings that front to the bottom screen for it); Intel's own items are
+  AW2's (Status, Terms, Unit; no General, Dual Strike's ally posture).
 - The second front's computer is AW2's own CPU: units with nothing in reach
   hold (Dual Strike's may advance); the player sends units to carry it.
 - Tag pairs: the second front's winning CO joins its army on the main
@@ -1726,14 +1786,35 @@ barrier, eruption cells, the Volcano), `grand_bolt::on` (the main front's),
   Strike's own formula (not read).
 - The swap's wipes take about a second each way.
 
-**A two-front Versus map, later.** It would need: a source of descriptions
-besides the campaign's `Built` (two map ids of the Versus map table, a
-`TwoFront` per map, `header()` reading its headers); the gate extended to
-it (and, online, to both players having the pack, as the matches' content
-flags do); `Manual` control (both fronts the players', each seat owning
-its armies on both: `pvp`'s seat-by-army rule holds as long as the armies
-keep their slots); the Teams screen's COs per front; and its suspend
-(Versus slot 4, as slot 14 here). The state is netplay-safe as it is: the
+**A two-front Versus map, later.** Control is already per army and by the
+army's own controller, so a Versus map needs no change to the rounds, the
+swap or the turns: it declares its fronts as a campaign mission does, a
+`TwoFront` with `control` per army slot, e.g.
+
+```rust
+TwoFront {
+    second: 1,                       // the second front's header and MissionInfo
+    cos: [PICK, PICK, PICK, PICK],   // each army's second-front CO, picked
+    control: [FrontControl::AutoCo { on: false }; 4], // each army's owner plays, unless it turns Auto CO on
+    send: SendRule::Ground,
+    powers: true,
+    sky: false,
+}
+```
+
+(`Owner` instead of `AutoCo` for a map that always gives each seat both
+fronts; `Cpu` for an army whose second front is always the computer's.)
+Whoever controls an army on the Teams screen (a human, local or a netplay
+peer, or the computer) is its owner and plays its second-front turns: two
+humans each play their own, and `pvp`'s seat-by-army rule gives each
+second-front turn to its army's seat as long as the armies keep their
+slots; each human's Auto CO is their own army's bit, changed on their own
+main-front turns. What it still needs: a source of descriptions besides the
+campaign's `Built` (two map ids of the Versus map table, a `TwoFront` per
+map, `header()` reading its headers); the gate extended to it (and, online,
+to both players having the pack, as the matches' content flags do); the
+Teams screen's COs per front; and its suspend (Versus slot 4, as slot 14
+here). The state is netplay-safe as it is: the
 store and every byte of the swap live in the emulated EWRAM, every ROM
 write (the map table entry, the menus' pool words, the stubs) follows RAM
 each frame, and nothing reads the host; rollback restores both fronts with
@@ -1747,7 +1828,17 @@ units and structures are set up directly): `two_front_rounds`,
 view and back; the Black Arc's picture and colours in the sky only and put
 back; each second front's units per army as Dual Strike's record), and
 one per mission above (each condition of each front triggered through the
-game's state); `ds_campaign_data`'s `two_fronts_are_dual_strikes` and
+game's state); Auto CO (`tools/aw2test/tests/test_auto_co.py`):
+`two_front_auto_co_only_where_ds_has_it` (Lightning Strikes and Ring of
+Fire, on at the start; the other three, a one-front mission and Versus
+without), `two_front_auto_co_off_human_plays` (the item flipped in place
+with its help line; the player's second-front turn: controller, CO, funds,
+menu, Front back to the main front and back, a unit moved, End, Black
+Hole's turn there, day 2; Auto CO on again: the computer's round),
+`two_front_auto_co_on_cpu_plays`, `two_front_auto_co_in_setup`,
+`two_front_auto_co_saved` (the setting across a reboot; saved on the
+player's second-front turn and continued there); `ds_campaign_data`'s
+`two_fronts_are_dual_strikes` (with Auto CO's missions) and
 `day_limits_are_dual_strikes` (with the .nds).
 
 ## Setup phase (`setup_phase.rs`)

@@ -1272,6 +1272,29 @@ fn in_the_sky(ds: &Ds, front: &Record) -> bool {
     units.chunks(12).filter(|u| u[0] < 0xFE).all(|u| SKY_UNITS.contains(&u[2]) || matches!(u[2], 19 | 20))
 }
 
+/// Dual Strike's Intel > Auto CO item: its test (arm9 `0x020BE908`, "Auto CO
+/// On"; its twin `0x020BE7A8`, "Auto CO Off") shows it only on the front
+/// whose map record is one of two (`ldrh r0, [rec, #0x34]; cmp r0, #0xEA;
+/// beq; cmp r0, #0xF5; movne r0, #1`: Lightning Strikes and Ring of Fire),
+/// while the other front is not over, with the army's controller (its player
+/// record's +0x1A) 2 (the computer: On) or not (Off); choosing it flips that
+/// byte. The record ids, read from the two `cmp` instructions (none when the
+/// code is not there).
+const AUTO_CO_CMP: [u32; 2] = [0x020B_E940, 0x020B_E948];
+pub fn auto_co_records(ds: &Ds) -> Vec<u32> {
+    let ids: Vec<u32> = AUTO_CO_CMP
+        .iter()
+        .filter_map(|&a| ds.u32(a))
+        .filter(|w| w & 0xFFFF_FF00 == 0xE350_0000)
+        .map(|w| w & 0xFF)
+        .collect();
+    if ids.len() == AUTO_CO_CMP.len() {
+        ids
+    } else {
+        Vec::new()
+    }
+}
+
 fn two_front(ds: &Ds, rec: &Record) -> Option<crate::campaign_model::TwoFront> {
     use crate::campaign_model::{FrontControl, SendRule, TwoFront, PICK};
     if rec.index >= MISSIONS || rec.second_front < (FIRST_RECORD + MISSIONS as u32) as u16 {
@@ -1287,10 +1310,18 @@ fn two_front(ds: &Ds, rec: &Record) -> Option<crate::campaign_model::TwoFront> {
         };
     }
     let sky = in_the_sky(ds, &front);
+    // Intel > Auto CO where Dual Strike offers it (on at the start), the
+    // computer's elsewhere ("In Campaign mode, the second front is
+    // controlled automatically").
+    let control = if auto_co_records(ds).contains(&(FIRST_RECORD + rec.index as u32)) {
+        FrontControl::AutoCo { on: true }
+    } else {
+        FrontControl::Cpu
+    };
     Some(TwoFront {
         second: second as u8,
         cos,
-        control: FrontControl::Cpu,
+        control: [control; 4],
         send: if sky { SendRule::Air } else { SendRule::Ground },
         powers: false,
         sky,
@@ -1609,6 +1640,9 @@ mod tests {
         let Some(pack) = crate::ds_pack::pack() else { return };
         let ds = Ds::from_pack(pack).unwrap();
         let b = build(&ds, 0x08E0_0000, &[6u8; 256]).unwrap();
+        // (below the fixed ids of crate::two_front and crate::setup_phase)
+        assert!(b.texts.iter().all(|t| t.0 < crate::two_front::TEXT_IDS_FROM), "the campaign's texts below the menus' own ids");
+        assert_eq!(auto_co_records(&ds), vec![0xEA, 0xF5], "Dual Strike's Auto CO missions");
         let fronts: Vec<(usize, u8, SendRule)> = b
             .missions
             .iter()
@@ -1628,7 +1662,10 @@ mod tests {
         let header = |i: usize| b.headers.iter().find(|h| h.0 as usize == i).unwrap().1;
         for &(i, second, _) in &fronts {
             let t = b.missions[i].two_front.clone().unwrap();
-            assert_eq!(t.control, FrontControl::Cpu, "the campaign's second front is the computer's");
+            // Intel > Auto CO (on at the start) in Lightning Strikes and Ring
+            // of Fire, as Dual Strike's item; the computer's elsewhere.
+            let want = if matches!(i, 10 | 21) { FrontControl::AutoCo { on: true } } else { FrontControl::Cpu };
+            assert_eq!(t.control, [want; 4], "mission {i}: who directs the second front");
             assert_eq!(b.missions[second as usize].look, 0, "mission {i}: the second front in the Normal look (Dual Strike's top screen)");
             // The Black Arc's fronts are in the sky, with clear weather.
             assert_eq!(t.sky, matches!(i, 8 | 14), "mission {i}: in the sky");

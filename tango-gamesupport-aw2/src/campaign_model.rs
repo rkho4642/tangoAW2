@@ -173,8 +173,12 @@ pub struct TwoFront {
     /// Each army's CO on the second front (AW2 CO ids; [`PICK`]: the player
     /// picks it on the CO screen, after the main front's picks).
     pub cos: [u8; 4],
-    /// Who gives the orders to the player's armies on the second front.
-    pub control: FrontControl,
+    /// Who gives each army's orders on the second front (army slots 1..4):
+    /// [`FrontControl`]. The engine decides a second-front turn by the
+    /// army's own controller (AW2's per-army controller byte), never by
+    /// "the player": any number of armies may be human, local or a netplay
+    /// peer's.
+    pub control: [FrontControl; 4],
     /// What the main front may send to the second ([`SendRule`]).
     pub send: SendRule,
     /// Whether CO powers may be used on the second front.
@@ -187,15 +191,27 @@ pub struct TwoFront {
 /// The second front's CO is the player's pick ([`TwoFront::cos`]).
 pub const PICK: u8 = 0xFE;
 
-/// Who directs the player's armies on the second front.
+/// Who directs an army on the second front. The army's **owner** is
+/// whoever controls it on the main front (its controller byte there: 1 a
+/// human, local or a netplay peer by its seat; 2 the computer).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FrontControl {
-    /// The computer plays them (Dual Strike's campaign: "In Campaign mode,
-    /// the second front is controlled automatically").
+    /// The computer, always (Dual Strike's campaign before Lightning
+    /// Strikes: "In Campaign mode, the second front is controlled
+    /// automatically").
     Cpu,
-    /// The player does (Dual Strike's "Direct the secondary front
-    /// manually", a battle option outside the campaign).
-    Manual,
+    /// Its owner, always: a human owner plays its second-front turns (a
+    /// Versus map's armies, where each seat commands its army on both
+    /// fronts).
+    Owner,
+    /// Its owner chooses: Intel > Auto CO on, the computer plays the
+    /// army's second-front turns; off, its owner does (Dual Strike's
+    /// Lightning Strikes and Ring of Fire: "open Intel on the menu, and
+    /// find Auto CO. Touch Auto CO to turn it on or off"). `on`: Auto CO at
+    /// the battle's start (Dual Strike's: on). The owner may change it on
+    /// its own main-front turns; it takes effect at the next second-front
+    /// round. A computer owner's army is the computer's either way.
+    AutoCo { on: bool },
 }
 
 /// Which units the main front may send to the second (the unit's Send

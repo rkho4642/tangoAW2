@@ -251,6 +251,20 @@ pub fn ds_saved_mission(core: &Core) -> Option<u8> {
 /// up): AW2's own resume of [`DS_SLOT`], tail-called from the trapped
 /// Continue handler's first instruction (it returns to its caller).
 pub fn resume_ds(core: &mut Core) {
+    // A two-front battle saved on its second front (a player's turn there,
+    // crate::two_front): that front's map header in place before AW2's
+    // resume loads the map (its state comes back after the block,
+    // [`applied_ds`]).
+    if let Some(i) = ds_sector(core) {
+        // (bytes: the mark is not word-aligned in Flash)
+        let at = FLASH + 0x1000 * i + 0x52 + BLOCK_SIZE;
+        let mut mark = [0u8; 4];
+        core.raw_read_range(at, -1, &mut mark);
+        if u32::from_le_bytes(mark) == FRONTS_MARK {
+            let live = core.raw_read_8(at + 4, -1);
+            crate::two_front::continue_on(core, live);
+        }
+    }
     let cpu = core.gba_mut().cpu_mut();
     cpu.set_gpr(0, DS_SLOT as i32);
     cpu.set_thumb_pc(RESUME);
