@@ -1937,117 +1937,22 @@ pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
     sp.at
 }
 
-/// At the sprite flush, before [`flush_sprites`] (`start..at` the game's
-/// sprites): while a panel is drawn, the game's sprites behind its window
-/// (behind BG2: a structure's top, a unit) are taken out of it. They are
-/// covered anyway, but the panel's lines are priority 0 sprites, and where
-/// one overlaps a sprite of lower priority its clear pixels lift that sprite
-/// over BG2 (the GBA's OBJ priority quirk): Means to an End's Black Crystal
-/// at (8, 1) showed through "Second front". A sprite wholly inside is hidden;
-/// one across the window's top or bottom keeps its rows of 8 pixels outside
-/// it (strips of its tiles, 1D mapping). Returns the end of the list.
-pub fn under_panel(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
+/// The panel drawn now, in screen pixels (left, top, right, bottom), while
+/// its lines are drawn ([`flush_sprites`]; crate::panel_sprites takes the
+/// game's sprites out of its window).
+pub fn drawn_panel(core: &Core) -> Option<(i32, i32, i32, i32)> {
     if (on(core).is_none() && !crate::setup_phase::active(core)) || core.raw_read_32(MAIN_CALLBACK, -1) != MAP_CALLBACK {
-        return at;
+        return None;
     }
-    let Some(p) = want_panel(core).filter(|p| core.raw_read_8(PANEL, -1) == *p as u8) else { return at };
+    let p = want_panel(core).filter(|p| core.raw_read_8(PANEL, -1) == *p as u8)?;
     let (x, y, w, h) = p.rect();
-    let (left, top, right, bottom) = (8 * x as i32, 8 * y as i32, 8 * (x + w) as i32, 8 * (y + h) as i32);
-    let bg2 = core.raw_read_16(BG2CNT, -1) & 3;
-    let one_d = core.raw_read_16(DISPCNT, -1) & (1 << 6) != 0;
-    let game_end = at;
-    let mut s = start;
-    while s + 8 <= game_end {
-        let (a0, a1, a2) = (core.raw_read_16(s, -1), core.raw_read_16(s + 2, -1), core.raw_read_16(s + 4, -1));
-        let entry = s;
-        s += 8;
-        // Shown, regular (not affine), behind BG2.
-        if a0 & 0x300 != 0 || (a2 >> 10) & 3 <= bg2 {
-            continue;
-        }
-        let (sw, sh) = OBJ_SIZES[((a0 >> 14) & 3) as usize][((a1 >> 14) & 3) as usize];
-        let (ox, oy) = ((a1 & 0x1FF) as i32, (a0 & 0xFF) as i32);
-        let ox = if ox >= 240 { ox - 512 } else { ox };
-        let oy = if oy >= 160 { oy - 256 } else { oy };
-        if ox + sw <= left || ox >= right || oy + sh <= top || oy >= bottom {
-            continue;
-        }
-        let hide = (a0 & !0x300) | 0x200;
-        if ox >= left && oy >= top && ox + sw <= right && oy + sh <= bottom {
-            core.raw_write_16(entry, -1, hide);
-            continue;
-        }
-        // Across the top or the bottom (not a side): its rows outside.
-        if ox < left || ox + sw > right || !one_d || sw > 32 {
-            continue;
-        }
-        let colour8 = a0 & (1 << 13) != 0;
-        let per_row = (sw / 8) as u16 * if colour8 { 2 } else { 1 };
-        // w x 8: 8x8 (square, 0), 16x8 (wide, 0), 32x8 (wide, 1).
-        let (shape, size) = match sw {
-            8 => (0u16, 0u16),
-            16 => (1, 0),
-            _ => (1, 1),
-        };
-        core.raw_write_16(entry, -1, hide);
-        for r in 0..sh / 8 {
-            let ry = oy + 8 * r;
-            if ry + 8 > top && ry < bottom {
-                continue;
-            }
-            if at + 8 > end {
-                break;
-            }
-            core.raw_write_16(at, -1, (a0 & !(0xC000 | 0x3FF)) | (shape << 14) | (ry as u16 & 0xFF));
-            core.raw_write_16(at + 2, -1, (a1 & !0xC000) | (size << 14));
-            core.raw_write_16(at + 4, -1, (a2 & !0x3FF) | ((a2 & 0x3FF) + per_row * r as u16) & 0x3FF);
-            core.raw_write_16(at + 6, -1, 0);
-            at += 8;
-        }
-    }
-    at
+    Some((8 * x as i32, 8 * y as i32, 8 * (x + w) as i32, 8 * (y + h) as i32))
 }
 
-/// At the sprite flush (`start..at` the game's sprites): whether the game
-/// draws from the OBJ tiles [`flush_sprites`] writes its lines into
-/// ([`free_tile_pairs`]) this frame. They are free on the battle map but for
-/// a few pictures: a capture's (its 64x64 at tile 0x1CA reaches 0x209) and a
-/// Black Crystal's heal (crate::heal_effect's, in the same tiles). While one is up the lines are left out, so the
-/// picture's tiles are not written over (the capture's "20" row showed
-/// pieces of "Second front").
-pub fn line_tiles_taken(core: &Core, start: u32, at: u32) -> bool {
-    // (a Crystal's or Obelisk's heal, crate::heal_effect, draws after this)
-    if crate::heal_effect::playing(core) {
-        return true;
-    }
-    let ours: Vec<(u16, u16)> = free_tile_pairs().into_iter().map(|t| (t, t + 2)).collect();
-    let mut s = start;
-    while s + 8 <= at {
-        let (a0, a1, a2) = (core.raw_read_16(s, -1), core.raw_read_16(s + 2, -1), core.raw_read_16(s + 4, -1));
-        s += 8;
-        if a0 & 0x300 == 0x200 || (a0 & 0xFF) >= 160 && (a0 & 0xFF) < 192 {
-            continue;
-        }
-        let (w, h) = OBJ_SIZES[((a0 >> 14) & 3) as usize][((a1 >> 14) & 3) as usize];
-        let colour8 = a0 & (1 << 13) != 0;
-        let first = a2 & 0x3FF;
-        let n = ((w / 8) * (h / 8)) as u16 * if colour8 { 2 } else { 1 };
-        if ours.iter().any(|&(a, b)| first < b && a < first + n) {
-            return true;
-        }
-    }
-    false
+/// The OBJ tiles [`flush_sprites`] draws the lines in (pairs from each).
+pub fn line_tiles() -> Vec<u16> {
+    free_tile_pairs()
 }
-
-/// OBJ sizes (width, height) by shape (square, wide, tall) and size.
-const OBJ_SIZES: [[(i32, i32); 4]; 4] = [
-    [(8, 8), (16, 16), (32, 32), (64, 64)],
-    [(16, 8), (32, 8), (32, 16), (64, 32)],
-    [(8, 16), (8, 32), (16, 32), (32, 64)],
-    [(8, 8), (8, 8), (8, 8), (8, 8)],
-];
-const BG2CNT: u32 = 0x0400_000C;
-const DISPCNT: u32 = 0x0400_0000;
 
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     vec![
