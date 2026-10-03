@@ -1548,6 +1548,8 @@ enum Panel {
     Result = 3,
     /// Deploy's help line in the Setup phase (crate::setup_phase).
     SetupHelp = 4,
+    /// The view's, at the bottom while the cursor is in the top rows.
+    ViewLow = 5,
 }
 
 impl Panel {
@@ -1559,6 +1561,7 @@ impl Panel {
             // panels are drawn while the other front is looked at,
             // [`co_panel`], [`info_panels`])
             Panel::View => (8, 0, 14, 6),
+            Panel::ViewLow => (8, 14, 14, 6),
             Panel::Result => (5, 8, 20, 4),
         }
     }
@@ -1570,7 +1573,7 @@ impl Panel {
         match self {
             Panel::Help => vec![(px + 12, py + 9, FRONT_HELP, false)],
             Panel::SetupHelp => vec![(px + 12, py + 9, crate::setup_phase::DEPLOY_HELP, false)],
-            Panel::View => vec![(px + 10, py + 9, VIEW_TITLE, false), (px + 10, py + 25, VIEW_BACK, true)],
+            Panel::View | Panel::ViewLow => vec![(px + 10, py + 9, VIEW_TITLE, false), (px + 10, py + 25, VIEW_BACK, true)],
             Panel::Result => {
                 let t = if core.raw_read_8(SECOND, -1) == SECOND_WON { RESULT_WON } else { RESULT_LOST };
                 let tw = font_width(core, t) as i32;
@@ -1595,7 +1598,10 @@ fn want_panel(core: &Core) -> Option<Panel> {
     }
     let busy = core.raw_read_8(BUSY, -1);
     if core.raw_read_8(VIEW, -1) == 1 && busy == Stub::BeginViewIn as u8 && core.raw_read_8(MAP_LOCK, -1) == 0 {
-        return Some(Panel::View);
+        // Out of the cursor's way (the top rows hold the front's structures:
+        // Means to an End's crystals).
+        let cursor_y = 16 * core.raw_read_16(MAP_CURSOR_Y, -1) as i32 - (core.raw_read_16(BG2VOFS, -1) & 0x1FF) as i32;
+        return Some(if cursor_y < VIEW_LOW_BELOW { Panel::ViewLow } else { Panel::View });
     }
     if core.raw_read_8(BANNER, -1) > 0 && busy == 0 && core.raw_read_16(MAP_STATE, -1) == STATE_CURSOR {
         return Some(Panel::Result);
@@ -1611,6 +1617,10 @@ const PANEL_AT: u32 = STATE + 0x19;
 /// buffer's tail.
 const PANEL_SAVED: u32 = STAGING + 0x1D80;
 const PANEL_ROWS: u32 = 6;
+/// The map cursor's row; the view's window goes to the bottom while the
+/// cursor is above this (screen pixels).
+const MAP_CURSOR_Y: u32 = 0x0300_33E6;
+const VIEW_LOW_BELOW: i32 = 48;
 const BG2_BUFFER_PTR: u32 = 0x0849_9580;
 const BG2_SCREEN: u32 = 0x0600_7800;
 const BG2HOFS: u32 = 0x0400_0018;
@@ -1669,7 +1679,7 @@ fn panel_tick(core: &mut Core) {
     let (hofs, vofs) = (core.raw_read_16(BG2HOFS, -1) as u32 & 0x1FF, core.raw_read_16(BG2VOFS, -1) as u32 & 0x1FF);
     let aligned = hofs % 8 == 0 && vofs % 8 == 0;
     let at = ((hofs / 8) % 32, (vofs / 8) % 32);
-    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp].into_iter().find(|p| *p as u8 == now);
+    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp, Panel::ViewLow].into_iter().find(|p| *p as u8 == now);
     let drawn_at = (core.raw_read_8(PANEL_AT, -1) as u32, core.raw_read_8(PANEL_AT + 1, -1) as u32);
     let keep = drawn.is_some() && drawn == want && aligned && drawn_at == at;
     if let Some(d) = drawn.filter(|_| !keep) {
@@ -1926,6 +1936,87 @@ pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
     }
     sp.at
 }
+
+/// At the sprite flush, before [`flush_sprites`] (`start..at` the game's
+/// sprites): while a panel is drawn, the game's sprites behind its window
+/// (behind BG2: a structure's top, a unit) are taken out of it. They are
+/// covered anyway, but the panel's lines are priority 0 sprites, and where
+/// one overlaps a sprite of lower priority its clear pixels lift that sprite
+/// over BG2 (the GBA's OBJ priority quirk): Means to an End's Black Crystal
+/// at (8, 1) showed through "Second front". A sprite wholly inside is hidden;
+/// one across the window's top or bottom keeps its rows of 8 pixels outside
+/// it (strips of its tiles, 1D mapping). Returns the end of the list.
+pub fn under_panel(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
+    if (on(core).is_none() && !crate::setup_phase::active(core)) || core.raw_read_32(MAIN_CALLBACK, -1) != MAP_CALLBACK {
+        return at;
+    }
+    let Some(p) = want_panel(core).filter(|p| core.raw_read_8(PANEL, -1) == *p as u8) else { return at };
+    let (x, y, w, h) = p.rect();
+    let (left, top, right, bottom) = (8 * x as i32, 8 * y as i32, 8 * (x + w) as i32, 8 * (y + h) as i32);
+    let bg2 = core.raw_read_16(BG2CNT, -1) & 3;
+    let one_d = core.raw_read_16(DISPCNT, -1) & (1 << 6) != 0;
+    let game_end = at;
+    let mut s = start;
+    while s + 8 <= game_end {
+        let (a0, a1, a2) = (core.raw_read_16(s, -1), core.raw_read_16(s + 2, -1), core.raw_read_16(s + 4, -1));
+        let entry = s;
+        s += 8;
+        // Shown, regular (not affine), behind BG2.
+        if a0 & 0x300 != 0 || (a2 >> 10) & 3 <= bg2 {
+            continue;
+        }
+        let (sw, sh) = OBJ_SIZES[((a0 >> 14) & 3) as usize][((a1 >> 14) & 3) as usize];
+        let (ox, oy) = ((a1 & 0x1FF) as i32, (a0 & 0xFF) as i32);
+        let ox = if ox >= 240 { ox - 512 } else { ox };
+        let oy = if oy >= 160 { oy - 256 } else { oy };
+        if ox + sw <= left || ox >= right || oy + sh <= top || oy >= bottom {
+            continue;
+        }
+        let hide = (a0 & !0x300) | 0x200;
+        if ox >= left && oy >= top && ox + sw <= right && oy + sh <= bottom {
+            core.raw_write_16(entry, -1, hide);
+            continue;
+        }
+        // Across the top or the bottom (not a side): its rows outside.
+        if ox < left || ox + sw > right || !one_d || sw > 32 {
+            continue;
+        }
+        let colour8 = a0 & (1 << 13) != 0;
+        let per_row = (sw / 8) as u16 * if colour8 { 2 } else { 1 };
+        // w x 8: 8x8 (square, 0), 16x8 (wide, 0), 32x8 (wide, 1).
+        let (shape, size) = match sw {
+            8 => (0u16, 0u16),
+            16 => (1, 0),
+            _ => (1, 1),
+        };
+        core.raw_write_16(entry, -1, hide);
+        for r in 0..sh / 8 {
+            let ry = oy + 8 * r;
+            if ry + 8 > top && ry < bottom {
+                continue;
+            }
+            if at + 8 > end {
+                break;
+            }
+            core.raw_write_16(at, -1, (a0 & !(0xC000 | 0x3FF)) | (shape << 14) | (ry as u16 & 0xFF));
+            core.raw_write_16(at + 2, -1, (a1 & !0xC000) | (size << 14));
+            core.raw_write_16(at + 4, -1, (a2 & !0x3FF) | ((a2 & 0x3FF) + per_row * r as u16) & 0x3FF);
+            core.raw_write_16(at + 6, -1, 0);
+            at += 8;
+        }
+    }
+    at
+}
+
+/// OBJ sizes (width, height) by shape (square, wide, tall) and size.
+const OBJ_SIZES: [[(i32, i32); 4]; 4] = [
+    [(8, 8), (16, 16), (32, 32), (64, 64)],
+    [(16, 8), (32, 8), (32, 16), (64, 32)],
+    [(8, 16), (8, 32), (16, 32), (32, 64)],
+    [(8, 8), (8, 8), (8, 8), (8, 8)],
+];
+const BG2CNT: u32 = 0x0400_000C;
+const DISPCNT: u32 = 0x0400_0000;
 
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
     vec![
