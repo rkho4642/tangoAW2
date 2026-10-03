@@ -183,6 +183,10 @@ fn ds_record_word(co: u8, off: u32) -> Option<u32> {
 /// A special pair's texts: its Tag Power's name and its four victory lines
 /// (the entry of `a`'s record for partner `b`).
 pub fn pair_texts(a: u8, b: u8) -> Option<(Vec<u8>, [Vec<u8>; 4])> {
+    if crate::sturm_pairs::special(a, b).is_some() {
+        crate::ds_pack::pack()?;
+        return crate::sturm_pairs::texts(a, b);
+    }
     let (_, ptr) = tag::special_pair(a, b)?;
     let pack = crate::ds_pack::pack()?;
     let w = pack.arm9_at(ptr, 20)?;
@@ -414,10 +418,32 @@ pub fn cpu_change_done(core: &mut Core) {
     core.raw_write_8(CPU_CHANGE, -1, 2);
 }
 
+/// One of AW2's power quotes for `co` (its CO table row +0x20: six text
+/// ids, `sub_080398D0` picks one), as AW2 stores it.
+fn aw2_power_quote(core: &Core, co: u8, k: usize) -> Option<Vec<u8>> {
+    let table = core.raw_read_32(tag::CO_TABLE_POOL, -1);
+    let id = core.raw_read_16(table + 0x104 * co as u32 + 0x20 + 2 * k as u32, -1) as u32;
+    let at = core.raw_read_32(TEXT_TABLE + 4 * id, -1);
+    if !(0x0800_0000..0x0A00_0000).contains(&at) {
+        return None;
+    }
+    let mut out = Vec::new();
+    for i in 0..STRING_MAX as u32 {
+        let c = core.raw_read_8(at + i, -1);
+        if c == 0 {
+            break;
+        }
+        out.push(c);
+    }
+    (!out.is_empty()).then_some(out)
+}
+
 /// The script's quote: the incoming CO's tag-in line in AW2's quote box.
 pub fn quote(core: &mut Core) {
     let to = core.raw_read_8(SWAP_TO, -1);
     let line = ds_record_word(to, DS_TAG_IN[pick(core)]).and_then(ds_text).map(|t| clean(&t));
+    // A CO Dual Strike lacks (AW2's Sturm): one of AW2's own power quotes.
+    let line = line.or_else(|| aw2_power_quote(core, to, pick(core)));
     let line = line.unwrap_or_else(|| b"It's my turn now!".to_vec());
     set_string(core, TAGIN_AT, &line);
     let cpu = core.gba_mut().cpu_mut();
@@ -532,9 +558,24 @@ fn page_co(core: &Core) -> Option<u8> {
     (1..=5).contains(&army).then(|| tag::army_co_of(core, army))
 }
 
-/// The CO's special partners and their stars, Dual Strike's order.
+/// The CO's special partners and their stars, Dual Strike's order (and
+/// Sturm, tangoAW2's own, last; Sturm's own: crate::sturm_pairs's).
 pub fn partners_of(core: &Core, co: u8) -> Vec<(u8, u8)> {
     let _ = core;
+    if crate::ds_pack::pack().is_none() {
+        return Vec::new();
+    }
+    if co == crate::sturm_pairs::STURM {
+        return crate::sturm_pairs::partners();
+    }
+    let mut out = ds_partners(co);
+    if let Some(p) = crate::sturm_pairs::special(co, crate::sturm_pairs::STURM) {
+        out.push((crate::sturm_pairs::STURM, p.stars));
+    }
+    out
+}
+
+fn ds_partners(co: u8) -> Vec<(u8, u8)> {
     let Some(d) = tag::ds_id(co) else { return Vec::new() };
     let Some(pack) = crate::ds_pack::pack() else { return Vec::new() };
     let Some(list) = pack.arm9_at(DS_RECORDS + DS_RECORD * d as u32 + 0x6C, 0x18) else { return Vec::new() };

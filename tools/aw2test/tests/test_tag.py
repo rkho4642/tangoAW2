@@ -918,3 +918,123 @@ def tag_co_page(ctx):
     ctx.eq((e.u32(0x03005940), e.u8(EXTRAS + 5)), (4, 0), "DOWN, DOWN: the unit charts")
 
 
+
+STURM_BOOST = [("sturm", "vonbolt", 25), ("hawke", "sturm", 20), ("sturm", "kindle", 5), ("sturm", "andy", -5)]
+
+
+@test(modes=("ds",))
+def tag_sturm_pairs(ctx):
+    """Sturm, who is not in Dual Strike: tangoAW2's own compatibility and
+    special pairs (aw2test.tag.STURM_PAIRS; Von Bolt 125 and 3 stars ..
+    Kindle 105, anyone else 95). In battle the Tag Power's firepower is
+    compatibility - 100 against the damage calculator; Sturm's TAG page
+    lists his five partners with their stars, Von Bolt's lists Sturm last;
+    the Teams slot's badge shows 3 stars for Sturm + Von Bolt; the Tag
+    Power screen shows "Black Apocalypse" (POWER 125%)."""
+    for a, b, want in STURM_BOOST:
+        ctx.eq(tag.compatibility(None, romlib.co_id(a), romlib.co_id(b)) - 100, want, f"{a}+{b}: tangoAW2's table")
+        units = [(1, "tank", 10, 10), (2, "tank", 11, 10), (1, "tank", 10, 12), (2, "tank", 11, 12)]
+        g = tag_battle(ctx, [a, "olaf"], [b, "max"], units=units)
+        e = g.e
+        e.w8(tag.rec(1) + 1, 1)
+        e.w8(tag.rec(2) + 1, 1)
+        ctx.eq(ctx.tag_firepower(g, 1, g.player(1)["co"]), want, f"{a}+{b}: the calculator's tag firepower")
+        ctx.attack(g, (10, 10), (10, 10), (11, 10))
+        e.w8(tag.rec(1) + 1, 0)
+        e.w8(tag.rec(2) + 1, 0)
+        ctx.attack(g, (10, 12), (10, 12), (11, 12))
+
+    def tag_page(g):
+        e = g.e
+        g.open_map_menu()
+        g.choose("CO", g.MAP_MENU)
+        e.wait(90)
+        for _ in range(4):
+            e.press("DOWN", 4)
+            e.wait(40)
+        ctx.eq((e.u32(0x03005940), e.u8(EXTRAS + 5)), (3, 1), "the TAG page")
+        stars = [s for s in oam(e) if (s[2] & 0x3FF) == 0x321 and s[2] >> 12 == 12]
+        return rom_string(e, STRINGS + 0x300), len(stars)
+
+    g = tag_battle(ctx, ["sturm", "olaf"], [None, None], units=[(1, "tank", 10, 4)])
+    names, stars = tag_page(g)
+    ctx.eq(names, b"Von Bolt\rHawke\rLash\rFlak\rAdder", "Sturm's partners, tangoAW2's order")
+    ctx.eq(stars, 3 + 2 + 2 + 1 + 1, "their stars")
+    ctx.shot(g, "sturm_tag_page")
+    g = tag_battle(ctx, ["vonbolt", "olaf"], [None, None], units=[(1, "tank", 10, 4)])
+    names, stars = tag_page(g)
+    ctx.check(names.split(b"\r")[-1] == b"Sturm", f"Von Bolt's TAG page: Sturm last ({names!r})")
+    ctx.shot(g, "vonbolt_tag_page")
+
+    m = ctx.map()
+    g = ctx.boot_teams(m)
+    e = g.e
+    tag.set_teams_partner(e, 1, "vonbolt")
+    g.set_teams(["sturm", "olaf"], {1})
+    e.wait(20)
+    badge = [s for s in oam(e) if (s[2] & 0x3FF) == 0x151]
+    ctx.eq(len(badge), 3, "Teams: Sturm + Von Bolt's badge, 3 stars")
+    ctx.shot(g, "sturm_teams")
+
+    g = tag_battle(ctx, ["sturm", "olaf"], ["vonbolt", None], units=[(1, "tank", 10, 4), (2, "tank", 20, 10)])
+    e = g.e
+    fill(g, 1)
+    g.open_map_menu()
+    g.choose("Tag", g.MAP_MENU)
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 1, 1200, step=4), "the tag screen shows")
+    e.wait(20)
+    full_screen_shown(ctx, e, "Sturm + Von Bolt")
+    ctx.shot(g, "sturm_vonbolt_tag_screen")
+    ctx.require(e.wait_until(lambda: g.player(1)["co_mode"] == 2, 3000, step=10), "the Super Power follows")
+
+
+@test(modes=("ds",))
+def tag_sturm_words(ctx):
+    """Sturm's words as a partner: Change to him and he says one of AW2's
+    own Sturm power quotes (his CO table row +0x20); Sturm and Von Bolt
+    winning: tangoAW2's own exchange (Sturm's line, then "Von Bolt: "),
+    each line inside the box."""
+    g = tag_battle(ctx, ["vonbolt", "olaf"], ["sturm", None], units=[(1, "tank", 10, 4), (2, "tank", 20, 10)])
+    e = g.e
+    g.open_map_menu()
+    g.choose("Change", g.MAP_MENU)
+    ctx.require(e.wait_until(lambda: rom_string(e, STRINGS) != b"", 300, step=2), "the tag-in line")
+    aw2 = romlib.Image.load()
+    sturm = romlib.co_id("sturm")
+    quotes = [aw2.text(aw2.u16(0x085D3DD0 + 0x104 * sturm + 0x20 + 2 * k)) for k in range(6)]
+    got = rom_string(e, STRINGS)
+    ctx.check(got in [bytes(q) for q in quotes], f"one of AW2's Sturm quotes ({got!r})")
+    e.wait(40)
+    ctx.shot(g, "sturm_tag_in")
+    ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 2, 1200, step=4), "CO SWAP")
+    e.wait(20)
+    ctx.shot(g, "sturm_co_swap")
+
+    m = ctx.map(spare=False)
+    m.unit(1, "tank", 10, 10).unit(2, "infantry", 11, 10)
+    g = ctx.boot_teams(m)
+    e = g.e
+    tag.set_teams_partner(e, 1, "vonbolt")
+    g.set_teams(["sturm", "olaf"], {1})
+    g.teams_to_rules()
+    g.set_rules()
+    g.start_battle()
+    g.wait_for_input()
+    inf = g.unit_at(11, 10)
+    a = g.unit_addr(inf["id"])
+    e.w16(a + 4, (e.u16(a + 4) & ~0x7F) | 1)
+    g.select(10, 10)
+    g.move_to(10, 10)
+    g.choose("Fire", g.ACTION_MENU)
+    g.pick_target(11, 10)
+    for _ in range(60):
+        if rom_string(e, STRINGS + 0x100) != b"":
+            break
+        e.wait(40)
+        e.press("A", 2)
+    t = rom_string(e, STRINGS + 0x100)
+    ctx.log(f"victory quote {t!r}")
+    ctx.check(t in (b"Bow before Black Hole!\rVon Bolt: Delicious.", b"Your world is ours.\rVon Bolt: Hhhh... yes."),
+              f"Sturm and Von Bolt's exchange ({t!r})")
+    e.wait(60)
+    ctx.shot(g, "sturm_victory_quote")

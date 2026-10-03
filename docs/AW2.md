@@ -2013,6 +2013,19 @@ stay out.
   each with its rating's full stars (1..3, OBJ tile 0x321 and palette 12
   borrowed). Text ids 0x7305..0x7307, strings at `0x08781000..`; RAM
   `0x0203F300..0x0203F3D7`.
+- **Sturm** (`sturm_pairs.rs`): AW2's Sturm is not in Dual Strike, so
+  his pairs are **tangoAW2's own data, made up for tangoAW2** (symmetric,
+  with the pack only): Von Bolt 125 (3 stars, "Black Apocalypse"), Hawke
+  120 (2, "Storm Front"), Lash 115 (2, "Mad Genius"), Flak 110 (1, "Iron
+  Fist"), Adder 110 (1, "Viper's Nest"; the tag font has no apostrophe:
+  the top of its `l`), Kindle, Jugger and Koal 105 (no special pair),
+  anyone else 95. They go through the same paths as Dual Strike's: the
+  Tag Power's firepower, Sturm's TAG page (his five partners) and each
+  partner's (Sturm last, after Dual Strike's), the Teams slot's stars, the
+  tag screen; victory exchanges written for tangoAW2 (two a direction,
+  each line inside the results box's 104 pixels); his tag-in line one of
+  AW2's own Sturm power quotes (his CO table row +0x20). His body art on
+  the tag screens is AW2's.
 - **Left out**: the tag screens' animation (Dual Strike slides the COs in
   and flashes the name; here a still picture faded in); tag skills. Market Crash and other meter
   drains reach only the active CO. The pad bot (`aw2test/bot.py`) fires

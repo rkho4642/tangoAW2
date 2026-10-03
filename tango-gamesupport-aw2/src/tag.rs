@@ -266,9 +266,15 @@ fn has_partner_skill(core: &Core, army: u32, id: u8) -> bool {
 
 // --- Compatibility (Dual Strike's CO records, +0x84) --------------------------------
 
-/// Dual Strike's compatibility of a pair (65..130; 100 when either CO is
-/// not one of Dual Strike's: AW2's Sturm).
+/// Dual Strike's compatibility of a pair (65..130); with AW2's Sturm, who
+/// is not in Dual Strike, tangoAW2's own (crate::sturm_pairs). 100
+/// without the pack.
 pub fn compatibility(a: u8, b: u8) -> u8 {
+    if crate::ds_pack::pack().is_some() {
+        if let Some(c) = crate::sturm_pairs::compatibility(a, b) {
+            return c;
+        }
+    }
     let (Some(da), Some(db)) = (ds_id(a), ds_id(b)) else { return 100 };
     crate::ds_pack::pack()
         .and_then(|p| p.arm9_at(0x0215_360C + 0x220 * da as u32 + 0x84 + db as u32, 1).map(|b| b[0]))
@@ -280,10 +286,14 @@ pub fn compatibility(a: u8, b: u8) -> u8 {
 /// text ids (four victory lines and the pair's Tag Power name, "Power
 /// Wrench"); a zero partner ends it). The stars are the CO page's TAG box
 /// rating; the Tag Power's strength is the compatibility (+0x84), which
-/// every pair has.
+/// every pair has. Sturm's (crate::sturm_pairs, tangoAW2's own): his
+/// stars and no pointer (0).
 pub fn special_pair(a: u8, b: u8) -> Option<(u8, u32)> {
-    let (da, db) = (ds_id(a)?, ds_id(b)?);
     let pack = crate::ds_pack::pack()?;
+    if let Some(p) = crate::sturm_pairs::special(a, b) {
+        return Some((p.stars, 0));
+    }
+    let (da, db) = (ds_id(a)?, ds_id(b)?);
     let rec = 0x0215_360C + 0x220 * da as u32;
     let list = pack.arm9_at(rec + 0x6C, 0x18)?;
     for e in list.chunks(8) {
