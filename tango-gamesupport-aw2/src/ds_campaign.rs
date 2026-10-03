@@ -109,6 +109,10 @@ const P_HARD: u32 = PROGRESS + 6;
 /// stays open once Normal has been cleared (as Dual Strike opens it).
 const P_CLEARS: u32 = PROGRESS + 7;
 const P_WON: u32 = PROGRESS + 8;
+/// The player's last Intel > General choice (crate::two_front's posture
+/// XOR General: 0 is General), which the next two-front battle starts with
+/// (Dual Strike keeps it in its save data, `0x02290718` +0x16 / +0x17).
+const P_POSTURE: u32 = PROGRESS + 0x0C;
 const P_FLAGS: u32 = PROGRESS + 0x10;
 const PROGRESS_MAGIC: u32 = 0x4344_5741; // "AWDC"
 /// AW2's save slot for the progress (AW2 uses 0 profile, 2..4 suspends,
@@ -709,6 +713,21 @@ fn load_from_flash(core: &mut Core) {
     }
 }
 
+/// The player's last Intel > General choice (crate::two_front), General
+/// on a new campaign.
+pub fn posture_memory(core: &Core) -> u8 {
+    if !progress_valid(core) {
+        return crate::two_front::GENERAL;
+    }
+    (core.raw_read_8(P_POSTURE, -1) & 3) ^ crate::two_front::GENERAL
+}
+
+pub fn set_posture_memory(core: &mut Core, posture: u8) {
+    if progress_valid(core) {
+        core.raw_write_8(P_POSTURE, -1, (posture ^ crate::two_front::GENERAL) & 3);
+    }
+}
+
 pub fn won(core: &Core, index: u8) -> bool {
     core.raw_read_32(P_WON, -1) & (1 << index) != 0
 }
@@ -1218,6 +1237,7 @@ mod tests {
         assert!(PROGRESS + SAVE_SIZE <= RAM_END);
         assert!(FLAGS + 16 <= PROGRESS);
         assert!(P_FLAGS + 16 <= PROGRESS + SAVE_SIZE);
+        assert!(P_POSTURE >= P_WON + 4 && P_POSTURE < P_FLAGS, "past the missions won (32 bits)");
         assert!(COUNTDOWN + 4 <= FLAGS);
         // Past Survival's RAM (0x0203FA00..0x0203FD0F) and before the CPU
         // tactics' (0x0203FD60..).

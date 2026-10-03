@@ -186,6 +186,12 @@ pub struct TwoFront {
     /// The second front is in the sky (drawn as clouds with its structure
     /// in the sky, crate::sky_front; clear weather).
     pub sky: bool,
+    /// Intel > General (Dual Strike's ally posture, crate::ally_posture):
+    /// an army's owner sets, on its main-front turns, how the computer
+    /// directs the army on the second front (Strike, Assault, General,
+    /// Defense), shown while the computer directs it there (or with Auto
+    /// CO's item, on or off).
+    pub posture: bool,
 }
 
 /// The second front's CO is the player's pick ([`TwoFront::cos`]).

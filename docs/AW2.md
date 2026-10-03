@@ -1629,6 +1629,44 @@ record id the map hands on, `0x02183CC0`):
   End (no Power: "CO Powers can't be used there, either. The action is too
   fast."); End: Black Hole's turn there (the computer's, top screen), then
   the next day on the main front.
+- **General** (Intel's item after Unit, arm9 table `0x02165F30`, 0x20
+  bytes an entry: test, help, handler, label): Dual Strike's ally posture,
+  in **every two-front mission**. Four items, one shown at a time (each
+  test, `0x020BE560`, `0x020BE358`, `0x020BE150`, `0x020BDF48`, shows its
+  own posture), with the AI icon (the font's `\xC2\xA1`; `icon/res_icon0_cg`
+  icon 0x5F, palette 0 of `icon/res_icon_cl`, pixel for pixel what the
+  menu shows): **Strike** (bank 0xC0 text 98; help "Set ally to aggressive
+  posture.", text 707), **Assault** (99; "Set ally to offensive posture.",
+  708), **General** (100; "Set ally to general, all-purpose posture.", 709),
+  **Defense** (101; "Set ally to defensive posture.", 710). A (handler
+  `0x020BCB94`) turns it to the next, the menu staying up: General,
+  Defense, Strike, Assault, General. It is the army's player record's
+  +0x2E (0 Strike, 1 Assault, 2 General, 3 Defense), written on both
+  fronts; the battle starts the player's army at the last choice, which
+  the handler also keeps in the game's save data (`0x02290718` +0x17, +0x16
+  in the other mode; setup `0x020C1444`), every other army at General (2):
+  a first battle starts at General. Shown on the main front's Intel (and
+  the Setup phase's), any main-front turn, while the second front is not
+  over (the other front's record +0x30, poked in melonDS: General and Auto
+  CO both gone); in Lightning Strikes and Ring of Fire with Auto CO's item
+  (on or off), in the other three while the army's second-front controller
+  is the computer (always there). Not on the second front's Intel (Status,
+  Unit). **What it changes**: Dual Strike's CPU reads the current army's
+  posture on its turns (15 reads, arm9): its per-turn plan (`0x0208CBA8`)
+  sets each unit type's two advance ranges (base +/- half a spread, from
+  the plan table `0x02162A90`) by a percent: General and Strike a random
+  0..99 each turn, Assault 100 (the top), Defense 0 (the bottom); its
+  type table (`0x0208C948`) the same at 100, Defense 0; Defense skips its
+  advance steps (`0x0209B458` from `0x0209B2B0`; `0x020AEEFC` in the three
+  unit-class steps `0x020A00C8`, `0x020A022C`, `0x020A0330`) and its
+  attack check refuses some attacks (`0x020A90EC`); every posture but
+  Strike marks an attack down when the trade costs it (a half or a
+  quarter, `0x020A92C4`, `0x020A9394`) and refuses some more
+  (`0x020A9140`), Strike does not; Assault turns on a step of its own
+  (`0x0209B974`, `0x0209CB9C`). Seen (Lightning Strikes, day 2, Auto CO
+  on, the same state played four times): General and Defense, the ally's
+  units on the second front hold round their base; Strike and Assault,
+  they cross the map toward Black Hole.
 - **Send** (the unit command table at arm9 `0x02166000`, 0x20 bytes an
   entry: "Send" twice, `0x021661E0` and `0x02166200`, their handler
   `0x020BCE50`): a unit leaves the main front for the second ("Keep in mind
@@ -1668,8 +1706,8 @@ and armies), each army's CO there (`cos`: AW2 ids, or `PICK`: the player
 picks it on the CO screen after the main front's picks), who directs each
 army there (`control`, per army slot: `Cpu`, `Owner` or `AutoCo { on }`,
 below), what may be sent
-(`send`: `None`, `Air`, `Ground`) and whether CO powers work there
-(`powers`). The second front's header carries its own event lists (for
+(`send`: `None`, `Air`, `Ground`), whether CO powers work there
+(`powers`) and whether Intel has General (`posture`, below). The second front's header carries its own event lists (for
 Dual Strike's missions: its records of the shared list,
 `ds_campaign_data::convert_triggers` with front 1), its map, deployment,
 colours, teams and 4x4 structure's picture, and no day limit; its
@@ -1680,7 +1718,8 @@ weather block, so the suspend block carries it too). Dual
 Strike's source fills it from the record (`ds_campaign_data::two_front`: a
 front whose deployment is aircraft only is in the sky; `AutoCo { on: true }`
 for every army of the missions whose records Dual Strike's Auto CO test
-names, read from its two `cmp` instructions, `Cpu` elsewhere). Nothing in
+names, read from its two `cmp` instructions, `Cpu` elsewhere; `posture`
+for all five). Nothing in
 `two_front.rs` is Dual Strike's: a custom campaign's mission describes its
 second front the same way.
 
@@ -1807,6 +1846,50 @@ Room, Survival, the Design Room, netplay and the pack off are untouched
   the description's `on`, saved with the battle; a change takes effect at
   the second front's next round. Not on the second front (Dual Strike's
   isn't either).
+- **General** (`ally_posture.rs`, the description's `posture`): Intel's
+  copy has Dual Strike's four posture items after AW2's four (Strike,
+  Assault, General, Defense; text ids 0x7FF6..0x7FF9), one shown at a time,
+  before Auto CO's: shown to the current army on its main-front turn (the
+  Setup phase's Intel too) while the second front is fought, when its
+  description is `AutoCo` (on or off) or the computer directs it there;
+  chosen, the posture turns to the next (General, Defense, Strike, Assault)
+  and the menu is redrawn in place, as Auto CO's. The labels, help lines
+  and icon come from the .nds at run time: the names of bank 0xC0 texts
+  98..101 after AW2's icon code `\x09\xE6`, padded with AW2's narrow
+  spaces (0x18..0x1F) to the widest so the menu keeps its width; the help
+  line (texts 707..710, one line) in `two_front`'s panel; the icon
+  (`icon/res_icon0_cg_E` icon 0x5F) in BG0 tiles 0x34C..0x34F (the code
+  0xE6's: AW2's menu icons are tiles `0x1B4 + 4 * (code - 0x80)`, palette
+  10; AW2 has 0x80..0x95, and the battle map leaves those four tiles
+  empty), written while the Intel menu is up and only over empty tiles,
+  emptied when it closes; Dual Strike's icon palette is AW2's palette 10
+  colour for colour, so its pixels go in as they are. The posture is two
+  bits per army (`0x0203E41D`, posture XOR General: 0 is General, and a
+  save from before reads General), started at the battle's first frame:
+  each human army (gPlaySt's controller 1) at the last choice, kept in the
+  DS Campaign's record (`0x0203FD3C`, saved with it), the computer's at
+  General; saved with the battle. **Its effect** (the one mapping to AW2's
+  CPU): AW2 moves each CPU unit, after its attack check, by the unit's role
+  (its record's +0x0B: the deployment's AI byte or what the CPU's
+  production gives a unit; `AiRunRoleMove` `0x0805F4CC`, trapped, through
+  the table `0x085768E0`). While a two-front battle's army has a posture
+  other than General, its units move by the posture's role instead:
+  **Strike 4** (toward the nearest enemy units, and into them at any odds:
+  Dual Strike's Strike does not mark down a trade that costs it),
+  **Assault 3** (onto the enemy's properties, each unit given its own: the
+  offensive push Dual Strike's Assault gets from its advance ranges at their
+  top), **Defense 0** (where it stands: Dual Strike's Defense skips its
+  advance steps; a unit still fires at what comes into reach),
+  **General** the units' own roles. Measured on Lightning Strikes' second
+  front (its ally units' roles 0 hold, 1 the enemy HQ, 3 enemy properties, 4
+  enemy units, 7 by the HQ played from one state): 4 and 3 cross the map
+  (mean distance to Black Hole 16 to 9 and 11 in a round), 0 holds; on Ring
+  of Fire and Means to an End 4 also fights (Black Hole loses units), 1
+  stays where the front has no enemy HQ, so Assault is 3. The computer
+  reads the posture on every front (as Dual Strike does), but only the
+  owner's armies have the item; outside a two-front battle the trap does
+  nothing. Netplay: the posture and the current army are emulated RAM, the
+  ROM writes follow it, nothing reads the host.
 - **A mission saved halfway** keeps both fronts: the block of the front on
   the screen (the main front, or the second during a human's turn there:
   Dual Strike offers Save on both), then "T2FT", the two-front state and
@@ -1846,17 +1929,21 @@ flags, the second front's COs and the mission they were picked for),
 `0x0203E500..0x0203F396` the store (block and tangoAW2's state); the
 staging buffer's tail (`0x02001D80..0x02001FFF`: the panel's BG2 cells,
 the incoming front's tangoAW2 state; the state's `0x0203E41B` is Auto CO's
-bits, `0x0203E41C` a Continue on the second front). ROM
+bits, `0x0203E41C` a Continue on the second front, `0x0203E41D` General's
+postures); the DS Campaign's record `0x0203FD3C` (the last posture). ROM
 `0x08E70000..0x08E73FFF` (stubs, the three swap scripts, the menus'
-copies: map menu, unit menu, Intel at `0x08E71100`; the labels; text ids
-0x7FFA Auto CO Off, 0x7FFB Auto CO On, 0x7FFD Send, 0x7FFE Front: a
-campaign's texts stay below 0x7FFA); pool words `0x0802D49C`,
+copies: map menu, unit menu, Intel at `0x08E71100`; the labels, General's
+at `0x08E71040..0x08E7107F`; text ids 0x7FF6..0x7FF9 Strike, Assault,
+General, Defense, 0x7FFA Auto CO Off, 0x7FFB Auto CO On, 0x7FFD Send, 0x7FFE
+Front: a campaign's texts stay below 0x7FF6); BG0 tiles 0x34C..0x34F
+(General's icon, while Intel is up); pool words `0x0802D49C`,
 `0x0802D59C`, `0x0802D550`; `0x0203E4C0..0x0203E4E3` `sky_front`'s
 borrowed OBJ palette. Traps: `0x08034AF8`, `0x08034EF0`,
 `0x0803BD14`, `0x0803BCDC`, `0x080743E8`, `0x080743AA` (the unit layers'
 rebuild after a Send returns there: alignment padding in
 `UnitSelectedEvent_Init`, never run), `0x0802AB34` (the info panels,
-below the screen in the view). Hooks in other modules:
+below the screen in the view), `0x0805F4CC` (`ally_posture`: the CPU's role
+move). Hooks in other modules:
 `ds_campaign`'s landing (the stubs), `map_start` (the live front's rules,
 its controllers), `script_end_match` (the main front's), `co_setup` (a
 second-front pick opens the CO screen); `ds_campaign_rules` (crystals,
@@ -1872,10 +1959,16 @@ barrier, eruption cells, the Volcano), `grand_bolt::on` (the main front's),
   AW2's picture, in the Black Arc's colours; the terrain panel still says
   Sea.
 - Auto CO: a human's second-front turn is on the one screen (Dual Strike
-  brings that front to the bottom screen for it); Intel's own items are
-  AW2's (Status, Terms, Unit; no General, Dual Strike's ally posture).
-- The second front's computer is AW2's own CPU: units with nothing in reach
-  hold (Dual Strike's may advance); the player sends units to carry it.
+  brings that front to the bottom screen for it).
+- General: AW2's CPU has no advance ranges or trade weights to set, so a
+  posture picks the role every unit of the army moves by (above); its
+  attack check stays AW2's. The last choice is kept in the DS Campaign's
+  record, which is written when the campaign saves its progress (Dual
+  Strike writes its save data when it saves).
+- The second front's computer is AW2's own CPU: under General, units with
+  nothing in reach hold by their own roles (Dual Strike's may advance);
+  Intel > General's Strike or Assault sends them forward, and the player
+  sends units to carry it.
 - Tag pairs: the second front's winning CO joins its army on the main
   front (`tag.rs`, through the hook above); Black Hole's CO does not when
   the second front is lost.
@@ -1896,6 +1989,7 @@ TwoFront {
     send: SendRule::Ground,
     powers: true,
     sky: false,
+    posture: true,                   // Intel > General: each owner's own army's posture
 }
 ```
 
@@ -1934,7 +2028,20 @@ menu, Front back to the main front and back, a unit moved, End, Black
 Hole's turn there, day 2; Auto CO on again: the computer's round),
 `two_front_auto_co_on_cpu_plays`, `two_front_auto_co_in_setup`,
 `two_front_auto_co_saved` (the setting across a reboot; saved on the
-player's second-front turn and continued there); `ds_campaign_data`'s
+player's second-front turn and continued there); General
+(`tools/aw2test/tests/test_ally_posture.py`):
+`two_front_general_where_ds_has_it` (the five missions, General at the
+start, kept with Auto CO off, not on the second front's Intel, gone once
+the second front is over; a one-front mission and Versus without),
+`two_front_general_menu` (the cycle and its help lines, only army 1's
+changed, the record's last choice; the icon's tiles Dual Strike's, its
+colours the .nds's, empty after; a new battle starts at the last choice,
+Black Hole at General), `two_front_general_changes_cpu` (one state played
+with each posture: Defense holds, General moves by the units' own roles,
+Strike and Assault advance, each its own way),
+`two_front_general_only_there` (a Versus CPU turn the same whatever the
+bits), `two_front_general_saved` (across a reboot); `ally_posture`'s
+`from_the_nds` (labels, help lines, icon); `ds_campaign_data`'s
 `two_fronts_are_dual_strikes` (with Auto CO's missions) and
 `day_limits_are_dual_strikes` (with the .nds).
 

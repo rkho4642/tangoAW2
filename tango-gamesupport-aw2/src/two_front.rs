@@ -214,9 +214,14 @@ enum Stub {
     AutoOnUsable,
     AutoOffUsable,
     AutoChosen,
+    StrikeUsable,
+    AssaultUsable,
+    GeneralUsable,
+    DefenseUsable,
+    PostureChosen,
 }
 
-const STUBS: [Stub; 23] = [
+const STUBS: [Stub; 28] = [
     Stub::BeginRound,
     Stub::BeginViewIn,
     Stub::BeginViewOut,
@@ -240,6 +245,11 @@ const STUBS: [Stub; 23] = [
     Stub::AutoOnUsable,
     Stub::AutoOffUsable,
     Stub::AutoChosen,
+    Stub::StrikeUsable,
+    Stub::AssaultUsable,
+    Stub::GeneralUsable,
+    Stub::DefenseUsable,
+    Stub::PostureChosen,
 ];
 
 /// The ROM area: the mark, the stubs (16 bytes each), the scripts, the
@@ -263,8 +273,11 @@ const TEXT_FRONT: u16 = 0x7FFE;
 const TEXT_SEND: u16 = 0x7FFD;
 const TEXT_AUTO_ON: u16 = 0x7FFB;
 const TEXT_AUTO_OFF: u16 = 0x7FFA;
+/// Intel > General's four items (Strike, Assault, General, Defense: one
+/// shown at a time, the army's posture).
+const TEXT_POSTURES: u16 = 0x7FF6;
 /// The first of the menus' own text ids (a campaign's texts stay below).
-pub const TEXT_IDS_FROM: u16 = TEXT_AUTO_OFF;
+pub const TEXT_IDS_FROM: u16 = TEXT_POSTURES;
 const TEXT_TABLE: u32 = crate::campaign_model::TEXT_TABLE;
 /// The game's menu glyphs: the icon then the name, as its own items.
 const LABEL_FRONT: &[u8] = b"\x09\x86Front\0";
@@ -275,18 +288,22 @@ const LABEL_AUTO_ON: &[u8] = b"Auto CO On\x1c\0";
 const LABEL_AUTO_OFF: &[u8] = b"Auto CO Off\0";
 
 /// The Intel menu (Status, Terms, Unit, Rules; `0x0802D504` opens it, its
-/// table from the literal pool word), and Auto CO's two items in the copy
-/// after them, one shown at a time, as the Options menu's Music On / Music
-/// Off: chosen, the setting flips and the menu is redrawn in place
-/// (`0x08019E68`, what Music's handler calls).
+/// table from the literal pool word), then in the copy Dual Strike's
+/// General (its four postures, one shown at a time: [`POSTURE_AT`]) and
+/// Auto CO's two items, one shown at a time, as the Options menu's Music On
+/// / Music Off: chosen, the setting changes and the menu is redrawn in
+/// place (`0x08019E68`, what Music's handler calls).
 const INTEL_MENU: u32 = 0x0849_ABC0;
 const INTEL_MENU_POOL: u32 = 0x0802_D550;
 const INTEL_MENU_LEN: u32 = 4;
 /// Terms: the item whose event id (0: no help line of the game's) and B
 /// handler Auto CO's take.
 const TERMS_AT: u32 = 1;
-pub const AUTO_ON_AT: u32 = 4;
-pub const AUTO_OFF_AT: u32 = 5;
+/// Intel > General's items: Strike, Assault, General, Defense (Dual
+/// Strike's posture numbers, [`STRIKE`]..[`DEFENSE`]).
+pub const POSTURE_AT: u32 = 4;
+pub const AUTO_ON_AT: u32 = 8;
+pub const AUTO_OFF_AT: u32 = 9;
 const REFRESH_MENU: u32 = 0x0801_9E68;
 
 /// A script slot record: {pointer, immediate, op}. Ops (`StepSlotScript`'s
@@ -385,9 +402,14 @@ fn install(core: &mut Core) {
     let send = menu_entry_from(core, UNIT_MENU + MENU_ENTRY * SEND_AT, Stub::SendUsable, Stub::SendChosen, TEXT_SEND);
     units[(MENU_ENTRY * SEND_AT) as usize..(MENU_ENTRY * (SEND_AT + 1)) as usize].copy_from_slice(&send);
     core.raw_write_range(UNIT_MENU_COPY, -1, &units);
-    // The Intel menu: the game's four items, then Auto CO On / Auto CO Off.
+    // The Intel menu: the game's four items, then General (Strike,
+    // Assault, General, Defense), then Auto CO On / Auto CO Off (Dual
+    // Strike's order).
     let mut intel = vec![0u8; (MENU_ENTRY * INTEL_MENU_LEN) as usize];
     core.raw_read_range(INTEL_MENU, -1, &mut intel);
+    for (k, usable) in [Stub::StrikeUsable, Stub::AssaultUsable, Stub::GeneralUsable, Stub::DefenseUsable].into_iter().enumerate() {
+        intel.extend(menu_entry_from(core, INTEL_MENU + MENU_ENTRY * TERMS_AT, usable, Stub::PostureChosen, TEXT_POSTURES + k as u16));
+    }
     for (usable, text) in [(Stub::AutoOnUsable, TEXT_AUTO_ON), (Stub::AutoOffUsable, TEXT_AUTO_OFF)] {
         intel.extend(menu_entry_from(core, INTEL_MENU + MENU_ENTRY * TERMS_AT, usable, Stub::AutoChosen, text));
     }
@@ -400,8 +422,11 @@ fn install(core: &mut Core) {
     core.raw_write_range(TEXTS + 0x10, -1, LABEL_SEND);
     core.raw_write_range(TEXTS + 0x20, -1, LABEL_AUTO_ON);
     core.raw_write_range(TEXTS + 0x30, -1, LABEL_AUTO_OFF);
+    for (k, label) in crate::ally_posture::labels(core).iter().enumerate() {
+        core.raw_write_range(TEXTS + 0x40 + 0x10 * k as u32, -1, label);
+    }
     core.raw_write_32(ROM, -1, ROM_MAGIC);
-    assert!(UNIT_MENU_COPY + MENU_ENTRY * (UNIT_MENU_LEN + 1) <= TEXTS && TEXTS + 0x40 <= INTEL_MENU_COPY);
+    assert!(UNIT_MENU_COPY + MENU_ENTRY * (UNIT_MENU_LEN + 1) <= TEXTS && TEXTS + 0x80 <= INTEL_MENU_COPY);
     assert!(INTEL_MENU_COPY + intel.len() as u32 <= ROM_END);
 }
 
@@ -477,6 +502,11 @@ const VIEW_CTL: u32 = STATE + 0x17;
 /// (Set means off: a battle saved before the setting existed reads 0, Dual
 /// Strike's default, on.)
 const MANUAL: u32 = STATE + 0x1B;
+/// Intel > General, per army (2 bits at `2 * (army - 1)`): its posture
+/// XOR [`GENERAL`] (Dual Strike's numbers: 0 Strike, 1 Assault, 2
+/// General, 3 Defense), so 0 is General, Dual Strike's first default (and a
+/// battle saved before the item existed reads General).
+const POSTURES: u32 = STATE + 0x1D;
 /// A Continue is bringing the second front back (1, until the battle is on
 /// the screen).
 const CONTINUED: u32 = STATE + 0x1C;
@@ -643,6 +673,19 @@ pub fn tick(core: &mut Core, on_: bool) {
         // Auto CO as the description starts it, per army.
         let manual = (0..4).filter(|&k| b.fronts.control[k] == FrontControl::AutoCo { on: false }).fold(0u8, |m, k| m | 1 << k);
         core.raw_write_8(MANUAL, -1, manual);
+        // General as Dual Strike starts it: each human army's last choice
+        // (Dual Strike keeps the player's in its save data), General for
+        // the computer's.
+        let mut postures = 0u8;
+        if b.fronts.posture {
+            let last = crate::ds_campaign::posture_memory(core);
+            for k in 0..4u32 {
+                if core.raw_read_8(CONTROLLERS + 1 + k, -1) == 1 {
+                    postures |= (last ^ GENERAL) << (2 * k);
+                }
+            }
+        }
+        core.raw_write_8(POSTURES, -1, postures);
     }
     sync_header(core, &b);
     // Means to an End: the crystals on the second front guard the main
@@ -653,6 +696,8 @@ pub fn tick(core: &mut Core, on_: bool) {
     crate::ds_campaign_rules::omens_barrier_tick(core);
     // The panels (help line, view, result, which front).
     panel_tick(core);
+    // Intel > General's icon (Dual Strike's AI icon) while its menu is up.
+    crate::ally_posture::icon_tick(core, menu_cursor(core, INTEL_MENU_COPY).is_some());
     // A front in the sky: its clouds and the Black Arc (crate::sky_front).
     crate::sky_front::tick(core);
     let banner = core.raw_read_8(BANNER, -1);
@@ -677,7 +722,8 @@ pub fn menus(core: &mut Core, on_: bool) {
         }
     }
     // The labels: text ids from the free tail of the text table.
-    for (id, at) in [(TEXT_FRONT, TEXTS), (TEXT_SEND, TEXTS + 0x10), (TEXT_AUTO_ON, TEXTS + 0x20), (TEXT_AUTO_OFF, TEXTS + 0x30)] {
+    let postures = (0..4u16).map(|k| (TEXT_POSTURES + k, TEXTS + 0x40 + 0x10 * k as u32));
+    for (id, at) in [(TEXT_FRONT, TEXTS), (TEXT_SEND, TEXTS + 0x10), (TEXT_AUTO_ON, TEXTS + 0x20), (TEXT_AUTO_OFF, TEXTS + 0x30)].into_iter().chain(postures) {
         let entry = TEXT_TABLE + 4 * id as u32;
         if ours && core.raw_read_32(entry, -1) != at {
             core.raw_write_32(entry, -1, at);
@@ -962,6 +1008,22 @@ pub fn magic(core: &mut Core, id: u32) {
             let shown = auto_co_army(core, &b).is_some_and(|a| auto_co(core, a) == (s == Stub::AutoOnUsable));
             return_to(core, if shown { 0 } else { 1 })
         }
+        (Stub::StrikeUsable | Stub::AssaultUsable | Stub::GeneralUsable | Stub::DefenseUsable, Some(b)) => {
+            // Shown to the army whose posture it is, on its main-front turn:
+            // the item of its posture.
+            let k = s as u8 - Stub::StrikeUsable as u8;
+            let shown = posture_army(core, &b).is_some_and(|a| posture(core, a) == k);
+            return_to(core, if shown { 0 } else { 1 })
+        }
+        (Stub::PostureChosen, Some(b)) => {
+            if let Some(a) = posture_army(core, &b) {
+                // Dual Strike's order: General, Defense, Strike, Assault.
+                let next = (posture(core, a) + 1) % 4;
+                set_posture(core, a, next);
+                crate::ds_campaign::set_posture_memory(core, next);
+            }
+            core.gba_mut().cpu_mut().set_thumb_pc(REFRESH_MENU)
+        }
         (Stub::AutoChosen, Some(b)) => {
             if let Some(a) = auto_co_army(core, &b) {
                 let m = core.raw_read_8(MANUAL, -1) ^ (1 << (a - 1));
@@ -973,7 +1035,22 @@ pub fn magic(core: &mut Core, id: u32) {
         }
         (_, None) => return_to(
             core,
-            if matches!(s, Stub::FrontUsable | Stub::SendUsable | Stub::SaveUsable | Stub::AutoOnUsable | Stub::AutoOffUsable) { 1 } else { 0 },
+            if matches!(
+                s,
+                Stub::FrontUsable
+                    | Stub::SendUsable
+                    | Stub::SaveUsable
+                    | Stub::AutoOnUsable
+                    | Stub::AutoOffUsable
+                    | Stub::StrikeUsable
+                    | Stub::AssaultUsable
+                    | Stub::GeneralUsable
+                    | Stub::DefenseUsable
+            ) {
+                1
+            } else {
+                0
+            },
         ),
         (s, Some(b)) => swap_step(core, s, &b),
     }
@@ -1276,6 +1353,54 @@ fn auto_co_army(core: &Core, b: &Battle) -> Option<u32> {
     }
     let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
     (1..=4).contains(&army).then_some(army).filter(|&a| matches!(b.fronts.control[a as usize - 1], FrontControl::AutoCo { .. }))
+}
+
+/// Dual Strike's postures (Intel > General): its numbers, the order its
+/// item cycles through (General, Defense, Strike, Assault).
+pub const STRIKE: u8 = 0;
+pub const ASSAULT: u8 = 1;
+pub const GENERAL: u8 = 2;
+pub const DEFENSE: u8 = 3;
+
+/// The army's posture (Intel > General).
+pub fn posture(core: &Core, army: u32) -> u8 {
+    if !(1..=4).contains(&army) {
+        return GENERAL;
+    }
+    ((core.raw_read_8(POSTURES, -1) >> (2 * (army - 1))) & 3) ^ GENERAL
+}
+
+fn set_posture(core: &mut Core, army: u32, p: u8) {
+    let shift = 2 * (army - 1);
+    let v = (core.raw_read_8(POSTURES, -1) & !(3 << shift)) | (((p ^ GENERAL) & 3) << shift);
+    core.raw_write_8(POSTURES, -1, v);
+}
+
+/// The army whose Intel > General the menu shows now (Dual Strike's test,
+/// arm9 `0x020BDF48` and its three twins): the current army, on its
+/// main-front turn, while the second front is fought, when the description
+/// has the item; with Auto CO's item (on or off), or else while the
+/// computer directs the army there.
+fn posture_army(core: &Core, b: &Battle) -> Option<u32> {
+    if !b.fronts.posture || core.raw_read_8(LIVE, -1) != 0 || core.raw_read_8(SECOND, -1) != SECOND_ON || core.raw_read_8(BUSY, -1) != 0 {
+        return None;
+    }
+    let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
+    if !(1..=4).contains(&army) {
+        return None;
+    }
+    let auto = matches!(b.fronts.control[army as usize - 1], FrontControl::AutoCo { .. });
+    (auto || second_controller(core, b, army) == 2).then_some(army)
+}
+
+/// The posture the computer plays `army`'s turns with now: in a two-front
+/// battle whose description has Intel > General, the army's; General
+/// (the army's own orders) everywhere else.
+pub fn cpu_posture(core: &Core, army: u32) -> u8 {
+    match battle(core) {
+        Some(b) if b.fronts.posture && in_battle(core) => posture(core, army),
+        _ => GENERAL,
+    }
 }
 
 /// Who plays `army`'s turns on the second front (its controller byte
@@ -1709,13 +1834,15 @@ enum Panel {
     ViewLow = 5,
     /// Auto CO's help line (the Intel menu).
     AutoHelp = 6,
+    /// Intel > General's help line (the posture shown).
+    PostureHelp = 7,
 }
 
 impl Panel {
     /// The window, in BG2 cells: (x, y, width, height).
     fn rect(self) -> (u32, u32, u32, u32) {
         match self {
-            Panel::Help | Panel::SetupHelp | Panel::AutoHelp => (0, 16, 30, 4),
+            Panel::Help | Panel::SetupHelp | Panel::AutoHelp | Panel::PostureHelp => (0, 16, 30, 4),
             // (at the top: neither the CO panel nor the terrain and unit
             // panels are drawn while the other front is looked at,
             // [`co_panel`], [`info_panels`])
@@ -1736,6 +1863,10 @@ impl Panel {
                 let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
                 let t = if auto_co(core, army) { AUTO_ON_HELP } else { AUTO_OFF_HELP };
                 vec![(px + 12, py + 9, t, false)]
+            }
+            Panel::PostureHelp => {
+                let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
+                vec![(px + 12, py + 9, crate::ally_posture::help(posture(core, army)), false)]
             }
             Panel::View | Panel::ViewLow => {
                 // (the front looked at: the main one from a second-front turn)
@@ -1759,8 +1890,10 @@ fn want_panel(core: &Core) -> Option<Panel> {
     if menu_cursor(core, MAP_MENU_COPY) == Some(OPTIONS_AT + 1) {
         return Some(Panel::Help);
     }
-    if matches!(menu_cursor(core, INTEL_MENU_COPY), Some(AUTO_ON_AT | AUTO_OFF_AT)) {
-        return Some(Panel::AutoHelp);
+    match menu_cursor(core, INTEL_MENU_COPY) {
+        Some(AUTO_ON_AT | AUTO_OFF_AT) => return Some(Panel::AutoHelp),
+        Some(k) if (POSTURE_AT..POSTURE_AT + 4).contains(&k) => return Some(Panel::PostureHelp),
+        _ => {}
     }
     match menu_cursor(core, crate::setup_phase::MENU) {
         Some(crate::setup_phase::FRONT_AT) => return Some(Panel::Help),
@@ -1855,7 +1988,9 @@ fn panel_tick(core: &mut Core) {
     let (hofs, vofs) = (core.raw_read_16(BG2HOFS, -1) as u32 & 0x1FF, core.raw_read_16(BG2VOFS, -1) as u32 & 0x1FF);
     let aligned = hofs % 8 == 0 && vofs % 8 == 0;
     let at = ((hofs / 8) % 32, (vofs / 8) % 32);
-    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp, Panel::ViewLow, Panel::AutoHelp].into_iter().find(|p| *p as u8 == now);
+    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp, Panel::ViewLow, Panel::AutoHelp, Panel::PostureHelp]
+        .into_iter()
+        .find(|p| *p as u8 == now);
     let drawn_at = (core.raw_read_8(PANEL_AT, -1) as u32, core.raw_read_8(PANEL_AT + 1, -1) as u32);
     let keep = drawn.is_some() && drawn == want && aligned && drawn_at == at;
     if let Some(d) = drawn.filter(|_| !keep) {
@@ -2214,8 +2349,9 @@ mod tests {
         assert!(SCRIPT_ROUND + swap_script(Stub::BeginRound).len() as u32 <= SCRIPT_VIEW);
         assert!(SCRIPT_VIEW + swap_script(Stub::BeginViewIn).len() as u32 <= SCRIPT_OVER);
         assert!(SCRIPT_OVER + swap_script(Stub::BeginOver).len() as u32 <= MAP_MENU_COPY);
-        assert!(stub_at(Stub::AutoChosen) + 16 <= SCRIPT_ROUND);
+        assert!(stub_at(Stub::PostureChosen) + 16 <= SCRIPT_ROUND);
         assert!(MANUAL < QUEUE && MANUAL > PANEL_AT + 1);
+        assert!(POSTURES > CONTINUED && POSTURES < QUEUE);
         assert!(MAP_MENU_COPY + MENU_ENTRY * (MAP_MENU_LEN + 2) <= UNIT_MENU_COPY);
     }
 }
