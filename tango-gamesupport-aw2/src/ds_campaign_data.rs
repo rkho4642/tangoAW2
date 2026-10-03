@@ -333,16 +333,22 @@ fn volcanoes(tiles: &mut [u16], w: usize, h: usize) {
     }
 }
 
-/// Dual Strike's Black Obelisk is drawn on AW2's Black Cannon tiles (a 3x3:
-/// 0x1A4 rows above and below a middle row 0x186..0x188, or 0x18C..0x18E
-/// facing up), where AW2 would put a firing Black Cannon: it becomes
-/// tangoAW2's Obelisk (crate::obelisk: heals, never fires), Dual Strike's
-/// structure kind 0xA.
+/// Dual Strike's Black Obelisk (structure kind 0xA) is a 3x3 whose middle
+/// row is tiles 0x18C..0x18E (terrain class 0x1D; AW2's Black Factory
+/// tiles, without the factory's fourth row), 0x1A4 rows above and below. It
+/// becomes tangoAW2's Obelisk (crate::obelisk: heals, never fires): AW2's
+/// Black Cannon footprint with tile 0x193 in its middle.
+///
+/// A middle row 0x186..0x188 is no Obelisk: Dual Strike's terrain class
+/// 0x1A, its Black Cannon facing down (kind 3, 99 HP, 5 HP a shot each day;
+/// Crystal Calamity's at (9, 1), read from its battle's structure list in
+/// melonDS), the same tiles and class as AW2's own Black Cannon, kept as
+/// they are.
 fn black_obelisks(tiles: &mut [u16], w: usize, h: usize) {
     for cy in 1..h.saturating_sub(1) {
         for cx in 1..w.saturating_sub(1) {
             let mid = tiles[cy * w + cx];
-            if mid != 0x187 && mid != 0x18D {
+            if mid != 0x18D {
                 continue;
             }
             let at = |dx: usize, dy: usize| tiles[(cy + dy - 1) * w + cx + dx - 1];

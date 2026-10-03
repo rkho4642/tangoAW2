@@ -1090,9 +1090,27 @@ overlay 1, the campaign's code, at `0x02350560`).
   as in Versus (the battle goes on), except a lab mission's lab cells, which
   end it as Dual Strike's labs do.
 - **Maps**: Dual Strike's tiles are AW2's but for Com Towers (the Lab
-  tiles), Black Crystals (0x192), its Black Obelisks (drawn on AW2's Black
-  Cannon tiles, which would fire: tangoAW2's Obelisk), Ring of Fire's
-  Volcano (below) and the Grand Bolt (below).
+  tiles), Black Crystals (0x192), its Black Obelisks (a 3x3 whose middle
+  row is 0x18C..0x18E, AW2's Black Factory tiles without the factory's
+  fourth row: tangoAW2's Obelisk on AW2's Black Cannon footprint), Ring of
+  Fire's Volcano (below) and the Grand Bolt (below).
+- **Structures** are Dual Strike's, kind for kind and cell for cell
+  (`test_ds_structures.py`, against the battle structure list melonDS
+  shows at `0x02183B08 + 0x48DC`, built by `0x020DA650` from each cell's
+  terrain class: 0x15 minicannon (kind 4), 0x17 Black Crystal (9), 0x18
+  Grand Bolt part (0xB + n), 0x1A Black Cannon (3), 0x1C Volcano (2), 0x1D
+  Black Obelisk (0xA), 0x1F a 4x4 picture (8)). Crystal Calamity's
+  structure at the top, (9, 1), is Dual Strike's Black Cannon facing down
+  (tiles 0x186..0x188, class 0x1A: 99 HP, 5 HP a shot, every day; its
+  entry `0901db0463010132`, byte for byte AW2's), AW2's own Black Cannon
+  here; the centre holds the mission's one Black Obelisk. (The Black Onyx
+  of its dialogue is a satellite on Dual Strike's top screen, not on the
+  map; see "Crystal Calamity" below.) Surrounded!'s four 4x4 pictures are
+  two missile pads and two fortresses: AW2 loads only the header's picture
+  (`LoadInventionGraphics`, `0x0803FD80`, OBJ tiles 0x130..), so on a map
+  whose inventions are all 4x4 pictures the other one goes into the
+  invention sheet's first 64 tiles (0xC4, none of its sprites drawn
+  there) and those structures are drawn from it (`crate::obelisk`).
 - **Rules per mission**: the header names AW2's picture of a 4x4
   structure (+0x10, the same bytes as Dual Strike's) and the fog; at each
   mission start (`crate::sandstorm`'s map-start trap `0x08035490`) the fog,
@@ -1392,7 +1410,15 @@ overlay 1, the campaign's code, at `0x02350560`).
     armies too.
   - Crystal Calamity's `0x0235172C` is the Black Onyx's real-time laser
     charge (90% or more on Dual Strike's top screen); with the 50-minute
-    count left out it never holds.
+    count left out it never holds. The Black Onyx is a satellite on the
+    top screen ("more than 22,000 miles above us"), its state at
+    `[0x021694C0]`: +0x14 the hits still needed (9, `0x020F3604(9,
+    0x8CA0)`), +0x38 the charge's full mark (36000 frames), +0x3C the
+    charge, ticked each frame by `0x020F232C`; full (`0x02351738`) it
+    fires. Its hits come from the map's nine missile silos (0x180, "the
+    ASDS": "If we can hit Black Onyx with all nine in under fifty
+    minutes"). Nothing of it is on the map; here the silos are AW2's own
+    and the satellite is left out with the real-time count.
 
 Tests: `tools/aw2test/tests/test_ds_campaign.py` (the sub-menu with and
 without the pack, AW2's campaign unchanged to its first mission card,

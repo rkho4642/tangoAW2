@@ -5,15 +5,32 @@ AW2TEST_MAP_IMAGES set, in that folder too."""
 import os
 
 GMAP = 0x0201E450
+# The game's OAM buffer (copied to OAM at VBlank) and the priority its
+# panels, cursor and dialogue faces use (0..2; the map's buildings and
+# structures are 3).
+OAM_BUFFER = 0x03002520
+
+
+def hide_hud(e):
+    """Hides every sprite in front of the map (the CO and terrain panels,
+    the cursor) for the next frame drawn: the picture is the map's alone."""
+    import struct
+    b = bytearray(e.read(OAM_BUFFER, 0x400))
+    for k in range(128):
+        if (struct.unpack_from("<H", b, 8 * k + 4)[0] >> 10) & 3 < 3:
+            struct.pack_into("<H", b, 8 * k, 0x0200 | 160)
+    e.write(OAM_BUFFER, bytes(b))
+    e.wait(1)
 IMAGES = os.environ.get("AW2TEST_MAP_IMAGES")
 
 
-def stitch(ctx, g, name, w, h, each=None):
+def stitch(ctx, g, name, w, h, each=None, exclude=None):
     """The whole map as one picture: the cursor sweeps it and a screenshot is
-    taken every two cells. Each cell is then the medoid of its views (the
-    view nearest all the others), so the cursor and the panels, which move
-    with the cursor, drop out. `each()` is called at every view. Needs PIL and
-    numpy (else skipped)."""
+    taken every two cells, the panels and cursor hidden ([`hide_hud`]). Each
+    cell is then the medoid of its views (the view nearest all the others).
+    `each()` is called at every view; `exclude(tx, ty)` names screen cells
+    never taken (a banner fixed on the screen). Needs PIL and numpy (else
+    skipped)."""
     try:
         import numpy as np
         from PIL import Image
@@ -37,12 +54,15 @@ def stitch(ctx, g, name, w, h, each=None):
             e.wait(2)
             if each:
                 each()
+            hide_hud(e)
             path = e.shot(os.path.join(ctx.out, "sweep"))
             shots += 1
             img = np.asarray(Image.open(path).convert("RGB")).astype(np.int32)
             for ty in range(10):
                 for tx in range(15):
                     mx, my = camx // 16 + tx, camy // 16 + ty
+                    if exclude and exclude(tx, ty):
+                        continue
                     if 0 <= mx < w and 0 <= my < h and max(abs(mx - cx), abs(my - cy)) > 1:
                         same = (tx < 7.5) == ((cx * 16 - camx) < 120)
                         views[my][mx].append((same, img[16 * ty:16 * ty + 16, 16 * tx:16 * tx + 16]))

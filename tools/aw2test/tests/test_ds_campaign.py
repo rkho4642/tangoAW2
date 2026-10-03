@@ -1046,6 +1046,9 @@ TWO_FRONT = {8, 10, 14, 21, 24}
 # Missions where the computer fights as a Dual Strike tag pair (crate::tag):
 # the pad bot no longer wins them; the user plays them by hand.
 TAG_HAND_PLAYED = {"The Long March", "Verdant Hills", "Into the Woods", "Pincer Strike"}
+# Crystal Calamity since its Black Cannon is Dual Strike's (it fires on the
+# player's units each day): hand-tested by the user, who has beaten it.
+HAND_TESTED = {"Crystal Calamity"}
 
 
 def _win(step):
@@ -1054,6 +1057,8 @@ def _win(step):
             raise Skip("a two-front mission: played by hand (the user's decision)")
         if dc.DsData().mission(dc.ORDER[step])["name"] in TAG_HAND_PLAYED:
             raise Skip("the computer's tag pair: played by hand (the user's decision)")
+        if dc.DsData().mission(dc.ORDER[step])["name"] in HAND_TESTED:
+            raise Skip("hand-tested: the user beat it (the user's decision)")
         e, g, d = boot(ctx)
         index = dc.ORDER[step]
         name = dc.DsData().mission(index)["name"]
