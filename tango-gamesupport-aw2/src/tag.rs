@@ -637,7 +637,8 @@ pub const TEXT_CHANGE: u16 = 0x7301;
 /// The Teams screen's help line on an army's CO stop, with the pack
 /// (crate::tag_ui puts it in place of AW2's "Choose a CO.", text 0x9DC).
 pub const CHOOSE_CO_AT: u32 = STRINGS + 0x20;
-const CHOOSE_CO: &[u8] = b"Choose a CO. START: tag partner.\0";
+/// (AW2's help line takes 31 characters.)
+const CHOOSE_CO: &[u8] = b"Choose a CO. START: partner.\0";
 /// The help line while an army's partner is picked (crate::versus_rules's
 /// help trap shows it).
 pub const TEXT_PARTNER: u16 = 0x7304;

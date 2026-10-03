@@ -178,10 +178,37 @@ fn main() {
                                     .collect()
                             };
                             let (s0, s1) = (text(nds, r[0]), text(nds, r[1]));
-                            eprintln!("trap {at:08x} r0 {:08x} r1 {:08x} r2 {:08x} r3 {:08x} lr {:08x} {s0:?} {s1:?}", r[0], r[1], r[2], r[3], nds.reg(14));
+                            eprintln!(
+                                "trap {at:08x} r0 {:08x} r1 {:08x} r2 {:08x} r3 {:08x} lr {:08x} {s0:?} {s1:?} r4 {:08x} r5 {:08x} r6 {:08x} r7 {:08x}",
+                                r[0], r[1], r[2], r[3], nds.reg(14), nds.reg(4), nds.reg(5), nds.reg(6), nds.reg(7)
+                            );
                         }
                     }),
                 )]);
+            }
+            "trapprints" => {
+                // `trapprints N ADDR...`: print r0..r7 and LR the first N times
+                // the ARM9 reaches each ADDR (several traps at once).
+                let n = p[1].parse::<u32>().unwrap_or(10);
+                let mut traps: Vec<(u32, Box<dyn FnMut(&mut melonds::Nds)>)> = Vec::new();
+                for a in &p[2..] {
+                    let at = hex(a);
+                    let left = std::cell::Cell::new(n);
+                    traps.push((
+                        at,
+                        Box::new(move |nds: &mut melonds::Nds| {
+                            if left.get() > 0 {
+                                left.set(left.get() - 1);
+                                let r: Vec<u32> = (0..8).map(|i| nds.reg(i)).collect();
+                                eprintln!(
+                                    "trap {at:08x} r0 {:08x} r1 {:08x} r2 {:08x} r3 {:08x} r4 {:08x} r5 {:08x} r6 {:08x} r7 {:08x} lr {:08x}",
+                                    r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], nds.reg(14)
+                                );
+                            }
+                        }),
+                    ));
+                }
+                solo.side().console().set_traps(traps);
             }
             "readwatch" => {
                 // Print the PC and LR of the first N reads of ADDR (`readwatch

@@ -7,7 +7,7 @@ as it always did (the other suites)."""
 
 import os
 
-from aw2test import damage, paths
+from aw2test import damage, paths, ram
 from aw2test import dscampaign as dc
 from aw2test.emu import Emu
 from aw2test.game import Game, NavError
@@ -542,6 +542,49 @@ def skills_panel_teams_and_rule(ctx):
     want1 = [0x27] if e.u8(e.u32(PLAYERS) + 0x3C + 0x1D) == edited else [0x25]
     ctx.eq(active(e, 1), want1, "army 1: its CO's Versus set on")
     ctx.eq(active(e, 2), [0x25], "army 2 (the computer, Max): Max's Versus set, Slam Guard")
+
+
+@test(modes=("ds",))
+def skills_five_armies(ctx):
+    """Five armies (Black Hole the fifth): SELECT on an army's CO stop opens
+    the SET SKILLS screen there too; the Rules screen has the Skills row;
+    with it on every army, Black Hole's too, has its CO's Versus set on."""
+    m = ctx.map(hq=((1, 0, 0), (2, 29, 19), (3, 29, 0), (4, 0, 19)))
+    m.terrain(15, 10, 0x1B4)
+    m.unit(5, "infantry", 16, 10)
+    m.colours = [5, 1, 2, 3, 4]
+    save = os.path.join(ctx.out, "map.sav")
+    m.write(paths.base_save(), save)
+    e = Emu(save=save, ds=True)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    g.boot_to_teams()
+    e.wait(30)
+    ctx.eq(e.u8(ram.FIVE_ON), 1, "a five-army game")
+    e.w32(DATA, 0x314C4B53)
+    for c in CO_SLOTS:
+        e.w32(DATA + 4 + CO_LEN * co_slot(c), 1000)
+        e.write(DATA + 4 + CO_LEN * co_slot(c) + 16, bytes([0x25, 0, 0, 0]))  # Versus set 0: Slam Guard
+    for _ in range(12):
+        if e.u8(g.teams_addr() + 0x32) == 8:
+            break
+        e.press("RIGHT", 6)
+        e.wait(14)
+    e.press("SELECT", 4)
+    e.wait(10)
+    ctx.eq(e.u8(PANEL), 1, "SELECT on Black Hole's CO: the panel is up")
+    shot(ctx, e, "five_set_skills")
+    e.press("B", 4)
+    e.wait(10)
+    g.teams_to_rules()
+    g.set_rules(fog=False, weather="clear", power=True, visuals="off", capt=None)
+    g.set_extra_rules(skills=True)
+    ctx.eq(e.u8(VERSUS_RULE), 1, "the Rules screen's Skills row: ON")
+    shot(ctx, e, "five_rules_skills_on")
+    g.start_battle()
+    g.wait_for_input()
+    for a in range(1, 6):
+        ctx.eq(active(e, a), [0x25], f"army {a}: its CO's Versus set, Slam Guard")
 
 
 @test(modes=("ds",))

@@ -30,10 +30,19 @@ use mgba::core::Core;
 
 use crate::ds_weather::is_on;
 
+/// The Teams/Rules record (AW2's, or crate::five's copy in a five-army
+/// game: the same fields): +0x30 the stage, +0x33 the rules cursor, +0x54
+/// the rule objects.
 const RECORD: u32 = 0x0201_7C50;
-const CURSOR: u32 = RECORD + 0x33;
-const STAGE: u32 = RECORD + 0x30;
-const OBJECTS: u32 = RECORD + 0x54;
+const RECORD_FIVE: u32 = 0x0203_0300;
+
+fn rec(core: &Core) -> u32 {
+    if crate::five::active(core) {
+        RECORD_FIVE
+    } else {
+        RECORD
+    }
+}
 const VISUALS: u32 = 6;
 const OBJ_X: u32 = 0x28;
 const OBJ_Y: u32 = 0x2A;
@@ -70,7 +79,7 @@ const LAST: u8 = ROWS.len() as u8;
 const PLACES: [(i32, i32); 1] = [(-48, 56)];
 
 fn on(core: &Core, ds: bool) -> bool {
-    ds && crate::pvp::in_versus(core) && !crate::five::active(core)
+    ds && crate::pvp::in_versus(core)
 }
 
 fn row_value(core: &Core, k: usize) -> bool {
@@ -107,17 +116,17 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
         core.raw_write_8(SEEN, -1, left - 1);
     }
     let mut v = core.raw_read_8(VCURSOR, -1);
-    if !seen || core.raw_read_8(STAGE, -1) != 0 {
+    if !seen || core.raw_read_8(rec(core) + 0x30, -1) != 0 {
         if v != 0 {
             core.raw_write_8(VCURSOR, -1, 0);
         }
-        if core.raw_read_8(STAGE, -1) != 0 || !rows_shown(core) {
+        if core.raw_read_8(rec(core) + 0x30, -1) != 0 || !rows_shown(core) {
             restore(core);
         }
         return keys;
     }
     let pressed = keys & !prev;
-    let cursor = core.raw_read_8(CURSOR, -1);
+    let cursor = core.raw_read_8(rec(core) + 0x33, -1);
     let mut keys = keys;
     let mut sound = false;
     if v == 0 {
@@ -127,13 +136,13 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
             keys &= !KEY_RIGHT;
         } else if cursor == 0 && pressed & KEY_LEFT != 0 {
             v = LAST;
-            core.raw_write_8(CURSOR, -1, VISUALS as u8);
+            core.raw_write_8(rec(core) + 0x33, -1, VISUALS as u8);
             sound = true;
             keys &= !KEY_LEFT;
         }
     } else {
-        if core.raw_read_8(CURSOR, -1) as u32 != VISUALS {
-            core.raw_write_8(CURSOR, -1, VISUALS as u8);
+        if core.raw_read_8(rec(core) + 0x33, -1) as u32 != VISUALS {
+            core.raw_write_8(rec(core) + 0x33, -1, VISUALS as u8);
         }
         let k = (v - 1) as usize;
         if pressed & KEY_LEFT != 0 {
@@ -142,7 +151,7 @@ pub fn tick(core: &mut Core, ds: bool, keys: u32, prev: u32) -> u32 {
         } else if pressed & KEY_RIGHT != 0 {
             if v == LAST {
                 v = 0;
-                core.raw_write_8(CURSOR, -1, 0);
+                core.raw_write_8(rec(core) + 0x33, -1, 0);
             } else {
                 v += 1;
             }
@@ -225,7 +234,7 @@ fn arrows(core: &mut Core) {
 const HIGHLIGHT_END: u32 = 0x0806_6D6A;
 fn highlight_end(core: &mut Core) {
     if is_on(core) && core.raw_read_8(VCURSOR, -1) != 0 {
-        let obj = core.raw_read_32(OBJECTS + 4 * VISUALS, -1);
+        let obj = core.raw_read_32(rec(core) + 0x54 + 4 * VISUALS, -1);
         if (0x0200_0000..0x0400_0000).contains(&obj) {
             core.raw_write_8(obj + OBJ_SELECTED, -1, 0);
         }
@@ -236,7 +245,7 @@ fn highlight_end(core: &mut Core) {
 const HELP_ID: u32 = 0x0806_6F8A;
 fn help_id(core: &mut Core) {
     let v = core.raw_read_8(VCURSOR, -1);
-    if is_on(core) && v != 0 && core.raw_read_8(STAGE, -1) == 0 {
+    if is_on(core) && v != 0 && core.raw_read_8(rec(core) + 0x30, -1) == 0 {
         core.gba_mut().cpu_mut().set_gpr(5, ROWS[v as usize - 1].help as i32);
     } else if let Some(id) = crate::tag_ui::help_override(core) {
         // The Teams stage: picking a partner (crate::tag_ui).
@@ -310,7 +319,7 @@ fn push(core: &mut Core, layer: u32, x: u16, y: u16, object: u32, oam2: u16) {
 const RULE_SCRIPT: u32 = 0x0858_096C;
 
 fn visuals(core: &Core) -> Option<(i32, i32)> {
-    let obj = core.raw_read_32(OBJECTS + 4 * VISUALS, -1);
+    let obj = core.raw_read_32(rec(core) + 0x54 + 4 * VISUALS, -1);
     if !(0x0200_0000..0x0400_0000).contains(&obj) || core.raw_read_32(obj, -1) != RULE_SCRIPT {
         return None;
     }
@@ -319,13 +328,13 @@ fn visuals(core: &Core) -> Option<(i32, i32)> {
 
 /// The rows are on screen: the Rules stage, its rows out (Visuals placed).
 fn rows_shown(core: &Core) -> bool {
-    core.raw_read_8(STAGE, -1) == 0 && visuals(core).is_some_and(|(_, y)| (-32..176).contains(&y))
+    core.raw_read_8(rec(core) + 0x30, -1) == 0 && visuals(core).is_some_and(|(_, y)| (-32..176).contains(&y))
 }
 
 /// `PushSpriteLayerObjects(layer)`: our rows' entries join the layer's list
 /// (labels, values and arrows on layer 0; diamonds on layer 3), once a frame.
 fn push_layer(core: &mut Core) {
-    if !is_on(core) || !crate::pvp::in_versus(core) || crate::five::active(core) {
+    if !is_on(core) || !crate::pvp::in_versus(core) {
         return;
     }
     // The lists are one chain (`ClearSprites`): head 0 -> layer 0 -> head 1

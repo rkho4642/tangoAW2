@@ -547,7 +547,8 @@ fn mode_set(core: &Core) -> Option<(Set, bool)> {
 pub fn battle_start(core: &mut Core) {
     let Some((which, everyone)) = mode_set(core) else { return };
     crate::ds_campaign::skills_loaded(core);
-    for a in 1..=4u32 {
+    let last = if crate::five::active(core) { 5 } else { 4 };
+    for a in 1..=last {
         if core.raw_read_8(player(core, a) + 0x1B, -1) == 0 || !(everyone || human(core, a)) {
             continue;
         }
@@ -562,7 +563,7 @@ pub fn battle_start(core: &mut Core) {
 /// player's armies, the Campaign set): a tag pair's partner
 /// ([`crate::tag`]).
 pub fn ids_for(core: &mut Core, army: u32, co: u8) -> Vec<u8> {
-    if !(1..=4).contains(&army) || core.raw_read_8(player(core, army) + 0x1B, -1) == 0 {
+    if !(1..=5).contains(&army) || core.raw_read_8(player(core, army) + 0x1B, -1) == 0 {
         return Vec::new();
     }
     if crate::ds_campaign::active(core) {

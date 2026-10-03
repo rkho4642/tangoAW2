@@ -127,30 +127,36 @@ fn co_select(core: &Core) -> Option<(u8, Set)> {
     Some((co, set))
 }
 
+/// The Teams record (AW2's, or crate::five's copy in a five-army game,
+/// whose per-army CO indices are at +0xA8 instead of +0x1C).
 const TEAMS: u32 = 0x0201_7C50;
+const TEAMS_FIVE: u32 = 0x0203_0300;
 
 /// Versus' Teams screen on an army's CO stop: the army's CO.
 fn teams(core: &Core) -> Option<u8> {
-    if !crate::pvp::on_teams_screen(core) || crate::five::active(core) {
+    if !crate::pvp::on_teams_screen(core) {
         return None;
     }
-    if core.raw_read_8(TEAMS + 0x30, -1) != 1
-        || core.raw_read_8(TEAMS + 0x26, -1) != 0
-        || core.raw_read_8(TEAMS + 0x2D, -1) != 0
-        || core.raw_read_8(TEAMS + 0x24, -1) != 0
+    let five = crate::five::active(core);
+    let rec = if five { TEAMS_FIVE } else { TEAMS };
+    if core.raw_read_8(rec + 0x30, -1) != 1
+        || core.raw_read_8(rec + 0x26, -1) != 0
+        || core.raw_read_8(rec + 0x2D, -1) != 0
+        || core.raw_read_8(rec + 0x24, -1) != 0
     {
         return None;
     }
-    let cursor = core.raw_read_8(TEAMS + 0x32, -1) as u32;
+    let cursor = core.raw_read_8(rec + 0x32, -1) as u32;
     if cursor % 2 != 0 {
         return None;
     }
     let army = cursor / 2;
-    let list = core.raw_read_32(TEAMS + 0x18, -1);
+    let list = core.raw_read_32(rec + 0x18, -1);
     if !(0x0200_0000..0x0400_0000).contains(&list) {
         return None;
     }
-    let co = core.raw_read_8(list + core.raw_read_8(TEAMS + 0x1C + army, -1) as u32, -1);
+    let index_at = if five { rec + 0xA8 } else { rec + 0x1C };
+    let co = core.raw_read_8(list + core.raw_read_8(index_at + army, -1) as u32, -1);
     co_skills::co_slot(co).map(|_| co)
 }
 
