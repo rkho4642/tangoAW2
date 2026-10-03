@@ -697,9 +697,14 @@ pub fn flush_sprites(core: &mut Core, mut at: u32, end: u32) -> u32 {
     at
 }
 
-/// The map screen is up (its layers as it sets them).
+/// The map screen is up (its layers as it sets them). BG1's control is read
+/// from the game's shadow of it: a dialogue box with a face splits the
+/// screen (its rows from an HBlank switch, BG1 the face, 0x1C08), so the
+/// register at the end of a frame holds the box's, and the map's BG1 (whose
+/// tilemap block is the map's last tiles) would be turned back on.
 fn map_screen(core: &Core) -> bool {
-    core.raw_read_16(BG3CNT, -1) == WORLD_MAP_BG3 && core.raw_read_16(BG1CNT, -1) == WORLD_MAP_BG1
+    core.raw_read_16(BG3CNT, -1) == WORLD_MAP_BG3
+        && (core.raw_read_16(BG1CNT_SHADOW, -1) == WORLD_MAP_BG1 || core.raw_read_16(BG1CNT, -1) == WORLD_MAP_BG1)
 }
 
 /// gDispIo's DISPCNT shadow, BG1's bit, and the world map's BG3 control
@@ -710,6 +715,8 @@ const BG3CNT: u32 = 0x0400_000E;
 const WORLD_MAP_BG3: u16 = 0x5E0B;
 /// BG1 as the map screen sets it (its sea and grid: screen 27).
 const BG1CNT: u32 = 0x0400_000A;
+/// The game's BG1 control shadow (copied to BG1CNT at the top of a frame).
+const BG1CNT_SHADOW: u32 = 0x0300_1FE8;
 /// 1 while BG1 is held off ([`crate::ds_campaign`]'s RAM block).
 const BG1_HIDDEN: u32 = 0x0203_FD16;
 const WORLD_MAP_BG1: u16 = 0x1B02;
