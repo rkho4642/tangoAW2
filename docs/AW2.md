@@ -1996,7 +1996,8 @@ stay out.
   pair's sides: tiles, a 32x64 map, two palettes; drawn faint),
   `res_tagbreakfont` (the power's name: 32x32 glyphs, A..Z, a..z from 32),
   `res_changefont` (16x32 glyphs, A..Z then the star), the COs' Dual Strike
-  body art facing each other (it faces right: the right one mirrored;
+  body art facing each other (it looks left: the active CO, on the left as
+  in Dual Strike's, mirrored;
   AW2's Sturm, whom Dual Strike lacks, his AW2 art; CO SWAP: the
   incoming CO on Dual Strike's red, `CO★SWAP` across it), "POWER 1xx%" in
   AW2's font on a white plate. Dual Strike spreads them over both 256x192

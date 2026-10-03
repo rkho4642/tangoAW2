@@ -7,8 +7,8 @@
 //!   palette the file's last 32 bytes), the army's emblem faint over it
 //!   (`res_tagbreak_union` for Allied Nations COs, `_black` for Black
 //!   Hole's, `_mix` for one of each: tiles, a 32x64 map, two palettes), the
-//!   two COs' Dual Strike body art facing each other (the art faces right:
-//!   the right one mirrored), the pair's Tag Power name in Dual Strike's tag font
+//!   two COs' Dual Strike body art facing each other (the art looks left:
+//!   the active CO, on the left, mirrored), the pair's Tag Power name in Dual Strike's tag font
 //!   (`res_tagbreakfont`: 32x32 glyphs, A..Z then a..z from 32) and
 //!   "POWER 1xx%" in AW2's font on a white plate, as Dual Strike's box.
 //! - **CO SWAP**: Dual Strike's red, the incoming CO's body art and the
@@ -262,11 +262,11 @@ fn squeeze(l: Layer, max_w: usize) -> Layer {
 }
 
 /// A CO's body, 128x160 (the head at the top), from Dual Strike's art (or
-/// AW2's for a CO it lacks), colour scheme 0, and whether it faces right
-/// (Dual Strike's art does; AW2's faces left).
-fn body(core: &Core, co: u8) -> Option<(Layer, bool)> {
+/// AW2's for a CO it lacks), colour scheme 0. Both face left as stored
+/// (measured against Dual Strike's captures: its CO SWAP and the tag
+/// screen's right-hand CO draw the art as stored).
+fn body(core: &Core, co: u8) -> Option<Layer> {
     let ds = crate::tag::ds_id(co).and_then(crate::ds_co_art::co_art);
-    let faces_right = ds.is_some();
     let (top, bottom, pal) = match ds {
         Some(a) => (a.body_top, a.body_bottom, a.palette[..32].to_vec()),
         None => {
@@ -306,7 +306,7 @@ fn body(core: &Core, co: u8) -> Option<(Layer, bool)> {
             }
         }
     }
-    Some((Layer { w: 128, h: 160, px }, faces_right))
+    Some(Layer { w: 128, h: 160, px })
 }
 
 const PRESENTATION_POOL: u32 = 0x0803_9B7C;
@@ -393,11 +393,11 @@ fn compose_tag(core: &Core, a: u8, b: u8, name: &[u8], power: u8) -> Option<Vec<
     // The emblem's circle (its centre at (128, 190) of its 256x512) at
     // the screen's centre, faint.
     cv.draw(&emblem(side)?, 120 - 128, 80 - 190, false, 5);
-    // The COs facing each other, as Dual Strike's (its art faces right:
-    // the right one mirrored).
-    let (left, right) = (body(core, a)?, body(core, b)?);
-    cv.draw(&left.0, -6, 0, !left.1, 16);
-    cv.draw(&right.0, WIDTH as i32 - 122, 0, right.1, 16);
+    // The COs facing each other, as Dual Strike's: the active CO on the
+    // left, mirrored to look right; the partner on the right as stored,
+    // looking left.
+    cv.draw(&body(core, a)?, -6, 0, true, 16);
+    cv.draw(&body(core, b)?, WIDTH as i32 - 122, 0, false, 16);
     let font = Font::load("ohashi/res_tagbreakfont", 32, 32)?;
     let glyph = |c: u8| match c {
         b'A'..=b'Z' => Some(((c - b'A') as usize, 32)),
@@ -419,9 +419,8 @@ fn compose_tag(core: &Core, a: u8, b: u8, name: &[u8], power: u8) -> Option<Vec<
 /// CO SWAP for incoming CO `to`.
 fn compose_swap(core: &Core, to: u8) -> Option<Vec<Rgb>> {
     let mut cv = Canvas::new([31, 5, 0]);
-    // Facing right, as Dual Strike's.
-    let (b, right) = body(core, to)?;
-    cv.draw(&b, (WIDTH as i32 - 128) / 2, 0, !right, 16);
+    // As stored, as Dual Strike's.
+    cv.draw(&body(core, to)?, (WIDTH as i32 - 128) / 2, 0, false, 16);
     let font = Font::load("ohashi/res_changefont", 16, 32)?;
     let glyph = |c: u8| match c {
         b'A'..=b'Z' => Some(((c - b'A') as usize, 32)),

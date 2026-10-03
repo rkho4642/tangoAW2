@@ -958,7 +958,7 @@ def tag_sturm_pairs(ctx):
 
     g = tag_battle(ctx, ["sturm", "olaf"], [None, None], units=[(1, "tank", 10, 4)])
     names, stars = tag_page(g)
-    ctx.eq(names, b"Von Bolt\rHawke\rLash\rFlak\rAdder", "Sturm's partners, tangoAW2's order")
+    ctx.eq(names, b"Von Bolt\rHawke\rLash\rFlak\rAdder", "Sturm's partners, tangoAW2's order (Kindle, Jugger, Koal: 105, no special pair, not listed)")
     ctx.eq(stars, 3 + 2 + 2 + 1 + 1, "their stars")
     ctx.shot(g, "sturm_tag_page")
     g = tag_battle(ctx, ["vonbolt", "olaf"], [None, None], units=[(1, "tank", 10, 4)])
@@ -1004,7 +1004,7 @@ def tag_sturm_words(ctx):
     quotes = [aw2.text(aw2.u16(0x085D3DD0 + 0x104 * sturm + 0x20 + 2 * k)) for k in range(6)]
     got = rom_string(e, STRINGS)
     ctx.check(got in [bytes(q) for q in quotes], f"one of AW2's Sturm quotes ({got!r})")
-    e.wait(40)
+    e.wait(110)  # the whole line typed
     ctx.shot(g, "sturm_tag_in")
     ctx.require(e.wait_until(lambda: e.u8(EXTRAS) == 2, 1200, step=4), "CO SWAP")
     e.wait(20)
@@ -1036,5 +1036,5 @@ def tag_sturm_words(ctx):
     ctx.log(f"victory quote {t!r}")
     ctx.check(t in (b"Bow before Black Hole!\rVon Bolt: Delicious.", b"Your world is ours.\rVon Bolt: Hhhh... yes."),
               f"Sturm and Von Bolt's exchange ({t!r})")
-    e.wait(60)
+    e.wait(200)  # both lines typed
     ctx.shot(g, "sturm_victory_quote")
