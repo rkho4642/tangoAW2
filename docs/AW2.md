@@ -1875,13 +1875,41 @@ stay out.
 - **Without the pack** nothing of it: the menu, the Rules and Teams
   screens are AW2's and none of this RAM is written (battery and
   `compat_aw2_byte_identical`).
-- **Left out**: Dual Strike's tag intro (both COs, "POWER 110%", the
-  pair's name) and its CO-swap animation and tag-in line: Change and the
-  Tag Power use AW2's own screens; the CO page's TAG box; special pairs'
-  victory lines; tag skills. Market Crash and other meter drains reach
-  only the active CO. The pad bot (`aw2test/bot.py`) fires Tag Powers, but
-  it no longer wins four missions where the computer now fights as a pair
-  (The Long March, Verdant Hills, Into the Woods, Pincer Strike).
+- **Measured in Dual Strike** (melonDS, computer against computer on Bean
+  Island, `ds_script`'s `trapprints` at the firepower function's tag term
+  `0x020E5D48` and the damage formula's CO bonus `0x020DFB94`, the army's
+  pair and phase forced): Andy+Max +10, Andy+Eagle +15, Sami+Eagle +20,
+  Andy+Von Bolt -10, Koal+Rachel -35, a 100 pair 0, each exactly the
+  compatibility - 100 and in every attack the army made in a Tag Power;
+  none with the pair outside a Tag Power (phase 0: the term is never
+  called with its flag set) and none on defence (every call from the
+  defence path, 1000+ a run, has the flag clear). `tag_boost_pairs` checks
+  the whole 28x28 table and a representative set against the damage
+  calculator.
+- **The tag screens** (`tag_extras.rs`): the Tag Power's band (both COs'
+  portraits facing each other, the pair's Tag Power name or "Dual Strike",
+  "POWER 1xx%") after the first quote, holding the power's script
+  (`sub_08039914`'s quote test, `0x0803991C`) 150 frames, on BG0 (128 tiles
+  at its character base + `0x5600`, BG palettes 8..10 saved and put back,
+  the map's sprites off meanwhile); Change runs a script of its own (ROM
+  `0x08781400`: close the menu, the incoming CO's Dual Strike tag-in line,
+  CO record +0x34 or +0x38 by the day, in AW2's quote box `sub_08019818`,
+  the "CO SWAP" band 100 frames, the swap, `MapMenu_End`); a special
+  pair's win puts the pair's exchange (one of its two by the day, the other
+  if only that fits) in the results screen's quote box
+  (`GetVictoryQuoteTextId` `0x0807A3AC`), the active CO's line alone when
+  neither fits; the CO page (`0x080852A8`, its input `0x08084C90`) gets a
+  TAG page between the Super Power's and the unit charts: header "TAG",
+  the CO's special partners with three of AW2's small stars each (OBJ
+  tiles 0x320/0x321 and palette 12 borrowed). Text ids 0x7305..0x7307,
+  strings at `0x08781000..`; RAM `0x0203F300..0x0203F3CF`.
+- **Left out**: Dual Strike's full-screen tag art (its tag screen is a band
+  in AW2's style with the Teams portraits); the computer's Change swaps
+  without the line and band; tag skills. Market Crash and other meter
+  drains reach only the active CO. The pad bot (`aw2test/bot.py`) fires
+  Tag Powers but no longer wins four missions where the computer fights as
+  a pair (The Long March, Verdant Hills, Into the Woods, Pincer Strike):
+  those win tests are hand-played (skipped), as the two-front ones.
 - **Tests:** `tools/aw2test/tests/test_tag.py`: single by default, the
   Rules screen's Skills row, Teams picks and the boxes, Change, meters, the
   Tag Power against the damage calculator (both halves, Max and Andy's
