@@ -366,6 +366,49 @@ def tag_power(ctx):
     ctx.eq((tag.partner(e, 1)["phase"], g.player(1)["co_mode"]), (0, 0), "over at the army's next turn")
 
 
+# Measured in Dual Strike (melonDS, computer against computer, the tag term
+# its firepower function adds, 0x020E5D48): Andy+Max +10, Andy+Eagle +15,
+# Sami+Eagle +20, Andy+Von Bolt -10, Koal+Rachel -35, a 100 pair 0; only in
+# a Tag Power's halves; never on defence.
+BOOST_PAIRS = [("andy", "max", 10), ("andy", "eagle", 15), ("sami", "eagle", 20),
+               ("andy", "vonbolt", -10), ("koal", "rachel", -35), ("kanbei", "sonja", 30), ("jess", "colin", 0)]
+
+
+@test(modes=("ds",))
+def tag_boost_pairs(ctx):
+    """Every pair's Tag Power firepower is Dual Strike's compatibility - 100
+    (CO record +0x84 by partner): the whole 28x28 table read by the game
+    (tangoAW2's) and by this harness from the .nds agree with the measured
+    pairs; in battle, damage with a Tag Power under way against the damage
+    calculator for a representative set (stars do nothing: Hachi and Sensei
+    are 2 stars at 100), and none when the pair is not in a Tag Power; the
+    defender's pair gives no defence."""
+    ds = romlib.DualStrike()
+    for a, b, want in BOOST_PAIRS:
+        ctx.eq(tag.compatibility(ds, romlib.co_id(a), romlib.co_id(b)) - 100, want, f"{a}+{b}: the .nds table")
+    cos = list(range(0, 19)) + list(range(72, 81))
+    seen = {}
+    for a in cos:
+        for b in cos:
+            v = tag.compatibility(ds, a, b)
+            seen[v] = seen.get(v, 0) + 1
+    ctx.log(f"compatibility values over the 28x28 table: {sorted(seen.items())}")
+    ctx.check(all(60 <= v <= 130 for v in seen), "every compatibility in Dual Strike's range")
+    for a, b, want in BOOST_PAIRS:
+        units = [(1, "tank", 10, 10), (2, "tank", 11, 10), (1, "tank", 10, 12), (2, "tank", 11, 12)]
+        g = tag_battle(ctx, [a, "olaf"], [b, "max"], units=units)
+        e = g.e
+        # A Tag Power's first half for both armies (the phase byte; no power
+        # on, so only the pair's term moves the numbers).
+        e.w8(tag.rec(1) + 1, 1)
+        e.w8(tag.rec(2) + 1, 1)
+        ctx.eq(ctx.tag_firepower(g, 1, g.player(1)["co"]), want, f"{a}+{b}: the calculator's tag firepower")
+        ctx.attack(g, (10, 10), (10, 10), (11, 10))
+        e.w8(tag.rec(1) + 1, 0)
+        e.w8(tag.rec(2) + 1, 0)
+        ctx.attack(g, (10, 12), (10, 12), (11, 12))
+
+
 @test(modes=("ds",))
 def tag_cpu(ctx):
     """The computer: Tag Power with both meters full (both halves, its units
