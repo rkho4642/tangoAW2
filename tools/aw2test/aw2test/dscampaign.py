@@ -141,10 +141,11 @@ class DsCampaign:
             raise NavError("the Campaign box did not open")
         self.e.wait(20)
 
-    def start(self, new=True, step=None, pick=True):
+    def start(self, new=True, step=None, pick=True, hard=False):
         """From the title: Campaign -> DS Campaign -> New (or Continue). With
         `step`, the progress record is set to start at that place of the
-        campaign's order (a test aid)."""
+        campaign's order (a test aid); with `hard` too, as a Hard campaign
+        (the record's Hard byte, which Continue takes)."""
         e = self.e
         self.open_campaign_box()
         self.chooser_row(1)  # DS Campaign
@@ -164,6 +165,9 @@ class DsCampaign:
             if ORDER[step] in LAB_FLAGS:
                 f = LAB_FLAGS[ORDER[step]] - 0x20
                 e.w8(P_FLAGS + f // 8, e.u8(P_FLAGS + f // 8) | (1 << (f % 8)))
+            if hard:
+                e.w8(P_HARD, 1)
+                e.w8(P_CLEARS, max(1, e.u8(P_CLEARS)))
             new = False
         self.box_row(1 if new else 0)
         e.press("A", 8)
