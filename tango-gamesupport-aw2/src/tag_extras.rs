@@ -751,8 +751,8 @@ fn page_text(core: &mut Core) {
     core.gba_mut().cpu_mut().set_gpr(3, TEXT_TAGBOX as i32);
 }
 
-/// The TAG page's stars (at the sprite flush): a row of three after each
-/// partner's name, full for its rating.
+/// The TAG page's stars (at the sprite flush): after each partner's name
+/// its rating's full stars.
 const STAR_TILE: u32 = 0x320;
 const STAR_SOURCES: [u32; 2] = [0x0810_2C24, 0x0810_2C64];
 const OBJ_VRAM: u32 = 0x0601_0000;
@@ -808,13 +808,14 @@ pub fn flush(core: &mut Core, at: u32, end: u32) -> u32 {
     let co = core.raw_read_8(PAGE_CO, -1);
     let mut at = at;
     for (line, (_, stars)) in partners_of(core, co).iter().enumerate() {
-        for s in 0..3u8 {
+        // Only the rating's stars, full (1, 2 or 3), as Dual Strike's box.
+        for s in 0..(*stars).min(3) {
             if at + 8 > end {
                 return at;
             }
-            let x = STARS_X + 7 * s as i32;
+            let x = STARS_X + 9 * s as i32;
             let y = LINE_Y + LINE_STEP * line as i32;
-            let tile = STAR_TILE as u16 + (s < *stars) as u16;
+            let tile = STAR_TILE as u16 + 1;
             core.raw_write_16(at, -1, y as u16 & 0xFF);
             core.raw_write_16(at + 2, -1, x as u16 & 0x1FF);
             core.raw_write_16(at + 4, -1, tile | STAR_PALETTE << 12);

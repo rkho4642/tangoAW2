@@ -487,8 +487,8 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
         if at + 8 > end {
             break;
         }
-        // A special pair (Dual Strike's TAG box): its rating, 1..3 stars
-        // of three, on the box's bottom edge.
+        // A special pair (Dual Strike's TAG box): its rating, 1..3 full
+        // stars, on the box's bottom edge.
         let stars = army_main(core, a)
             .zip(partner_of(core, a))
             .and_then(|(m, p)| tag::special_pair(m, p))
@@ -499,9 +499,10 @@ fn teams_flush(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
                 core.raw_read_range(*src, -1, &mut t);
                 write_tiles(core, STAR_TILE + k as u32, &t);
             }
-            for k in 0..3u16 {
-                let full = (k as u8) < stars;
-                let t = STAR_TILE as u16 + full as u16;
+            // Only the rating's stars (1, 2 or 3 full stars), as Dual
+            // Strike's TAG box shows them.
+            for k in 0..stars as u16 {
+                let t = STAR_TILE as u16 + 1;
                 put(core, at, (y + 21) as u16 & 0xFF, (x + 2 + 7 * k as i32) as u16 & 0x1FF, t | (NONE_PAL as u16) << 12);
                 core.raw_write_16(at + 6, -1, 0);
                 at += 8;

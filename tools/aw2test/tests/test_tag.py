@@ -869,7 +869,7 @@ def tag_co_page(ctx):
     ctx.eq(rom_string(e, STRINGS + 0x300), b"Sonja\rEagle", "its partners, as Dual Strike's box lists them")
     stars = [s for s in oam(e) if (s[2] & 0x3FF) in (0x320, 0x321) and s[2] >> 12 == 12]
     full = [s for s in stars if s[2] & 0x3FF == 0x321]
-    ctx.eq((len(stars), len(full)), (6, 4), "three stars a partner, 3 + 1 full")
+    ctx.eq((len(stars), len(full)), (4, 4), "the ratings' full stars only: 1 + 3")
     ctx.shot(g, "co_page_tag")
     e.press("UP", 4)
     e.wait(40)
