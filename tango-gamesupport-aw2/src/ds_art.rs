@@ -105,14 +105,8 @@ pub fn offer(buf: &[u8]) -> Offered {
         }
         return Offered::Import;
     }
-    if buf.len() == 8 + CRYSTAL_LEN + OBELISK_LEN + SMALL_LEN && &buf[..8] == MAGIC {
-        let (c, rest) = buf[8..].split_at(CRYSTAL_LEN);
-        let (o, s) = rest.split_at(OBELISK_LEN);
-        let _ = DS.set(Art {
-            crystal: c.to_vec(),
-            obelisk: o.to_vec(),
-            obelisk_small: s.to_vec(),
-        });
+    if let Some(a) = saved_by_0_2(buf) {
+        let _ = DS.set(a);
         return Offered::Import;
     }
     if buf.len() < 0x200 || &buf[0x0C..0x10] != b"AWRE" {
@@ -129,6 +123,20 @@ pub fn offer(buf: &[u8]) -> Offered {
         None => false,
     };
     Offered::DsRom { imported }
+}
+
+/// The pictures as 0.2 saved them (`Dual Strike Black Obelisk art.tangoaw2`).
+fn saved_by_0_2(buf: &[u8]) -> Option<Art> {
+    if buf.len() != 8 + CRYSTAL_LEN + OBELISK_LEN + SMALL_LEN || &buf[..8] != MAGIC {
+        return None;
+    }
+    let (c, rest) = buf[8..].split_at(CRYSTAL_LEN);
+    let (o, s) = rest.split_at(OBELISK_LEN);
+    Some(Art {
+        crystal: c.to_vec(),
+        obelisk: o.to_vec(),
+        obelisk_small: s.to_vec(),
+    })
 }
 
 /// The imported pack as a file to keep next to the ROMs.
@@ -258,13 +266,17 @@ pub fn lz10(b: &[u8]) -> Option<Vec<u8>> {
 mod tests {
     #[test]
     fn an_import_saved_by_0_2_still_loads() {
+        // (read without the process's kept art: other tests offer the real
+        // pack, with TANGOAW2_DS_ROM, at the same time, and the art kept is
+        // whichever came first)
         let mut buf = super::MAGIC.to_vec();
         buf.extend((0..(super::CRYSTAL_LEN + super::OBELISK_LEN + super::SMALL_LEN)).map(|i| i as u8));
-        assert_eq!(super::offer(&buf), super::Offered::Import);
-        let art = super::art().unwrap();
+        let art = super::saved_by_0_2(&buf).unwrap();
         assert_eq!(art.crystal, buf[8..8 + super::CRYSTAL_LEN]);
+        assert_eq!(art.obelisk_small, buf[buf.len() - super::SMALL_LEN..]);
+        assert!(super::saved_by_0_2(&buf[..buf.len() - 1]).is_none());
         // The pictures alone are not a Dual Strike pack: nothing to save.
-        assert!(super::cache().is_none());
+        assert!(!crate::ds_pack::is_saved_pack(&buf));
         assert_eq!(super::offer(b"not a rom"), super::Offered::No);
     }
 }
