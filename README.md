@@ -78,9 +78,10 @@ changes, and online both players need it):
 - **DS Campaign:** all 28 missions on Dual Strike's world map, with its
   story, prologue, ending with a choice, credits and music; Hard campaign,
   mission records and saving mid-mission; missions open with Dual Strike's
-  Setup phase. Two-front missions are fought on both fronts, the computer
-  commanding the second (look across with **Front**, **Send** units over),
-  and Means to an End has the real Grand Bolt.
+  Setup phase. Two-front missions are fought on both fronts (look across
+  with **Front**, **Send** units over; in Lightning Strikes and Ring of Fire
+  turn **Intel → Auto CO** off to command the second yourself), and Means
+  to an End has the real Grand Bolt.
 - **CO skills:** Dual Strike's 40 skills, earned with EXP. **SELECT** on a
   CO screen (on Teams, on an army's CO) opens SET SKILLS; Versus' Rules
   screen turns them on (off by default).
@@ -118,9 +119,7 @@ with **SELECT → File → Save**; play it from **Versus → Design Maps**.
   computer-controlled).
 - Five-army battles and Survival runs can't be suspended.
 - The mini maps show Black Hole's buildings in neutral grey.
-- DS Campaign: you can't command the second front yourself (Dual Strike
-  allows it from Lightning Strikes); the Black Onyx's satellite timer is
-  left out; the tag screens are still pictures.
+- DS Campaign: the tag screens are still pictures.
 
 ## How it's tested
 
