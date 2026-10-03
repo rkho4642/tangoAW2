@@ -109,6 +109,7 @@ def run_out(ctx, e, g, d, frames_left):
     ctx.check(any("I didn't expect this" in x for x in r["texts"]), f"Dual Strike's first line ({r['texts'][:2]})")
     ctx.check(any("Noooo! The missile" in x for x in r["texts"]), f"\"Noooo! The missile...\" ({r['texts'][:3]})")
     ctx.eq(r["box_left"], [], "no terrain box window or darkening left over the dialogue")
+    ctx.eq(r["panel_left"], [], "no CO panel (its partner strip) showing below a dialogue box at the top")
     ctx.check(r["banner"], "the DEFEAT banner")
     res = d.last_result()
     ctx.eq((res["result"], res["mission"]), (2, RECLAIM_THE_SKIES), "the mission lost (the last result)")

@@ -259,6 +259,50 @@ def ds_onyx_warning_and_laser(ctx):
     ctx.eq(texts, [], "the second laser: no dialogue")
 
 
+# The map's cursor (x, y), its state (0 idle), the map state machine's
+# state (0xD the player's) and lock.
+CURSOR = 0x030033E4
+CURSOR_STATE = 0x03003334
+MAP_STATE = 0x030032D8
+MAP_LOCK = 0x030030F0
+
+
+@test(modes=("ds",))
+def ds_onyx_laser_lines_on_their_own(ctx):
+    """The first laser's lines come on their own, as Dual Strike's
+    (melonDS, scratchpad f052/ds: "What happened?!" 330 frames after the
+    satellite fires, no key pressed, the map taking none meanwhile): the
+    script waits 300 frames after the strike, then the box. No key is needed
+    and none reaches the map in between: the cursor stays, no menu opens,
+    the map stays the player's (AW2 takes no input while an event script
+    runs, as for its own after-action events). A is left alone (it may
+    hurry the wait, in Dual Strike too)."""
+    e, g, d = start(ctx)
+    e.w16(CHARGE, FULL * 9 // 10 - 3)
+    ok, seen = wait_text(e, d, "Check out Black Onyx")
+    ctx.require(ok, f"the warning ({seen})")
+    d.wait_control()
+    e.w16(CHARGE, FULL - 3)
+    ctx.require(e.wait_until(lambda: e.u8(PHASE) == FIRING, 120, step=1), "the laser fires")
+    fired = e.frame
+    ctx.require(e.wait_until(lambda: e.u8(MAP_LOCK) == 0, 600, step=2), "the strike over")
+    where = (e.u16(CURSOR), e.u16(CURSOR + 2))
+    seen = []
+    for keys in ("LEFT", "START", "B", "RIGHT", "SELECT", "UP", "R", "L", "DOWN"):
+        if d.text_shown():
+            break
+        e.hold(keys, 12)
+        e.wait(4)
+        seen.append((keys, e.u16(CURSOR), e.u16(CURSOR + 2), e.u8(CURSOR_STATE), e.u16(MAP_STATE), [hex(f) for _, _, f in g.procs()]))
+    moved = [s for s in seen if (s[1], s[2]) != where or s[3] != 0 or s[4] != 0xD or any(f != "0x8014401" for f in s[5])]
+    ctx.eq(moved, [], "no key between the strike and the lines reaches the map (cursor, menus)")
+    ctx.require(e.wait_until(lambda: d.text_shown(), 400, step=1), "\"What happened?!\" with no key pressed")
+    t = e.frame - fired
+    ctx.check("What happened" in d.text_shown(), f"the line: {d.text_shown()!r}")
+    ctx.check(280 <= t <= 380, f"{t} frames after the satellite fired (Dual Strike: 330)")
+    e.shot(os.path.join(ctx.out, "what_happened"))
+
+
 @test(modes=("ds",))
 def ds_onyx_silo_hit(ctx):
     """A silo's Launch hits the satellite: the hits left go down by one, the
@@ -298,6 +342,12 @@ def ds_onyx_destroyed(ctx):
     e.shot(os.path.join(ctx.out, "destroyed"))
     ok, seen = wait_text(e, d, "Black Onyx could be destroyed", 2400)
     ctx.check(ok, f"its dialogue ({seen})")
+    # (Von Bolt's box at the top, AW2's after-action events: AW2's CO panel
+    # hidden under it, and the partner's strip under that with it)
+    e.wait(30)
+    ctx.check(d.top_box_rows() > 0, "the dialogue box at the top")
+    ctx.eq(d.panel_below_top_box(), [], "no CO panel (its partner strip) showing below the box")
+    e.shot(os.path.join(ctx.out, "destroyed_dialogue"))
     d.dialogue()
     g.wait_for_input()
     n = e.u32(COUNTDOWN)
@@ -329,6 +379,7 @@ def ds_onyx_time_out(ctx):
     ctx.log(f"texts: {r['texts']}")
     ctx.check(any("Dude. WEAK!" in x for x in r["texts"]), f"Dual Strike's defeat lines ({r['texts'][:3]})")
     ctx.eq(r["box_left"], [], "no terrain box window or darkening left over the dialogue")
+    ctx.eq(r["panel_left"], [], "no CO panel (its partner strip) showing below a dialogue box at the top")
     ctx.check(r["banner"], "the DEFEAT banner")
     res = d.last_result()
     ctx.eq((res["result"], res["mission"]), (2, CRYSTAL_CALAMITY), "the mission lost (the last result)")

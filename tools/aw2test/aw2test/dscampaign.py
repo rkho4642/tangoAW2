@@ -28,6 +28,20 @@ MATCH_END_BANNER = 0x08049C39
 DISPCNT_SHADOW = 0x030030CC
 BLDCNT_SHADOW = 0x030030E0
 WIN0_ON = 0x2000
+# AW2's dialogue box at the screen's top: its HBlank handler
+# (CoScreenHBlankHandler, in the IRQ table's HBlank slot, HBlank IRQs on in
+# the DISPSTAT shadow) gives the rows down to 0x2C less the box's slide
+# (0 open) the box's display control, sprites off (crate::tag_ui).
+HBLANK_HANDLER = 0x03002FE4
+TOP_BOX_HBLANK = 0x08017881
+DISPSTAT_SHADOW = 0x030020B4
+TOP_BOX_DISPCNT = 0x03002EDC
+TOP_BOX_SLIDE = 0x030030A8
+# The CO panel's sprites (AW2's header and stars: OBJ tiles below 0x40 in
+# its army's palette 7; crate::tag_ui's partner strip: the same, and the
+# partner's face, tiles 0x309.., palette 5).
+PANEL_PALETTE, STRIP_FACE, STRIP_FACE_PALETTE = 7, 0x309, 5
+OBJ_SIZES = {0: [(8, 8), (16, 16), (32, 32), (64, 64)], 1: [(16, 8), (32, 8), (32, 16), (64, 32)], 2: [(8, 16), (8, 32), (16, 32), (32, 64)]}
 WM_STATE = 0x0202FDFC          # the world map's state (camera, cursor, mission +0x0C, flags +0x12)
 WM_CURSOR_LOOP = 0x0807703D    # WorldMapCursor_Loop
 WM_INFO_LOOP = 0x08077791      # WorldMapMissionInfo_InputLoop
@@ -134,6 +148,37 @@ class DsCampaign:
         box was (AW2's own events turn both off: its map menu,
         `sub_0802C2D8`)."""
         return self.box_window_on() and self.e.u16(BLDCNT_SHADOW) != 0
+
+    def top_box_rows(self):
+        """The rows at the screen's top a dialogue box there shows no
+        sprites on (0: no box up there)."""
+        e = self.e
+        if e.u32(HBLANK_HANDLER) != TOP_BOX_HBLANK or not e.u8(DISPSTAT_SHADOW) & 0x10 or e.u16(TOP_BOX_DISPCNT) & 0x1000:
+            return 0
+        return max(0, 0x2D - e.s16(TOP_BOX_SLIDE))
+
+    def panel_below_top_box(self):
+        """The CO panel's sprites (AW2's, crate::tag_ui's partner strip)
+        showing below a dialogue box at the screen's top, as (x, y, tile):
+        AW2's own panel is hidden under the box, all of it."""
+        rows = self.top_box_rows()
+        if not rows:
+            return []
+        oam = self.e.read(0x07000000, 0x400)
+        out = []
+        for k in range(128):
+            a0, a1, a2 = struct.unpack_from("<3H", oam, 8 * k)
+            if a0 & 0x300 == 0x200 or a0 >> 14 == 3:
+                continue
+            tile, pal = a2 & 0x3FF, a2 >> 12
+            if not ((tile < 0x40 and pal == PANEL_PALETTE) or (STRIP_FACE <= tile < STRIP_FACE + 8 and pal == STRIP_FACE_PALETTE)):
+                continue
+            y = a0 & 0xFF
+            y = y - 256 if y >= 160 else y
+            h = OBJ_SIZES[a0 >> 14][a1 >> 14][1]
+            if y < 64 and y + h > rows:
+                out.append((a1 & 0x1FF, y, tile))
+        return out
 
     def scripts_running(self):
         """An event script runs (the slots from 0x0200C510: the unit-selected
@@ -248,14 +293,16 @@ class DsCampaign:
         dialogue line once shown in full (a screenshot of it in `out`), the
         match's end banner (AW2's `0x08049C39`, "DEFEAT"), the world map
         coming back. Answers the dialogue with A, nothing else. Returns
-        {"texts", "banner", "world_map", "frames", "box_left"} (box_left:
-        the lines shown with the terrain box's window and darkening still
-        on: see box_effects_left)."""
+        {"texts", "banner", "world_map", "frames", "box_left",
+        "panel_left"} (box_left: the lines shown with the terrain box's
+        window and darkening still on, see box_effects_left; panel_left: the
+        lines with a CO panel's sprites below a box at the top, see
+        panel_below_top_box)."""
         e = self.e
         texts, banner, last, stable, n, quiet = [], False, None, 0, 0, 0
         shot = lambda name: e.shot(os.path.join(out, name)) if out else None
         world = False
-        box_left = []
+        box_left, panel_left = [], []
         while n < max_frames:
             t = self.text_shown()
             stable = stable + 1 if t and t == last else 0
@@ -265,6 +312,8 @@ class DsCampaign:
                 shot(f"text{len(texts):02d}")
                 if self.box_effects_left():
                     box_left.append(t.replace("\r", " "))
+                if self.panel_below_top_box():
+                    panel_left.append(t.replace("\r", " "))
             quiet += 1
             # (a line in full a moment, or a box whose text is not read: A)
             if self.scripts_running() and (stable >= 12 or quiet >= 40):
@@ -289,6 +338,7 @@ class DsCampaign:
             "world_map": world,
             "frames": n,
             "box_left": box_left,
+            "panel_left": panel_left,
         }
 
     def cleared_flags(self):

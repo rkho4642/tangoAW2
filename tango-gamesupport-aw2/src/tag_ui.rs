@@ -555,6 +555,34 @@ const STRIP_FACE_Y: i32 = 37;
 const STRIP_STARS_Y: i32 = 53;
 const VFLIP: u16 = 1 << 13;
 
+/// AW2's dialogue box at the screen's top (an event's, on the player's turn
+/// or the computer's): while it shows, its HBlank handler
+/// (`CoScreenHBlankHandler`, `0x08017880`, in the IRQ table's HBlank slot,
+/// HBlank IRQs on in the DISPSTAT shadow) gives the rows from the frame's
+/// top to row 0x2C less the box's slide (`gUnknown_030030A8`: 0 open, 44
+/// away) the box's own display control (`gUnknown_03002EDC`: sprites off),
+/// the map's below. AW2 leaves its CO panel drawn under the box (its own
+/// events neither hide nor move it): 32 rows from row 3, inside the rows
+/// the box hides. The rows hidden; 0 with no box up there (a box at the
+/// bottom has its own handler).
+fn top_box_rows(core: &Core) -> i32 {
+    const HBLANK_HANDLER: u32 = 0x0300_2FE4;
+    const BOX_HBLANK: u32 = 0x0801_7881;
+    const DISPSTAT_SHADOW: u32 = 0x0300_20B4;
+    const HBLANK_IRQ: u8 = 0x10;
+    const BOX_DISPCNT: u32 = 0x0300_2EDC;
+    const OBJ_ON: u16 = 0x1000;
+    const BOX_SLIDE: u32 = 0x0300_30A8;
+    const SPLIT_ROW: i32 = 0x2C;
+    if core.raw_read_32(HBLANK_HANDLER, -1) != BOX_HBLANK
+        || core.raw_read_8(DISPSTAT_SHADOW, -1) & HBLANK_IRQ == 0
+        || core.raw_read_16(BOX_DISPCNT, -1) & OBJ_ON != 0
+    {
+        return 0;
+    }
+    (SPLIT_ROW + 1 - core.raw_read_16(BOX_SLIDE, -1) as i16 as i32).max(0)
+}
+
 fn panel_flush(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
     if core.raw_read_8(tag::PANEL + 5, -1) != 1 {
         return at;
@@ -566,6 +594,12 @@ fn panel_flush(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
     let y = core.raw_read_16(tag::PANEL + 2, -1) as i32;
     // The map's panel only (the CO page draws one at its foot: no room).
     if y >= 64 {
+        return at;
+    }
+    // Under a dialogue box at the screen's top, AW2's panel is hidden (the
+    // box's rows show no sprites): the strip goes with it, or its lower
+    // half would stick out under the box.
+    if y < top_box_rows(core) {
         return at;
     }
     // The header must be in this frame's list (the panel drawn).

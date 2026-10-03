@@ -2310,7 +2310,13 @@ stay out.
   battle-state ratings for Kanbei, Sonja, Hachi and Colin are 2.
 - **On screen** (`tag_ui.rs`): under AW2's CO panel a second strip in the
   panel's own style (its tiles and army colours) with the partner's HUD
-  face and its meter drawn as AW2 draws the active CO's; on Versus' Teams
+  face and its meter drawn as AW2 draws the active CO's. Under a dialogue
+  box at the screen's top the strip is left out: AW2 neither hides nor
+  moves its panel for its own events (the computer's after-action events in
+  `sub_080424FC`, the player's after the action proc unlocks the map); the
+  box's HBlank handler (`0x08017880`) turns sprites off on rows 0..0x2C
+  (less the box's slide, `0x030030A8`), which hides AW2's panel (rows
+  3..34) whole, and the strip (to row 64) would stick out below it. On Versus' Teams
   screen a partner slot (the CO's portrait at 30 pixels, or None) under
   each CO, the columns moved up 16 pixels.
 - **Versus**, as Dual Strike's: there is no tag rule or tag screen. Dual
