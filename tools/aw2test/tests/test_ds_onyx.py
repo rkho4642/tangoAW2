@@ -188,22 +188,40 @@ def ds_onyx_warning_and_laser(ctx):
     ok, seen = wait_text(e, d, "Check out Black Onyx")
     ctx.check(ok, f"the warning's dialogue ({seen})")
     ctx.eq(e.u8(PHASE), WARNING, "the warning (state 2)")
+    # (the map waits for the cursor under this dialogue: the terrain box
+    # stays, whole, above it; back on the map it has its darkening)
     d.wait_control()
+    ctx.check(d.box_effects_left(), "back on the map: the terrain box's window and darkening on")
     e.shot(os.path.join(ctx.out, "warning"))
     before = {(u["army"], u["x"], u["y"]): u["hp"] for u in g.units()}
     e.w16(CHARGE, FULL - 3)
     ctx.require(e.wait_until(lambda: e.u8(PHASE) == FIRING, 120, step=1), "the laser fires (state 3)")
     ctx.check(charge(e) < 10, f"the charge emptied ({charge(e)})")
+    # The list's script starts the laser while the terrain box shows: from
+    # the next frame (when the box's tiles hide) to the strike's end, the
+    # box's window is off (its dark rectangle showed through the panel's
+    # beam and on the strike's first frame).
+    box_on = []
+    e.wait(1)
+
+    def strike_starts():
+        if d.box_window_on():
+            box_on.append(e.frame)
+        return e.u8(STRIKE) == 3
+
     # Dual Strike's beam (crate::power_anim, kind 3): after the panel's
     # beam (102 frames), on BG0 coming down to the target, additive; the
     # flash, the rings (OBJ palette 3), the fade.
-    ctx.require(e.wait_until(lambda: e.u8(STRIKE) == 3, 400, step=1), "the laser's strike on the map (Dual Strike's beam)")
+    ctx.require(e.wait_until(strike_starts, 400, step=1), "the laser's strike on the map (Dual Strike's beam)")
+    e.shot(os.path.join(ctx.out, "strike_first_frame"))
     at = (e.u8(STRIKE + 1), e.u8(STRIKE + 2))
     blend = set()
     seen = {}
     for k in range(200):
         if e.u8(STRIKE) != 3:
             break
+        if d.box_window_on():
+            box_on.append(e.frame)
         t = e.u16(STRIKE + 4)
         blend.add(e.u16(BLDCNT))
         if e.u16(BLDCNT) == 0x3E41 and e.u16(DISPCNT) & 0x100 and "beam" not in seen:
@@ -218,6 +236,7 @@ def ds_onyx_warning_and_laser(ctx):
         e.wait(1)
     ctx.log(f"the strike at {at}: {seen}, BLDCNT {sorted(hex(b) for b in blend)}")
     ctx.check({"beam", "flash", "rings"} <= set(seen), f"the beam (additive), the flash, the rings ({seen})")
+    ctx.eq(box_on, [], "the terrain box's window off from the laser's first frame to the strike's end")
     ok, seen = wait_text(e, d, "What happened", 1200)
     ctx.check(ok, f"the first laser's dialogue ({seen})")
     d.wait_control()
@@ -309,6 +328,7 @@ def ds_onyx_time_out(ctx):
     r = d.follow_defeat(ctx.out)
     ctx.log(f"texts: {r['texts']}")
     ctx.check(any("Dude. WEAK!" in x for x in r["texts"]), f"Dual Strike's defeat lines ({r['texts'][:3]})")
+    ctx.eq(r["box_left"], [], "no terrain box window or darkening left over the dialogue")
     ctx.check(r["banner"], "the DEFEAT banner")
     res = d.last_result()
     ctx.eq((res["result"], res["mission"]), (2, CRYSTAL_CALAMITY), "the mission lost (the last result)")

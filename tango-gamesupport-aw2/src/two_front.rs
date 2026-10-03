@@ -532,6 +532,8 @@ const PICKED_FOR: u32 = SECOND_COS + 4;
 const PICKS_LEN: u32 = 5;
 /// crate::sky_front's state (a borrowed OBJ palette: 1 byte, then 32 at +4).
 pub const SKY_STATE: u32 = STATE + 0xC0;
+/// (its length: checked against the store's start in the tests)
+#[cfg(test)]
 const SKY_LEN: u32 = 0x24;
 /// The store: the block, then [`EXTRA_LEN`] bytes of tangoAW2's state.
 const STORE: u32 = 0x0203_E500;

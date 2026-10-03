@@ -515,6 +515,7 @@ def ds_onyx_cpu_silo(ctx):
     ctx.check(any("We've captured one of the anti-satellite missile bases" in x for x in r["texts"]), "\"We've captured one of the anti-satellite missile bases. ...\"")
     ctx.check(any("Now the barrier field will be completed" in x for x in r["texts"]), "\"Aha ha ha! Bravo! Now the barrier field will be completed!\"")
     ctx.check(any("Dude. WEAK!" in x for x in r["texts"]), "the defeat's \"Dude. WEAK!\"")
+    ctx.eq(r["box_left"], [], "no terrain box window or darkening left over the dialogue")
     ctx.check(r["banner"], "the DEFEAT banner")
     res = d.last_result()
     ctx.eq((res["result"], res["mission"]), (2, CRYSTAL_CALAMITY), "the mission lost")

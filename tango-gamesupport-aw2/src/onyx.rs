@@ -90,6 +90,10 @@ const SILO: u32 = STATE + 0x10;
 /// panel's side (1 left).
 const STRIKE: u32 = STATE + 0x14;
 const SIDE: u32 = STATE + 0x15;
+/// +0x16 1 when the list started a script or the laser while the terrain
+/// box showed: its window and blend go off on the next frame, with its
+/// tiles ([`box_effects_off`]).
+const BOX_OFF: u32 = STATE + 0x16;
 const STATE_END: u32 = STATE + 0x1C;
 
 /// The phases (Dual Strike's states).
@@ -648,7 +652,14 @@ fn map_frame(core: &mut Core) {
     // (back from the list: the callback itself, this time)
     if core.raw_read_8(LIST_RAN, -1) != 0 {
         core.raw_write_8(LIST_RAN, -1, 0);
+        if !map_waits(core) {
+            core.raw_write_8(BOX_OFF, -1, 1);
+        }
         return;
+    }
+    if core.raw_read_8(BOX_OFF, -1) != 0 {
+        core.raw_write_8(BOX_OFF, -1, 0);
+        box_effects_off(core);
     }
     if !clock_on(core) || !map_waits(core) {
         return;
@@ -666,6 +677,31 @@ fn map_frame(core: &mut Core) {
     cpu.set_gpr(2, 0);
     cpu.set_gpr(14, (MAIN_STUB | 1) as i32);
     cpu.set_thumb_pc(RUN_LIST);
+}
+
+/// The terrain box's window and blend (window 0 darkening the box, colour
+/// effects off outside it) turned off, as AW2's own map menu does when it
+/// takes the screen from the box (`sub_0802C2D8`: `sub_0801237C`, the
+/// windows off, then `sub_08012358`, the blend off). The list's scripts
+/// and the laser start while the box shows, which AW2's own events never
+/// do: the box's tiles hide, but its window and blend stayed, a dark
+/// rectangle over the map until the box came back (the box's own drawing,
+/// `0x0802B0CC`, turns them on again). The frame after the list ran, when
+/// AW2 hides the box's tiles: the same frame on the screen.
+fn box_effects_off(core: &mut Core) {
+    const DISPCNT_HIGH: u32 = 0x0300_30CD;
+    const WINDOW_BYTES: [u32; 8] =
+        [0x0300_2B40, 0x0300_2B4C, 0x0300_2EFC, 0x0300_2B44, 0x0300_2B68, 0x0300_24E4, 0x0300_2B30, 0x0300_20B8];
+    const WINDOW_HALVES: [u32; 2] = [0x0300_30A4, 0x0300_30DC];
+    const BLEND: [u32; 4] = [0x0300_30E0, 0x0300_2020, 0x0300_2B28, 0x0300_1FFC];
+    let d = core.raw_read_8(DISPCNT_HIGH, -1);
+    core.raw_write_8(DISPCNT_HIGH, -1, d & 0x1F);
+    for a in WINDOW_BYTES {
+        core.raw_write_8(a, -1, 0);
+    }
+    for a in WINDOW_HALVES.into_iter().chain(BLEND) {
+        core.raw_write_16(a, -1, 0);
+    }
 }
 
 /// crate::power_anim, where AW2's meteor strike draws its meteor: the

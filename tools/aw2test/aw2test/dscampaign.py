@@ -23,6 +23,11 @@ P_FLAGS = PROGRESS + 0x10
 PROGRESS_MAGIC = 0x43445741
 # AW2's match end: the result banner ("DEFEAT" / "VICTORY") over the map.
 MATCH_END_BANNER = 0x08049C39
+# The display shadows copied to the registers at VBlank: DISPCNT (bit 13
+# window 0, the terrain box's: it keeps its darkening, BLDCNT, to the box).
+DISPCNT_SHADOW = 0x030030CC
+BLDCNT_SHADOW = 0x030030E0
+WIN0_ON = 0x2000
 WM_STATE = 0x0202FDFC          # the world map's state (camera, cursor, mission +0x0C, flags +0x12)
 WM_CURSOR_LOOP = 0x0807703D    # WorldMapCursor_Loop
 WM_INFO_LOOP = 0x08077791      # WorldMapMissionInfo_InputLoop
@@ -118,6 +123,17 @@ class DsCampaign:
             raw = e.read(p, 400)
             return raw[:raw.index(b"\0")].decode("latin-1") if b"\0" in raw else None
         return None
+
+    def box_window_on(self):
+        """The terrain box's window 0 is on (the DISPCNT shadow)."""
+        return bool(self.e.u16(DISPCNT_SHADOW) & WIN0_ON)
+
+    def box_effects_left(self):
+        """The terrain box's window and its darkening are on: over a
+        dialogue, with the box's tiles hidden, a dark rectangle where the
+        box was (AW2's own events turn both off: its map menu,
+        `sub_0802C2D8`)."""
+        return self.box_window_on() and self.e.u16(BLDCNT_SHADOW) != 0
 
     def scripts_running(self):
         """An event script runs (the slots from 0x0200C510: the unit-selected
@@ -232,11 +248,14 @@ class DsCampaign:
         dialogue line once shown in full (a screenshot of it in `out`), the
         match's end banner (AW2's `0x08049C39`, "DEFEAT"), the world map
         coming back. Answers the dialogue with A, nothing else. Returns
-        {"texts", "banner", "world_map", "frames"}."""
+        {"texts", "banner", "world_map", "frames", "box_left"} (box_left:
+        the lines shown with the terrain box's window and darkening still
+        on: see box_effects_left)."""
         e = self.e
         texts, banner, last, stable, n, quiet = [], False, None, 0, 0, 0
         shot = lambda name: e.shot(os.path.join(out, name)) if out else None
         world = False
+        box_left = []
         while n < max_frames:
             t = self.text_shown()
             stable = stable + 1 if t and t == last else 0
@@ -244,6 +263,8 @@ class DsCampaign:
             if t and stable == 6 and (not texts or texts[-1] != t):
                 texts.append(t)
                 shot(f"text{len(texts):02d}")
+                if self.box_effects_left():
+                    box_left.append(t.replace("\r", " "))
             quiet += 1
             # (a line in full a moment, or a box whose text is not read: A)
             if self.scripts_running() and (stable >= 12 or quiet >= 40):
@@ -262,7 +283,13 @@ class DsCampaign:
                 break
             e.wait(4)
             n += 4
-        return {"texts": [x.replace("\r", " ") for x in texts], "banner": banner, "world_map": world, "frames": n}
+        return {
+            "texts": [x.replace("\r", " ") for x in texts],
+            "banner": banner,
+            "world_map": world,
+            "frames": n,
+            "box_left": box_left,
+        }
 
     def cleared_flags(self):
         """The starred flags drawn on won missions' points (OBJ tile 40,
