@@ -630,7 +630,7 @@ traps (a trap runs before the instruction it replaces; setting the PC skips it).
 | Units | `roster.rs`, `ds_units.rs`, `unit_actions.rs`, `oozium.rs`, `unit_names.rs`, `ds_unit_art.rs`, `ds_unit_pictures.rs`, `ds_battle.rs`, `ds_backdrop.rs`, `map_anim.rs` | Unit table grown to 64 rows (0x08680000), 7 new units (ids 4, 9, 12, 13, 18, 26, 27), Dual Strike's stats and damage chart, their actions (Hide, Explode, Repair, Carrier; the Oozium eats: no weapon, moving onto a unit of another team next to it destroys that unit with the game's own destruction, and no CO, power, silo or Black Bomb touches it), map art, their own information pictures (build menu panel, R on a unit) in each army's colours, every unit in the Intel unit list, battle scenes with Dual Strike's figures, effects and volleys, Dual Strike's battle backgrounds (a Piperunner on its pipe; every battle on a Wasteland map; a Com Tower's city), and Dual Strike's map animations played through AW2's own map effects (a Black Bomb's explosion, a Stealth hiding and appearing, a Black Boat's REPAIR label, Oozium's death in its army's colours; for the CPU at its turn's end, before the turn passes) |
 | COs | `co_roster.rs`, `co_new.rs`, `co_powers.rs`, `ds_co_art.rs`, `ds_power_art.rs`, `power_anim.rs` | CO table grown to 96 rows (0x086A0000), Dual Strike's numbers for AW2's COs (and its 200% defence cap), 9 new COs at ids 72..80 (face ids stay unambiguous), their pictures, texts, powers and Dual Strike's power animations (Ex Machina, Covering Fire, Urban Blight), and Dual Strike's choice of power effect on their units |
 | CO screen | `co_grid.rs` | The unit grid (map menu > CO, its last page) gets a second page: ground units, then air and naval units, in the build menus' order, every unit with its icon in the viewed army's colours (the new units in the map sheet's slots for other countries' Infantry and Mech) and its firepower bar (Dual Strike's bonuses take the nearest of AW2's 13 bars) and move / range change |
-| CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike; a base builds Piperunners (for the CPU and in the build menu) only by a pipe or an intact seam |
+| CPU | `cpu_tactics.rs` | The CPU buys every new unit (Carrier, Oozium and Piperunner in place of a like AW2 unit at its three `BuyUnit` calls), explodes Black Bombs, hides Stealths, repairs with Black Boats, eats with Ooziums (and moves them towards enemies), and leaves Ooziums out when it aims a silo or a strike (on Crystal Calamity's map its Launch is Dual Strike's: no missile, Black Hole's line and the mission lost, `onyx.rs`); a base builds Piperunners (for the CPU and in the build menu) only by a pipe or an intact seam |
 | Terrain | `com_tower.rs`, `wasteland.rs`, `ds_look.rs`, `sandstorm.rs` | Com Tower (the Versus Lab), Dual Strike's Wasteland, Desert and Snow looks drawn with its own terrain (below), the Sandstorm weather (Dual Strike's sand, `bmap/0b2`) |
 | Structures | `obelisk.rs`, `heal_effect.rs` | Black Crystal / Obelisk heal with Dual Strike's own animation and sound for each (arm9 0x0213E078 / 0x0213E2A0; SE 175 / 176), the camera visiting each |
 | Music | `ds_music.rs` | The nine new COs' own map themes, Dual Strike's, converted to AW2's sound engine (below) |
@@ -1446,7 +1446,35 @@ charge (36000), +0x3C the charge.
   then 300 frames' wait; the first time on Normal "What happened?!",
   "It requires roughly ten minutes to power up, zero in on our position,
   and fire."); the countdown at 0 (`0x023516C8`) Black Hole wins: the
-  mission is lost.
+  mission is lost ("Dude. WEAK!" and Rachel's advice, DEFEAT, the campaign
+  map; captured from 00:10 left to run in melonDS, scratchpad `onyx2/dst/cc`).
+- The laser on the map (`0x020F1F38` → `0x020EB9DC(x, y, 2, 80)`, proc
+  script `0x02169088`), after the top screen's beam (state 3, ~104 frames):
+  the camera to the target (`0x020EB940`); the beam, a BG layer (`bmap/089`
+  tiles, `08a` map, `08b` colours; additive, EVA 16 EVB 16), set up
+  (`0x020EB738`) above its place and coming down 16 pixels a frame
+  (`0x020EB6B0`: still `16y + 16 - 16(k + 1)` short); two frames after it
+  is down the damage (`0x020EB668`: 8 HP within 2, `0x020C6AE0`), a white
+  flash (`0x020041E4(4, 0, 20)`), the shake (`0x02003FA0(2, 90)`), the
+  rings (`0x020EB5DC`: anim `0x0213BDA0` sequence 0, ten frames, 29 long,
+  drawn by the 3D engine from `bmap/08c` as a linear 4bpp texture, colours
+  `08d`) and the beam's fade (`0x020EB4E8`/`0x020EB434`: EVA 16 to 0 over 80
+  frames, then the layer off). Frames: scratchpad `onyx2/work/fr`, `fc`
+  (the target forced to the screen's middle).
+- The computer's Launch (its action 0x16, `0x020B8FA8`) in the campaign
+  (mode byte +0x58 0) on map 0xF2 fires nothing: `0x020DD9A0` runs the
+  header's fifth list (+0x10) with 0x32 (`0x022AF308`), then the unit
+  waits (`0x020DEAC4`). Crystal Calamity's list holds one record (kind 4,
+  0x32, flag 0x0E): Black Hole says "We've captured one of the
+  anti-satellite missile bases. The allied forces are no longer a threat.
+  They cannot fire on Black Onyx.", "Aha ha ha! Bravo! Now the barrier
+  field will be completed!", and its script jumps (op 0x1D) to op 0x41:
+  Black Hole wins, the mission is lost. Only the player's menu Launch
+  (`0x020BD358`, the same test) goes to the satellite. Nothing in the
+  CPU's planning leaves the silos out (no other test of map 0xF2 there);
+  any other map, or another mode, launches as usual (`0x020B8964`, the
+  missile `0x020DD9B4`). Checked in melonDS by forcing the CPU's action to
+  0x16 (`ds_script`'s `trappoke`): the two lines, "Dude. WEAK!", DEFEAT.
 - A missile silo's Launch on map 0xF2 (`0x020BD358`) goes to the
   satellite instead of the map (`0x020DDA8C`, task `0x021693BC`): the
   camera to the silo, the missile rises on the top screen (state 4, the
@@ -1474,10 +1502,28 @@ the map waits for orders (map state 0xD the player's cursor, 0xE the
 computer between units, nothing busy): its scripts start as AW2 events,
 its flags are AW2's local flags. The laser (`0x020F2134`, a magic call) is
 AW2's meteor strike (`0x084A0858`, 8 HP, radius 2) started from the event,
-its target the computer's for Black Hole (`sub_0805C290(army, 1)`), the
-meteor's drawing and wait replaced by Dual Strike's beam (white core,
-pink, a dark edge; a glow where it lands) in sprites, in the meteor's
-tiles `0x1CA..` while it plays. A silo's Launch here
+its target the computer's for Black Hole (`sub_0805C290(army, 1)`), after
+the panel's beam (a `PROC_WHILE` on the firing phase), the meteor's fade
+from white left out. Its drawing and wait are crate::power_anim's (kind 3,
+`ds_power_art::PowerEffect::BlackOnyx`), Dual Strike's laser converted from
+the pack at run time: the beam on BG0 (its 42 tiles in the wave's space,
+palette 8) coming down 16 pixels a frame and additive; two frames after
+it is down the flash (`BLDY`; the beam hidden while it is 12/16 or more,
+where Dual Strike's additive beam is white anyway), the shake, the rings
+as OBJ sprites (the 3D texture cut into GBA tiles; OBJ `0x1CA..0x1F8`,
+palette 3; two of their ten frames need 50 and 51 tiles and leave out a
+sparkle each, `Effect::fit_frames`) and the beam's 80-frame fade. The
+map's window 0 (the terrain box's, which keeps colour effects to itself)
+is off while it plays. Not as Dual Strike: the damage shows when the
+effect ends (AW2's meteor script), the sound is the meteor's. The panel
+steps aside while AW2's match end runs (its DEFEAT banner).
+The computer's Launch on Crystal Calamity's map (AW2's CPU action 20,
+`0x080600D0`, trapped: `onyx::cpu_launch`) runs the converted fifth list
+(`MissionInfo::unit_event_list`) with 0x32 through AW2's list runner, then
+the unit waits (`sub_080424FC`) and the CPU goes on (`0x080600D6`): the
+same two lines and the defeat. Every other map, mode and army launches as
+AW2 does (`tests/test_silo_launch.py`: Versus, AW2's campaign, Healing
+Touch; the player's and the computer's, the same results as v0.5.0's). A silo's Launch here
 (`unit_actions::launch_selected` → `onyx::launch`) starts our proc
 instead of the targeting: the map busy, the camera to the silo, AW2's
 launch there (`sub_08040380`: the silo spent, tile 0x1A0), the missile's
@@ -1495,13 +1541,16 @@ missile and its explosion, the break-up drawn on the satellite. OBJ tiles
 two fronts', neither in use there while it shows; the panel steps aside
 while a heal plays), OBJ palette 15's entries 5..15 (1..4 left as they
 are). ROM `0x08E75000..0x08E753FF` (the launch and laser functions and
-procs, the target function, two magic stubs, ids `0x2D000001`/`0x2D000002`
-through the campaign's landing). A mission saved halfway keeps the
+procs, the target function, `firing()`, the CPU Launch's way back, a magic
+stub, id `0x2D000001` through the campaign's landing). A mission saved halfway keeps the
 satellite (`onyx::saved`, 6 bytes after Means to an End's in the DS block:
 hits, phase, countdown state, charge). Without the pack nothing of it
 runs. Tests: `tests/test_ds_onyx.py` (the clock and the panel, the warning
-and the laser with its damage and dialogues, a silo's hit, the
-destruction, the time running out, saved halfway, the objective).
+and the laser with its damage, beam, flash and rings and dialogues, a
+silo's hit, the destruction, the time running out: set to 00:10 once and
+left to run, 00:00 after 600 frames, the defeat lines, DEFEAT, the world
+map with the mission not cleared and the record unchanged; saved halfway,
+the objective), `tests/test_silo_launch.py` (`ds_onyx_cpu_silo`).
 Reclaim the Skies has a seventh list too: its day-1 script (after the
 opening dialogue) starts a 30-minute countdown (op 0x5A, 108000 frames),
 shown on the top screen as MM:SS over a missile's flight; the list's one
@@ -1515,7 +1564,11 @@ satellite; `ds_campaign_data::RECLAIM_THE_SKIES`), the list run as Crystal
 Calamity's, the panel the time alone (its text tiles, by the screen's
 edge); saved halfway with the clock's state (mark `T`; a save made before
 it continues with the clock running while time is left). Tests:
-`tests/test_ds_reclaim_timer.py` (the clock, the time out, saved halfway).
+`tests/test_ds_reclaim_timer.py` (the clock; the time out from 00:10 left
+to run, and the whole 30 minutes from the mission's start with nothing
+poked, 107935 frames in about 110 s headless: 00:00 on time, "Oh... I
+didn't expect this.", "Noooo! The missile...", DEFEAT, the world map with
+the mission not cleared; saved halfway).
 
 Tests: `tools/aw2test/tests/test_ds_campaign.py` (the sub-menu with and
 without the pack, AW2's campaign unchanged to its first mission card,

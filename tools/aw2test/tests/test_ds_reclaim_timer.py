@@ -86,26 +86,58 @@ def ds_reclaim_timer_clock(ctx):
     ctx.log(f"time left {left // 60:02d}:{left % 60:02d}")
 
 
+def run_out(ctx, e, g, d, frames_left):
+    """The clock left to run its last `frames_left` frames (no more
+    pokes): it reaches 00:00 on time; then the defeat as Dual Strike's
+    (scratchpad rel051/rts, onyx2/dst/rts): "Oh... I didn't expect this.",
+    "Noooo! The missile...", DEFEAT, the world map with the mission not
+    cleared (its flag shown, not starred; the campaign's record as before)."""
+    before = d.progress()
+    flags0 = d.map_flags() if d.world_map_up() else None
+    f0 = e.frame
+    e.shot(os.path.join(ctx.out, "start"))
+    ctx.require(e.wait_until(lambda: e.u32(COUNTDOWN) <= 300, frames_left + 60, step=1), "the clock runs down")
+    e.shot(os.path.join(ctx.out, "five_seconds"))
+    ctx.require(e.wait_until(lambda: e.u32(COUNTDOWN) == 0, 400, step=1), "the clock reaches 00:00")
+    ctx.eq(e.frame - f0, frames_left, f"00:00 after {frames_left} frames of the map")
+    ctx.eq(e.u8(CLOCK) & 2, 2, "the countdown has run out")
+    t = sprites(e, TEXT_TILE)
+    ctx.check(len(t) == 1, f"the time shows ({t})")
+    e.shot(os.path.join(ctx.out, "zero"))
+    r = d.follow_defeat(ctx.out)
+    ctx.log(f"texts: {r['texts']}")
+    ctx.check(any("I didn't expect this" in x for x in r["texts"]), f"Dual Strike's first line ({r['texts'][:2]})")
+    ctx.check(any("Noooo! The missile" in x for x in r["texts"]), f"\"Noooo! The missile...\" ({r['texts'][:3]})")
+    ctx.check(r["banner"], "the DEFEAT banner")
+    res = d.last_result()
+    ctx.eq((res["result"], res["mission"]), (2, RECLAIM_THE_SKIES), "the mission lost (the last result)")
+    ctx.check(r["world_map"], "back on the world map")
+    ctx.eq(d.map_flags()[RECLAIM_THE_SKIES] & 2, 0, "Reclaim the Skies not cleared (no star)")
+    ctx.eq(d.progress(), before, "the campaign's record as before (nothing won)")
+    return r
+
+
 @test(modes=("ds",))
 def ds_reclaim_timer_time_out(ctx):
-    """The 30 minutes run out (poked to two seconds): Black Hole wins, the
-    mission is lost, with Dual Strike's "Noooo! The missile..."."""
+    """The 30 minutes run out: the clock set to 00:10 once, then left to
+    run 600 frames of the map; Black Hole wins as in Dual Strike."""
     e, g, d = start(ctx)
-    e.w32(COUNTDOWN, 120)
-    ctx.require(e.wait_until(lambda: e.u8(CLOCK) & 2, 400, step=5), "the countdown ran out")
-    e.shot(os.path.join(ctx.out, "zero"))
-    texts = []
-    for _ in range(300):
-        t = d.text_shown()
-        if t and (not texts or texts[-1] != t):
-            texts.append(t.replace("\r", " "))
-        if e.u8(dc.LAST_RESULT) or not d.in_battle():
-            break
-        if d.scripts_running():
-            e.press("A", 4)
-        e.wait(20)
-    ctx.eq(e.u8(dc.LAST_RESULT), 2, "the mission is lost")
-    ctx.check(any("missile" in t for t in texts), f"the defeat's dialogue ({texts[:3]})")
+    e.w32(COUNTDOWN, 600)
+    run_out(ctx, e, g, d, 600)
+
+
+@test(modes=("ds",))
+def ds_reclaim_timer_full(ctx):
+    """The whole 30 minutes from the mission's start, nothing poked: 108000
+    frames of the map (less those the opening dialogue took), then the
+    defeat. Logs the emulated and the real time it took."""
+    import time
+    e, g, d = start(ctx)
+    left = e.u32(COUNTDOWN)
+    ctx.check(100000 < left <= 108000, f"the countdown from 30 minutes ({left} frames left)")
+    t0 = time.time()
+    r = run_out(ctx, e, g, d, left)
+    ctx.log(f"the full countdown: {left} frames ({left / 60 / 60:.1f} emulated minutes) in {time.time() - t0:.0f} s real time, then the defeat in {r['frames']} frames")
 
 
 @test(modes=("ds",))

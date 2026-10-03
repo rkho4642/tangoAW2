@@ -37,7 +37,12 @@
 //! and run by AW2's own list runner (`sub_08074484`) from the battle's
 //! frame while the map waits for a unit's orders. The laser is AW2's
 //! meteor strike (`0x084A0858`, Sturm's: 8 HP, radius 2, the computer's
-//! target for Black Hole's army). A silo's Launch here runs our proc: the
+//! target for Black Hole's army) after the panel's beam, drawn as Dual
+//! Strike's (its beam coming down, flash, shake, rings and fade: kind 3 of
+//! crate::power_anim, converted by crate::ds_power_art). The computer's
+//! Launch on this map fires nothing, as Dual Strike's (`0x020B8FA8`): the
+//! mission's fifth list runs with 0x32 (Black Hole's "We've captured one
+//! of the anti-satellite missile bases..." and its win). A silo's Launch here runs our proc: the
 //! camera to the silo, AW2's launch (the silo spent), the hit on the
 //! satellite, then the unit's action ends as usual (its after-action events
 //! see the hit). The top screen becomes a small panel at the map's top
@@ -80,12 +85,11 @@ const BUSY: u32 = STATE + 0xA;
 const LIST_RAN: u32 = STATE + 0xB;
 const SAVED_LR: u32 = STATE + 0xC;
 const SILO: u32 = STATE + 0x10;
-/// The laser's beam: +0x14 1 while it plays, +0x15 the panel's side (1
-/// left), +0x16 its frames (u16), +0x18 its square (x, y).
-const BEAM: u32 = STATE + 0x14;
+/// +0x14 1 from the laser's firing until its strike on the map starts
+/// (crate::power_anim takes it: Dual Strike's beam there), +0x15 the
+/// panel's side (1 left).
+const STRIKE: u32 = STATE + 0x14;
 const SIDE: u32 = STATE + 0x15;
-const BEAM_TIME: u32 = STATE + 0x16;
-const BEAM_AT: u32 = STATE + 0x18;
 const STATE_END: u32 = STATE + 0x1C;
 
 /// The phases (Dual Strike's states).
@@ -163,20 +167,22 @@ const BUSY_FN: u32 = ROM + 0x120;
 /// The main callback's way back after the list ran: its return address
 /// restored, then the callback itself.
 const MAIN_STUB: u32 = ROM + 0x130;
-/// The laser's beam (in place of the meteor's drawing, `sub_08044968`; a
-/// magic stub), and `playing()` (in place of the meteor's wait,
-/// `sub_0806AAC4`).
-const BEAM_FN: u32 = ROM + 0x150;
-const BEAM_WAIT_FN: u32 = ROM + 0x160;
-const LAUNCH_SCRIPT: u32 = ROM + 0x170;
-/// The magic ids of [`SETUP_FN`] and [`BEAM_FN`] (crate::ds_campaign's
-/// landing hands them to [`magic`]).
+/// `firing()`: the panel's laser still fires (the phase is [`FIRING`]);
+/// the strike on the map waits for it, as Dual Strike's top-screen beam
+/// comes first.
+const FIRING_FN: u32 = ROM + 0x150;
+/// The CPU's Launch on Crystal Calamity's map, after the mission's list
+/// ran: the unit waits (`sub_080424FC`), then the CPU's next unit
+/// (`0x080600D6`).
+const CPU_LAUNCH_END: u32 = ROM + 0x160;
+const LAUNCH_SCRIPT: u32 = ROM + 0x188;
+/// The magic id of [`SETUP_FN`] (crate::ds_campaign's landing hands it to
+/// [`magic`]).
 pub const MAGIC: u32 = 0x2D00_0000;
 const MAGIC_SETUP: u32 = MAGIC | 1;
-const MAGIC_BEAM: u32 = MAGIC | 2;
 const LASER_SCRIPT: u32 = ROM + 0x200;
 const ROM_SENTINEL: u32 = ROM + 0x3FC;
-const ROM_MAGIC: u32 = 0x4E59_4E4F; // "ONYN" (bump when the code changes)
+const ROM_MAGIC: u32 = 0x4F59_4E4F; // "ONYO" (bump when the code changes)
 
 fn halfwords(h: &[u16]) -> Vec<u8> {
     h.iter().flat_map(|v| v.to_le_bytes()).collect()
@@ -293,6 +299,37 @@ fn busy_fn() -> Vec<u8> {
     byte_fn(BUSY)
 }
 
+/// `bool f(void)`: the phase is [`FIRING`].
+fn firing_fn() -> Vec<u8> {
+    let mut b = halfwords(&[
+        0x4802,                 // ldr r0, =PHASE
+        0x7800,                 // ldrb r0, [r0]
+        0x3800 | FIRING as u16, // subs r0, #FIRING
+        0x4241,                 // negs r1, r0
+        0x4148,                 // adcs r0, r1 (1 if it was FIRING)
+        0x4770,                 // bx lr
+    ]);
+    b.extend(words(&[PHASE]));
+    b
+}
+
+/// After the mission's list ran for the CPU's Launch: `sub_080424FC()`
+/// (the unit waits), then on at `0x080600D6` (the CPU's next unit).
+fn cpu_launch_end() -> Vec<u8> {
+    let mut b = halfwords(&[
+        0x4B03, // ldr r3, =sub_080424FC
+        0x467A, // mov r2, pc
+        0x3205, // adds r2, #5
+        0x4696, // mov lr, r2
+        0x4718, // bx r3
+        0x4B02, // ldr r3, =0x080600D7
+        0x4718, // bx r3
+        0x46C0, // nop
+    ]);
+    b.extend(words(&[0x0804_24FD, CPU_NEXT_UNIT | 1]));
+    b
+}
+
 fn main_stub() -> Vec<u8> {
     let mut b = halfwords(&[
         0x4802, // ldr r0, =SAVED_LR
@@ -326,29 +363,26 @@ fn launch_script() -> Vec<u8> {
     .concat()
 }
 
-/// The meteor script's commands: its draw (`sub_08044968`), its wait for
-/// the meteor (`PROC_WHILE sub_0806AAC4`) and its fade from white.
-const METEOR_DRAW: u32 = 0x0804_4969;
-const METEOR_WAIT: u32 = 0x0806_AAC5;
+/// The meteor script's fade from white (the meteor's), and AW2's proc ops.
 const OP_WHILE: u16 = 0x14;
 const OP_FADE_FROM_WHITE: u16 = 0x26;
 const OP_SLEEP: u16 = 0x0E;
 
-/// AW2's meteor strike with Black Hole's target and Dual Strike's laser
-/// beam in place of the meteor (no fade from white: the meteor's).
+/// AW2's meteor strike with Black Hole's target, waiting first for the
+/// panel's beam (Dual Strike's top-screen beam comes before the strike on
+/// the map); its drawing and wait (`sub_08044968`, `sub_0806AAC4`) are
+/// crate::power_anim's Dual Strike beam ([`take_strike`]), without the
+/// meteor's fade from white.
 fn laser_script(core: &Core) -> Vec<u8> {
     let mut s = Vec::new();
     for k in 0..METEOR_COMMANDS {
         let mut c = [0u8; 8];
         core.raw_read_range(METEOR_SCRIPT + 8 * k, -1, &mut c);
         let op = u16::from_le_bytes([c[0], c[1]]);
-        let ptr = u32::from_le_bytes([c[4], c[5], c[6], c[7]]);
         if k == METEOR_TARGET_AT {
+            // (the map busy and a frame slept: the panel's beam first)
+            s.extend_from_slice(&proc_cmd(OP_WHILE, 0, FIRING_FN | 1));
             c = proc_cmd(op, 0, TARGET_FN | 1);
-        } else if ptr == METEOR_DRAW {
-            c = proc_cmd(op, 0, BEAM_FN | 1);
-        } else if op == OP_WHILE && ptr == METEOR_WAIT {
-            c = proc_cmd(OP_WHILE, 0, BEAM_WAIT_FN | 1);
         } else if op == OP_FADE_FROM_WHITE {
             c = proc_cmd(OP_SLEEP, 1, 0);
         }
@@ -368,8 +402,8 @@ fn install(core: &mut Core) {
     core.raw_write_range(SETUP_FN, -1, &crate::campaign_model::stub(MAGIC_SETUP));
     core.raw_write_range(BUSY_FN, -1, &busy_fn());
     core.raw_write_range(MAIN_STUB, -1, &main_stub());
-    core.raw_write_range(BEAM_FN, -1, &crate::campaign_model::stub(MAGIC_BEAM));
-    core.raw_write_range(BEAM_WAIT_FN, -1, &byte_fn(BEAM));
+    core.raw_write_range(FIRING_FN, -1, &firing_fn());
+    core.raw_write_range(CPU_LAUNCH_END, -1, &cpu_launch_end());
     core.raw_write_range(LAUNCH_SCRIPT, -1, &launch_script());
     let laser = laser_script(core);
     core.raw_write_range(LASER_SCRIPT, -1, &laser);
@@ -552,13 +586,6 @@ fn animate(core: &mut Core) {
     let p = phase(core);
     let t = core.raw_read_16(ANIM, -1).saturating_add(1);
     core.raw_write_16(ANIM, -1, t);
-    if core.raw_read_8(BEAM, -1) != 0 {
-        let b = core.raw_read_16(BEAM_TIME, -1) + 1;
-        core.raw_write_16(BEAM_TIME, -1, b);
-        if b >= BEAM_FRAMES {
-            core.raw_write_8(BEAM, -1, 0);
-        }
-    }
     match p {
         // The laser: the beam, then charging again (Dual Strike's fire task,
         // 0x48 + 0x1E frames, then its hit).
@@ -583,8 +610,6 @@ fn animate(core: &mut Core) {
 }
 
 const FIRE_FRAMES: u16 = 102;
-/// The beam on the map: it comes down, burns, narrows away.
-const BEAM_FRAMES: u16 = 56;
 const RISE_FRAMES: u16 = 80;
 const BLAST_FRAMES: u16 = 40;
 const FALL_FRAMES: u16 = 300;
@@ -604,6 +629,7 @@ pub fn fire(core: &mut Core) -> bool {
     }
     set_phase(core, FIRING);
     core.raw_write_16(CHARGE, -1, 0);
+    core.raw_write_8(STRIKE, -1, 1);
     note_army(core);
     core.gba_mut().cpu_mut().set_thumb_pc(LASER_FN);
     true
@@ -642,19 +668,52 @@ fn map_frame(core: &mut Core) {
     cpu.set_thumb_pc(RUN_LIST);
 }
 
-/// The strike's draw (r0 the proc): the beam on its square (`proc+0x66`,
-/// the target unit's index, as AW2's meteor takes it).
-fn beam_start(core: &mut Core) {
-    let proc = core.gba().cpu().gpr(0) as u32;
-    let i = core.raw_read_16(proc + 0x66, -1) as u32;
-    if i == 0 {
+/// crate::power_anim, where AW2's meteor strike draws its meteor: the
+/// laser's strike is starting (Dual Strike's beam plays instead). Once.
+pub fn take_strike(core: &mut Core) -> bool {
+    if core.raw_read_8(STRIKE, -1) == 0 || !on(core) {
+        return false;
+    }
+    core.raw_write_8(STRIKE, -1, 0);
+    true
+}
+
+// --- The CPU's Launch ----------------------------------------------------------------------
+
+/// AW2's CPU carrying out a Launch (its action 20, `0x080600D0`: the camera
+/// to the target, then `sub_08042C24` fires). Dual Strike's CPU on map 0xF2
+/// in the campaign (`0x020B8FA8`: action 0x16, mode 0, map 0xF2) fires
+/// nothing: it runs the mission header's fifth list with 0x32
+/// (`0x022AF308(0x32, 0)`; Crystal Calamity's one record there, flag 0x0E,
+/// once: "We've captured one of the anti-satellite missile bases. ..."),
+/// then the unit waits (`0x020DEAC4`). As that here, on Crystal Calamity's
+/// map alone.
+const CPU_LAUNCH: u32 = 0x0806_00D0;
+const CPU_NEXT_UNIT: u32 = 0x0806_00D6;
+/// Dual Strike's argument for the list (its record kind 4, AW2's the same:
+/// the record's byte equal to it).
+const CPU_LAUNCH_EVENT: i32 = 0x32;
+/// The CPU's unit moving now (a unit record pointer).
+const CPU_UNIT: u32 = 0x0300_40D8;
+
+fn cpu_launch(core: &mut Core) {
+    if !mission_on(core) {
         return;
     }
-    let u = core.raw_read_32(0x0849_9594, -1) + 12 * i;
-    core.raw_write_8(BEAM_AT, -1, core.raw_read_8(u + 2, -1));
-    core.raw_write_8(BEAM_AT + 1, -1, core.raw_read_8(u + 3, -1));
-    core.raw_write_16(BEAM_TIME, -1, 0);
-    core.raw_write_8(BEAM, -1, 1);
+    let list = crate::ds_campaign::campaign(core)
+        .and_then(|c| c.model.built.missions.get(crate::ds_campaign_data::CRYSTAL_CALAMITY))
+        .map_or(0, |m| m.unit_event_list);
+    if list == 0 {
+        return;
+    }
+    install(core);
+    let unit = core.raw_read_32(CPU_UNIT, -1);
+    let cpu = core.gba_mut().cpu_mut();
+    cpu.set_gpr(0, list as i32);
+    cpu.set_gpr(1, unit as i32);
+    cpu.set_gpr(2, CPU_LAUNCH_EVENT);
+    cpu.set_gpr(14, (CPU_LAUNCH_END | 1) as i32);
+    cpu.set_thumb_pc(RUN_LIST);
 }
 
 // --- Launch -----------------------------------------------------------------------------
@@ -1127,7 +1186,13 @@ fn text_now(core: &Core) -> Vec<u8> {
 }
 
 fn shows(core: &Core) -> bool {
-    clock_on(core) && core.raw_read_32(MAIN_CALLBACK, -1) == MAP_CALLBACK && !crate::heal_effect::playing(core) && art().is_some()
+    clock_on(core) && core.raw_read_32(MAIN_CALLBACK, -1) == MAP_CALLBACK && !crate::heal_effect::playing(core) && !match_over(core) && art().is_some()
+}
+
+/// AW2's match end runs (its procs' scripts `0x084C327C`, and `0x084C3240`
+/// the banner, "DEFEAT"): the panel steps aside for it.
+fn match_over(core: &Core) -> bool {
+    (0..32).any(|k| matches!(core.raw_read_32(0x0200_D610 + 0x6C * k, -1), 0x084C_327C | 0x084C_3240))
 }
 
 fn panel_shows(core: &Core) -> bool {
@@ -1182,74 +1247,13 @@ fn panel_at(core: &mut Core, start: u32, at: u32) -> (i32, i32) {
 /// The panel's top: below the CO window (funds, face and power meter).
 const PANEL_Y: i32 = 66;
 
-/// The beam's tiles: the meteor's (`0x1CA..`, free while the strike plays,
-/// crate::power_anim), a 32x32 piece of beam and the 32x32 glow where it
-/// lands.
-const BEAM_TILE: u16 = 0x1CA;
-const GLOW_TILE: u16 = 0x1DA;
-
-/// The beam's width this frame (its half-width in pixels; 0: none) and its
-/// head's height (0 the top of the screen .. 1 down on its square).
-fn beam_shape(t: i32) -> (i32, f32) {
-    let head = (t as f32 / 8.0).min(1.0);
-    let w = match t {
-        0..=7 => 2,
-        8..=11 => 6,
-        12..=39 => 9 + (t / 3) % 2,
-        40..=47 => 6,
-        48..=55 => 2,
-        _ => 0,
-    };
-    (w, head)
-}
-
-fn beam_pixels(half: i32) -> Vec<u8> {
-    let mut px = vec![0u8; 32 * 32];
-    for y in 0..32 {
-        for x in 0..32 {
-            let d = (2 * x as i32 - 31).abs();
-            px[y * 32 + x as usize] = if d <= half * 2 / 3 {
-                WHITE
-            } else if d <= half * 2 {
-                PINK
-            } else if d <= half * 2 + 3 && half > 2 {
-                DARK
-            } else {
-                0
-            };
-        }
-    }
-    px
-}
-
-fn glow_pixels(t: i32) -> Vec<u8> {
-    let r = match t {
-        0..=7 => 0,
-        8..=39 => 10 + (t / 2) % 3,
-        40..=55 => 12 - (t - 40) * 3 / 4,
-        _ => 0,
-    };
-    let mut px = vec![0u8; 32 * 32];
-    for y in 0..32i32 {
-        for x in 0..32i32 {
-            let d2 = (2 * x - 31).pow(2) + (2 * y - 31).pow(2);
-            let rr = (2 * r).pow(2);
-            px[(y * 32 + x) as usize] = if r > 0 && 4 * d2 <= rr { WHITE } else if r > 0 && d2 <= rr { PINK } else if r > 2 && d2 <= (2 * r + 4).pow(2) { DARK } else { 0 };
-        }
-    }
-    px
-}
-
-/// At the sprite flush (crate::branding::flush): the panel, and the
-/// laser's beam while it plays.
+/// At the sprite flush (crate::branding::flush): the panel.
 pub fn flush_sprites(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
     if !shows(core) {
         return at;
     }
     let Some(art) = art() else { return at };
-    let beam = core.raw_read_8(BEAM, -1) != 0;
-    let panel = panel_shows(core);
-    if !beam && !panel {
+    if !panel_shows(core) {
         return at;
     }
     let mut at = at;
@@ -1259,29 +1263,7 @@ pub fn flush_sprites(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
         write_if_changed(core, base + 0x200 + 32 * PALETTE as u32 + 2 * FIRST_COLOUR as u32, &colours);
     }
     let mut sprites: Vec<(i32, i32, u16, u16, u16)> = Vec::new();
-    if beam {
-        let t = core.raw_read_16(BEAM_TIME, -1) as i32;
-        let (half, head) = beam_shape(t);
-        write_if_changed(core, OBJ_TILES + 32 * BEAM_TILE as u32, &to_tiles(&beam_pixels(half), 32, 32));
-        write_if_changed(core, OBJ_TILES + 32 * GLOW_TILE as u32, &to_tiles(&glow_pixels(t), 32, 32));
-        let map = core.raw_read_32(MAP_POINTER, -1);
-        let (sx, sy) = (core.raw_read_16(map + 4, -1) as i16 as i32, core.raw_read_16(map + 6, -1) as i16 as i32);
-        let (bx, by) = (core.raw_read_8(BEAM_AT, -1) as i32, core.raw_read_8(BEAM_AT + 1, -1) as i32);
-        let (cx, bottom) = (16 * bx + 8 - sx, 16 * by + 8 - sy);
-        let reach = ((bottom + 32) as f32 * head) as i32 - 32;
-        // The glow first (over the beam's foot).
-        if head >= 1.0 {
-            sprites.push((cx - 16, bottom - 16, GLOW_TILE, 0, 2 << 14));
-        }
-        let mut y = reach - 32;
-        while y > -32 {
-            if y < 160 {
-                sprites.push((cx - 16, y, BEAM_TILE, 0, 2 << 14));
-            }
-            y -= 32;
-        }
-    }
-    if panel {
+    {
         let onyx = on(core);
         if onyx {
             let sat = to_tiles(&satellite_now(core, art), 32, 32);
@@ -1326,7 +1308,7 @@ pub fn flush_sprites(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
 // --- Traps --------------------------------------------------------------------------------
 
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
-    vec![(MAP_FRAME, Box::new(map_frame))]
+    vec![(MAP_FRAME, Box::new(map_frame)), (CPU_LAUNCH, Box::new(cpu_launch))]
 }
 
 /// A magic stub of ours reached crate::ds_campaign's landing (r3 the id,
@@ -1334,7 +1316,6 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
 pub fn magic(core: &mut Core, id: u32) {
     match id {
         MAGIC_SETUP => launch_setup(core),
-        MAGIC_BEAM => beam_start(core),
         _ => {}
     }
     let cpu = core.gba_mut().cpu_mut();
@@ -1354,15 +1335,17 @@ mod tests {
         assert!(STATE >= 0x0203_FFC8 && STATE_END <= 0x0203_FFF0);
         assert!(LAUNCH_FN >= crate::setup_phase::ROM + 0x400);
         assert!(LAUNCH_SCRIPT + launch_script().len() as u32 <= LASER_SCRIPT);
-        assert!(LASER_SCRIPT + 8 * METEOR_COMMANDS <= ROM_SENTINEL);
+        assert!(LASER_SCRIPT + 8 * (METEOR_COMMANDS + 1) <= ROM_SENTINEL);
         assert!(LAUNCH_FN + launch_fn().len() as u32 <= LASER_FN);
         assert!(LASER_FN + laser_fn().len() as u32 <= TARGET_FN);
         assert!(TARGET_FN + target_fn().len() as u32 <= SETUP_FN);
-        assert!(SETUP_FN + 16 <= BUSY_FN && BEAM_FN + 16 <= BEAM_WAIT_FN);
+        assert!(SETUP_FN + 16 <= BUSY_FN);
+        assert!(FIRING_FN + firing_fn().len() as u32 <= CPU_LAUNCH_END);
+        assert!(CPU_LAUNCH_END + cpu_launch_end().len() as u32 <= LAUNCH_SCRIPT);
         assert!(MAGIC != crate::two_front::MAGIC && MAGIC != crate::setup_phase::MAGIC);
         assert!(BUSY_FN + busy_fn().len() as u32 <= MAIN_STUB);
-        assert!(MAIN_STUB + main_stub().len() as u32 <= BEAM_FN);
-        assert!(BEAM_WAIT_FN + byte_fn(BEAM).len() as u32 <= LAUNCH_SCRIPT);
+        assert!(MAIN_STUB + main_stub().len() as u32 <= FIRING_FN);
+        assert!(LAUNCH_SCRIPT + launch_script().len() as u32 <= LASER_SCRIPT);
         // The countdown's state and ours.
         assert!(COUNTDOWN + 4 <= crate::ds_campaign::FLAGS);
     }
@@ -1393,6 +1376,10 @@ mod tests {
         let m = main_stub();
         assert_eq!(lit(&m, 0), SAVED_LR);
         assert_eq!(lit(&m, 6), MAP_CALLBACK);
+        assert_eq!(lit(&firing_fn(), 0), PHASE);
+        let c = cpu_launch_end();
+        assert_eq!(lit(&c, 0), 0x0804_24FD);
+        assert_eq!(lit(&c, 0xA), CPU_NEXT_UNIT | 1);
     }
 
     #[test]

@@ -228,6 +228,7 @@ fn slug(which: PowerEffect) -> &'static str {
         PowerEffect::ExMachina => "ex_machina",
         PowerEffect::CoveringFire => "covering_fire",
         PowerEffect::UrbanBlight => "urban_blight",
+        PowerEffect::BlackOnyx => "black_onyx",
     }
 }
 
@@ -291,6 +292,7 @@ fn main() {
             PowerEffect::ExMachina => &[3, 57, 62, 84, 90, 96, 104, 112, 124, 150],
             PowerEffect::CoveringFire => &[4, 12, 14, 17, 20, 24, 28, 36, 46, 60],
             PowerEffect::UrbanBlight => &[6, 14, 22, 30, 40, 50, 60, 68, 74, 78],
+            PowerEffect::BlackOnyx => &[2, 6, 10, 12, 16, 22, 30, 45, 60, 80],
         };
         let mut cells = Vec::new();
         for army in 0..5 {

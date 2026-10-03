@@ -260,6 +260,10 @@ pub struct MissionInfo {
     /// clock runs (AW2's format, its address; 0: none): Dual Strike's
     /// real-time list, Crystal Calamity's Black Onyx (crate::onyx).
     pub realtime: u32,
+    /// The header's fifth list (AW2's format, its address; 0: none), which
+    /// Dual Strike runs with an argument from the game's own code: Crystal
+    /// Calamity's CPU Launch (crate::onyx).
+    pub unit_event_list: u32,
 }
 
 /// The landing every magic stub jumps to: dead code in `sub_0803CC3C`

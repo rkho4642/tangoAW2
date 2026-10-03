@@ -21,6 +21,8 @@ RECORDS = 0x0203F600           # the missions' best results, 8 bytes each (Norma
 P_WON = PROGRESS + 8
 P_FLAGS = PROGRESS + 0x10
 PROGRESS_MAGIC = 0x43445741
+# AW2's match end: the result banner ("DEFEAT" / "VICTORY") over the map.
+MATCH_END_BANNER = 0x08049C39
 WM_STATE = 0x0202FDFC          # the world map's state (camera, cursor, mission +0x0C, flags +0x12)
 WM_CURSOR_LOOP = 0x0807703D    # WorldMapCursor_Loop
 WM_INFO_LOOP = 0x08077791      # WorldMapMissionInfo_InputLoop
@@ -221,6 +223,43 @@ class DsCampaign:
             e.wait(10)
             n += 14
         raise NavError("the world map did not come up")
+
+    def follow_defeat(self, out=None, max_frames=20000):
+        """From a mission's end (its event script running or about to): each
+        dialogue line once shown in full (a screenshot of it in `out`), the
+        match's end banner (AW2's `0x08049C39`, "DEFEAT"), the world map
+        coming back. Answers the dialogue with A, nothing else. Returns
+        {"texts", "banner", "world_map", "frames"}."""
+        e = self.e
+        texts, banner, last, stable, n, quiet = [], False, None, 0, 0, 0
+        shot = lambda name: e.shot(os.path.join(out, name)) if out else None
+        world = False
+        while n < max_frames:
+            t = self.text_shown()
+            stable = stable + 1 if t and t == last else 0
+            last = t
+            if t and stable == 6 and (not texts or texts[-1] != t):
+                texts.append(t)
+                shot(f"text{len(texts):02d}")
+            quiet += 1
+            # (a line in full a moment, or a box whose text is not read: A)
+            if self.scripts_running() and (stable >= 12 or quiet >= 40):
+                e.press("A", 4)
+                stable = quiet = 0
+            if not banner and any(f == MATCH_END_BANNER for _, _, f in self.g.procs()):
+                banner = True
+                e.wait(30)
+                n += 30
+                shot("defeat")
+            if self.world_map_up() and e.u8(WM_STATE + 0x10):
+                e.wait(60)
+                n += 60
+                shot("world_map")
+                world = True
+                break
+            e.wait(4)
+            n += 4
+        return {"texts": [x.replace("\r", " ") for x in texts], "banner": banner, "world_map": world, "frames": n}
 
     def cleared_flags(self):
         """The starred flags drawn on won missions' points (OBJ tile 40,
