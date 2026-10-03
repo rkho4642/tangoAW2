@@ -985,6 +985,8 @@ pub fn map_start(core: &mut Core) {
     core.raw_write_8(FOG, -1, m.fog as u8);
     set_look(core, m);
     set_controllers(core, m);
+    // Dual Strike's Setup phase before day 1 (crate::setup_phase).
+    crate::setup_phase::map_start(core, player_picks(main));
     crate::two_front::map_start(core);
 }
 
@@ -1159,6 +1161,10 @@ fn landing(core: &mut Core) {
     // Two-front battles' own stubs (crate::two_front).
     if id & 0xFF00_0000 == crate::two_front::MAGIC {
         return crate::two_front::magic(core, id);
+    }
+    // The Setup phase's (crate::setup_phase).
+    if id & 0xFF00_0000 == crate::setup_phase::MAGIC {
+        return crate::setup_phase::magic(core, id);
     }
     let r = match campaign(core).and_then(|c| c.model.built.magic.get(id as usize)).cloned() {
         Some(data::Magic::Flow(FLOW_CO_SETUP)) => co_setup(core),

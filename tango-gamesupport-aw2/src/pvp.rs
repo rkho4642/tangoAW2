@@ -508,6 +508,9 @@ impl tango_backend_mgba::SharedGame for Aw2 {
         } else {
             crate::tag::put_back(core);
         }
+        // The DS Campaign's Setup phase: its menu over the others'
+        // (crate::setup_phase).
+        crate::setup_phase::menus(core, ds && ds_features && mode.is_none());
         crate::design5::sync(core);
 
         let prev = core.raw_read_16(PREV_KEYS, -1) as u32;

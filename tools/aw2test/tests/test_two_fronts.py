@@ -17,6 +17,7 @@ import os
 from aw2test import dscampaign as dc
 from aw2test import paths, saves
 from aw2test import twofront as tf
+from aw2test.rom import DualStrike
 from aw2test.emu import Emu
 from aw2test.game import Game
 from aw2test.harness import test
@@ -274,6 +275,10 @@ def two_front_looks_and_deployments(ctx):
     for m in (VICTORY_OR_DEATH, MEANS_TO_AN_END, LIGHTNING_STRIKES, OMENS_AND_SIGNS, RING_OF_FIRE):
         e, g, d = start(ctx, m)
         ctx.eq(look(e), LOOKS[m], f"mission {m}: the main front's look")
+        # The structures' picture and colours (OBJ tile 0x130, palette 10:
+        # crate::sky_front borrows them on a front in the sky).
+        structures = lambda: (e.read(0x06010000 + 32 * 0x130, 0x800), e.read(0x05000200 + 32 * 10, 32))
+        before = structures()
         g.wait_for_input()
         tf.look_at_other_front(e, g)
         ctx.eq(look(e), 0, f"mission {m}: the second front looked at: Normal")
@@ -282,11 +287,22 @@ def two_front_looks_and_deployments(ctx):
         d.end_turn()
         ctx.check(tf.until(e, d, lambda: e.u8(tf.LIVE) == 1 and e.u8(tf.BUSY) == 0), f"mission {m}: the second front's round")
         ctx.eq(look(e), 0, f"mission {m}: the second front's round: Normal")
+        sky = m in (VICTORY_OR_DEATH, OMENS_AND_SIGNS)
+        e.wait(10)
+        if sky:
+            # (crate::sky_front: the Black Arc's picture and colours, the
+            # pack's bmap/0a7 and 0aa)
+            ds = DualStrike()
+            ctx.check(structures() == (ds.file("bmap/0a7")[:0x800], ds.file("bmap/0aa")[:32]), f"mission {m}: the Black Arc's picture and colours in the sky")
         ctx.eq({a: n for a in (1, 2, 3, 4) if (n := len(g.units(a)))}, DEPLOYED[m], f"mission {m}: the second front's deployment")
         if m == MEANS_TO_AN_END:
             shot(ctx, e, "means_to_an_end_second_front")
         ctx.check(tf.until(e, d, lambda: tf.player_turn(e) and e.u8(tf.LIVE) == 0), f"mission {m}: back to the main front")
         ctx.eq(look(e), LOOKS[m], f"mission {m}: the main front's look again")
+        # (after a front in the sky: its colours, and the picture where the
+        # main front draws one: Omens and Signs' fortress)
+        now = structures()
+        ctx.check(not sky or (now[1] == before[1] and (m != OMENS_AND_SIGNS or now[0] == before[0])), f"mission {m}: the main front's structures as they were")
         e.close()
 
 

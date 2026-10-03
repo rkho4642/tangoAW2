@@ -518,6 +518,10 @@ impl<'a> Painter<'a> {
         let cell = row(core, y) + x;
         let fog = if core.raw_read_8(MAP + 0x234A + cell, -1) == 0 { 0x4000 } else { 0 };
         let t = core.raw_read_16(MAP + 0xA22 + 2 * cell, -1);
+        // A second front in the sky: its clouds (crate::sky_front).
+        if let Some(q) = crate::sky_front::entries(core, x, y) {
+            return q.map(|v| v.wrapping_add(fog));
+        }
         // Means to an End's Grand Bolt: its own picture (crate::grand_bolt),
         // its tiles in the pool as the composites are, in its palette.
         if let (Some(l), Some(c), Some(b)) = (self.look, crate::grand_bolt::cell_at(core, x, y), crate::grand_bolt::bolt()) {
@@ -612,6 +616,10 @@ fn blit_row(core: &mut Core) {
         let a = args(core);
         Painter::new(core, Some(&l.look)).row(core, a);
         return_now(core);
+    } else if crate::sky_front::on(core) {
+        let a = args(core);
+        Painter::new(core, None).row(core, a);
+        return_now(core);
     }
 }
 
@@ -620,6 +628,10 @@ fn blit_column(core: &mut Core) {
     if let Some(l) = drawn(core).and_then(look) {
         let a = args(core);
         Painter::new(core, Some(&l.look)).column(core, a);
+        return_now(core);
+    } else if crate::sky_front::on(core) {
+        let a = args(core);
+        Painter::new(core, None).column(core, a);
         return_now(core);
     }
 }

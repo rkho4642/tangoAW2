@@ -46,6 +46,11 @@ CONDITIONS = {
     0x02350610: "every minicannon destroyed", 0x02350560: "the Grand Bolt's three weak points destroyed",
     0x02351CC8: "the Grand Bolt's charge (every sixth day)",
 }
+# The Setup phase before day 1 (crate::setup_phase): 2 while it lasts.
+SETUP = 0x0203F706
+SETUP_ACTIVE = 2
+SETUP_MENU = 0x08E74080
+SETUP_DEPLOY_AT = 4
 MENU_LEVEL = 0x0203FD13
 MENU_CHOICE = 0x0203FD14
 
@@ -71,6 +76,9 @@ class DsCampaign:
     def __init__(self, game: Game):
         self.g = game
         self.e = game.e
+        # Choose Deploy when a mission's Setup phase opens (wait_control);
+        # False keeps the phase for a test of it.
+        self.auto_deploy = True
 
     # -- state ------------------------------------------------------------------
     def active(self):
@@ -307,6 +315,44 @@ class DsCampaign:
         self.wait_control(max_frames)
         return self.e.frame - start
 
+    def in_setup(self):
+        """The mission's Setup phase (crate::setup_phase): the map open
+        before day 1, the battle starting at Deploy."""
+        return self.e.u8(SETUP) == SETUP_ACTIVE and self.in_battle()
+
+    def setup_menu(self):
+        """A opens the Setup menu wherever the cursor is (pressed again if
+        the map was still busy)."""
+        for _ in range(10):
+            self.e.press("A", 4)
+            try:
+                return self.g.wait_menu(SETUP_MENU, 60)
+            except NavError:
+                if self.scripts_running():
+                    continue
+                self.e.wait(20)
+        return self.g.wait_menu(SETUP_MENU)
+
+    def leave_setup(self, max_frames=20000):
+        """When the mission has a Setup phase (pending at the battle's
+        start, crate::setup_phase): waits for it and chooses Deploy."""
+        e = self.e
+        n = 0
+        while n < max_frames and e.u8(SETUP) == 1 and self.in_battle():
+            if self.scripts_running():
+                e.press("A", 4)
+            e.wait(10)
+            n += 10
+        if self.in_setup():
+            self.deploy()
+
+    def deploy(self):
+        """Setup menu -> Deploy: day 1 begins."""
+        m = self.setup_menu()
+        self.g.choose("Deploy", SETUP_MENU)
+        self.e.wait_until(lambda: self.e.u8(SETUP) != SETUP_ACTIVE, 600, step=10)
+        return m
+
     def on_co_select(self):
         return any(self.e.u32(p) == CO_SELECT for p in range(0x0200D610, 0x0200E418, 0x6C))
 
@@ -457,6 +503,9 @@ class DsCampaign:
             if self.cursor() != (x, y):
                 e.hold(back, 6)
                 e.wait(10)
+                if self.in_setup() and self.auto_deploy:
+                    self.deploy()
+                    continue
                 return
             # A dialogue box left waiting (A), or a menu or CO screen the
             # presses opened (B backs out).
@@ -625,6 +674,8 @@ class DsCampaign:
         # (called as the battle loads, before army 1's turn begins).
         if not e.wait_until(lambda: self.in_battle() and self.players() != 0, 20000, step=2):
             raise NavError("the battle did not load")
+        # (a Setup phase first: Deploy, as the player does)
+        self.leave_setup()
         p = self.players()
         for a in range(1, 5):
             if e.u8(p + 0x3C * a + 0x1B) == 1:
@@ -661,6 +712,7 @@ class DsCampaign:
         e.w8(LAST_RESULT, 0)
         if not e.wait_until(lambda: self.in_battle() and self.players() != 0, 20000, step=2):
             raise NavError("the battle did not load")
+        self.leave_setup()
         start = e.u16(DAY)
         last_day = start
         t0 = e.frame
