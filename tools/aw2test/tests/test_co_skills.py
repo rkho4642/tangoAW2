@@ -573,6 +573,7 @@ def skills_five_armies(ctx):
     e.press("SELECT", 4)
     e.wait(10)
     ctx.eq(e.u8(PANEL), 1, "SELECT on Black Hole's CO: the panel is up")
+    e.wait(40)
     shot(ctx, e, "five_set_skills")
     e.press("B", 4)
     e.wait(10)

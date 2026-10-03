@@ -852,7 +852,7 @@ def tag_victory_lines(ctx):
 def tag_co_page(ctx):
     """The CO page (map menu, CO): DOWN from the Super Power's page shows
     the TAG page, the CO's special partners with their Dual Strike stars
-    (Sami: Eagle 3, Sonja 1); DOWN again goes on to the unit charts, UP
+    (Sami: Sonja 1, Eagle 3, Dual Strike's order); DOWN again goes on to the unit charts, UP
     back to the Super Power."""
     g = tag_battle(ctx, ["sami", "olaf"], [None, None], units=[(1, "tank", 10, 4)])
     e = g.e
@@ -866,7 +866,7 @@ def tag_co_page(ctx):
     e.press("DOWN", 4)
     e.wait(40)
     ctx.eq((e.u32(0x03005940), e.u8(EXTRAS + 5)), (3, 1), "DOWN: the TAG page")
-    ctx.eq(rom_string(e, STRINGS + 0x300), b"Eagle\rSonja", "its partners")
+    ctx.eq(rom_string(e, STRINGS + 0x300), b"Sonja\rEagle", "its partners, as Dual Strike's box lists them")
     stars = [s for s in oam(e) if (s[2] & 0x3FF) in (0x320, 0x321) and s[2] >> 12 == 12]
     full = [s for s in stars if s[2] & 0x3FF == 0x321]
     ctx.eq((len(stars), len(full)), (6, 4), "three stars a partner, 3 + 1 full")

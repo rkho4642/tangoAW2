@@ -715,6 +715,9 @@ pub fn partners_of(core: &Core, co: u8) -> Vec<(u8, u8)> {
             out.push((b, e[2]));
         }
     }
+    // Dual Strike's TAG box lists them from the record's end (Sami's
+    // record: Eagle, Sonja; its box: Sonja, Eagle).
+    out.reverse();
     out
 }
 
