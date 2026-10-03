@@ -63,6 +63,7 @@ pub mod setup_phase;
 pub mod obelisk;
 pub mod oozium;
 mod obelisk_art;
+mod panel_sprites;
 pub mod power_anim;
 pub mod mode_menu;
 pub mod survival;

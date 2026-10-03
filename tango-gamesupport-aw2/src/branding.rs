@@ -276,7 +276,10 @@ pub fn flush(core: &mut Core) {
     at = crate::survival::flush_sprites(core, at, end);
     at = crate::campaign_menu::flush(core, start, at, end);
     at = crate::ds_worldmap::flush_sprites(core, at, end);
-    at = crate::two_front::flush_sprites(core, at, end);
+    at = crate::panel_sprites::under_window(core, start, at, end);
+    if !crate::panel_sprites::tiles_taken(core, start, at) {
+        at = crate::two_front::flush_sprites(core, at, end);
+    }
     if let Some(l) = active(core) {
         for s in 0..l.sprites {
             if at + 8 > end {

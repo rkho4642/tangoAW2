@@ -1548,6 +1548,8 @@ enum Panel {
     Result = 3,
     /// Deploy's help line in the Setup phase (crate::setup_phase).
     SetupHelp = 4,
+    /// The view's, at the bottom while the cursor is in the top rows.
+    ViewLow = 5,
 }
 
 impl Panel {
@@ -1559,6 +1561,7 @@ impl Panel {
             // panels are drawn while the other front is looked at,
             // [`co_panel`], [`info_panels`])
             Panel::View => (8, 0, 14, 6),
+            Panel::ViewLow => (8, 14, 14, 6),
             Panel::Result => (5, 8, 20, 4),
         }
     }
@@ -1570,7 +1573,7 @@ impl Panel {
         match self {
             Panel::Help => vec![(px + 12, py + 9, FRONT_HELP, false)],
             Panel::SetupHelp => vec![(px + 12, py + 9, crate::setup_phase::DEPLOY_HELP, false)],
-            Panel::View => vec![(px + 10, py + 9, VIEW_TITLE, false), (px + 10, py + 25, VIEW_BACK, true)],
+            Panel::View | Panel::ViewLow => vec![(px + 10, py + 9, VIEW_TITLE, false), (px + 10, py + 25, VIEW_BACK, true)],
             Panel::Result => {
                 let t = if core.raw_read_8(SECOND, -1) == SECOND_WON { RESULT_WON } else { RESULT_LOST };
                 let tw = font_width(core, t) as i32;
@@ -1595,7 +1598,10 @@ fn want_panel(core: &Core) -> Option<Panel> {
     }
     let busy = core.raw_read_8(BUSY, -1);
     if core.raw_read_8(VIEW, -1) == 1 && busy == Stub::BeginViewIn as u8 && core.raw_read_8(MAP_LOCK, -1) == 0 {
-        return Some(Panel::View);
+        // Out of the cursor's way (the top rows hold the front's structures:
+        // Means to an End's crystals).
+        let cursor_y = 16 * core.raw_read_16(MAP_CURSOR_Y, -1) as i32 - (core.raw_read_16(BG2VOFS, -1) & 0x1FF) as i32;
+        return Some(if cursor_y < VIEW_LOW_BELOW { Panel::ViewLow } else { Panel::View });
     }
     if core.raw_read_8(BANNER, -1) > 0 && busy == 0 && core.raw_read_16(MAP_STATE, -1) == STATE_CURSOR {
         return Some(Panel::Result);
@@ -1611,6 +1617,10 @@ const PANEL_AT: u32 = STATE + 0x19;
 /// buffer's tail.
 const PANEL_SAVED: u32 = STAGING + 0x1D80;
 const PANEL_ROWS: u32 = 6;
+/// The map cursor's row; the view's window goes to the bottom while the
+/// cursor is above this (screen pixels).
+const MAP_CURSOR_Y: u32 = 0x0300_33E6;
+const VIEW_LOW_BELOW: i32 = 48;
 const BG2_BUFFER_PTR: u32 = 0x0849_9580;
 const BG2_SCREEN: u32 = 0x0600_7800;
 const BG2HOFS: u32 = 0x0400_0018;
@@ -1669,7 +1679,7 @@ fn panel_tick(core: &mut Core) {
     let (hofs, vofs) = (core.raw_read_16(BG2HOFS, -1) as u32 & 0x1FF, core.raw_read_16(BG2VOFS, -1) as u32 & 0x1FF);
     let aligned = hofs % 8 == 0 && vofs % 8 == 0;
     let at = ((hofs / 8) % 32, (vofs / 8) % 32);
-    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp].into_iter().find(|p| *p as u8 == now);
+    let drawn = [Panel::Help, Panel::View, Panel::Result, Panel::SetupHelp, Panel::ViewLow].into_iter().find(|p| *p as u8 == now);
     let drawn_at = (core.raw_read_8(PANEL_AT, -1) as u32, core.raw_read_8(PANEL_AT + 1, -1) as u32);
     let keep = drawn.is_some() && drawn == want && aligned && drawn_at == at;
     if let Some(d) = drawn.filter(|_| !keep) {
@@ -1925,6 +1935,23 @@ pub fn flush_sprites(core: &mut Core, at: u32, end: u32) -> u32 {
         }
     }
     sp.at
+}
+
+/// The panel drawn now, in screen pixels (left, top, right, bottom), while
+/// its lines are drawn ([`flush_sprites`]; crate::panel_sprites takes the
+/// game's sprites out of its window).
+pub fn drawn_panel(core: &Core) -> Option<(i32, i32, i32, i32)> {
+    if (on(core).is_none() && !crate::setup_phase::active(core)) || core.raw_read_32(MAIN_CALLBACK, -1) != MAP_CALLBACK {
+        return None;
+    }
+    let p = want_panel(core).filter(|p| core.raw_read_8(PANEL, -1) == *p as u8)?;
+    let (x, y, w, h) = p.rect();
+    Some((8 * x as i32, 8 * y as i32, 8 * (x + w) as i32, 8 * (y + h) as i32))
+}
+
+/// The OBJ tiles [`flush_sprites`] draws the lines in (pairs from each).
+pub fn line_tiles() -> Vec<u16> {
+    free_tile_pairs()
 }
 
 pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {

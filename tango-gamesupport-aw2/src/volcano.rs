@@ -4,6 +4,13 @@
 //! Yellow Comet drew Yellow Comet's HQ, cities and bases in the Volcano's
 //! colours. In Versus the Volcano gets sprite palette 2 instead, which the
 //! battle map neither uses nor loads (5 is the day banner's).
+//!
+//! In the DS Campaign (Ring of Fire) the Volcano takes Dual Strike's colours,
+//! read from the pack: Dual Strike's map sprites' palette file `bmap/00e`,
+//! sub-palette 13 (its Volcano's, drawn at `bmap/015` +0x4700). Dual Strike's
+//! palette is AW2's own with its greens made yellow-green (indices 1..5, the
+//! lava, are the same), so it colours AW2's Volcano index for index. AW2's
+//! maps keep AW2's colours.
 
 use mgba::core::Core;
 
@@ -25,12 +32,44 @@ const MOVED: u32 = 0x0203_FFA2;
 /// One 64 x 64 sprite.
 const TILES: u32 = 64;
 
+const DS_PALETTES: &str = "bmap/00e";
+const DS_VOLCANO_PALETTE: usize = 13;
+/// AW2's colour 0 of the Volcano's palette (clear either way).
+const AW2_CLEAR: u16 = 0x3DEF;
+
+/// Dual Strike's Volcano colours.
+fn ds_colours() -> Option<&'static [u8; 32]> {
+    static C: std::sync::OnceLock<Option<[u8; 32]>> = std::sync::OnceLock::new();
+    C.get_or_init(|| {
+        let pal = crate::ds_pack::pack()?.file(DS_PALETTES)?;
+        let mut c: [u8; 32] = pal.get(32 * DS_VOLCANO_PALETTE..32 * DS_VOLCANO_PALETTE + 32)?.try_into().ok()?;
+        c[0..2].copy_from_slice(&AW2_CLEAR.to_le_bytes());
+        Some(c)
+    })
+    .as_ref()
+}
+
 pub fn structures(core: &mut Core) {
     core.raw_write_16(MOVED, -1, 0);
 }
 
 pub fn volcano_palette(core: &mut Core) {
-    if !crate::pvp::in_versus(core) || core.gba().cpu().gpr(1) as u32 != 0x200 + GAME_PALETTE * 32 {
+    if core.gba().cpu().gpr(1) as u32 != 0x200 + GAME_PALETTE * 32 {
+        return;
+    }
+    if crate::ds_campaign::active(core) {
+        if let Some(colours) = ds_colours() {
+            // The copy's source made its destination, which holds Dual
+            // Strike's colours (palette RAM too, until the next upload).
+            let dest = 0x200 + GAME_PALETTE * 32;
+            for base in [PAL_BUFFER, PAL_RAM] {
+                core.raw_write_range(base + dest, -1, colours);
+            }
+            core.gba_mut().cpu_mut().set_gpr(0, (PAL_BUFFER + dest) as i32);
+        }
+        return;
+    }
+    if !crate::pvp::in_versus(core) {
         return;
     }
     let base = (core.gba().cpu().gpr(7) as u32 + 0xE8) & 0x3FF;
