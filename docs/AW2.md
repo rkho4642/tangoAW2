@@ -664,7 +664,7 @@ scenes), 0x0203FD60..0x0203FEFF (CPU tactics, heal effect, the Oozium's eat
 0x0203E800..0x0203F09F (the Teams screen's borrowed tiles while partners show), 0x0203F100..0x0203F2FF
 (the Rules screen's borrowed label tiles), 0x0203F400..0x0203F4FF (tag pairs), 0x0203FF00.. (earlier
 features). Free ROM: 0x08780000..0x0878FFFF (the tag map menu, its stubs and strings, the Rules rows' help
-lines), 0x08790000..0x0879FFFF (what the tag screens cover, while they show). `factory.rs` has a test that no two traps share
+lines), 0x08790000..0x087A042F (what the tag screens cover, while they show). `factory.rs` has a test that no two traps share
 an address.
 
 The new COs' music (`ds_music.rs`): each new CO's turn plays its own Dual
@@ -680,8 +680,10 @@ Strike theme, converted at run time for AW2's sound engine (MP2K, "Sappy").
   `sound/seq/<id>`, `sound/bank/<id>`, `sound/wave/<id>` (about 4 MB;
   with the Crystal's and Obelisk's heal sounds, 175 and 176, nothing else
   of the 18 MB archive), and the DS Campaign's 15 story songs
-  (`STORY_SONGS`) and the staff roll's stream (`sound/strm/0`). The pack's
-  version is 5 (3: the heal sounds, 4: the story songs, 5: the stream): a saved pack older than 3 is rebuilt from the .nds on the
+  (`STORY_SONGS`), the staff roll's stream (`sound/strm/0`) and the tag
+  screens' six sounds (`TAG_SE_CALLS`, after the roll in the story's range).
+  The pack's version is 6 (3: the heal sounds, 4: the story songs, 5: the
+  stream, 6: the tag sounds): a saved pack older than 3 is rebuilt from the .nds on the
   next scan (or ignored without it); a version 3 pack still loads, its
   story songs stood in for by AW2's like ones, so both netplay peers with the pack have the same sounds. Power music stays AW2's
   (Dual Strike's is shared too).
@@ -2307,30 +2309,89 @@ stay out.
   calculator.
 - **The tag screens** (`tag_extras.rs`, `tag_screens.rs`): Dual Strike's
   tag screen full screen after the first quote, holding the power's script
-  (`sub_08039914`'s quote test, `0x0803991C`) 150 frames, then AW2's Super
-  Power screen; Change runs a script of its own (ROM `0x08781400`: close the
-  menu, the incoming CO's Dual Strike tag-in line, CO record +0x34 or +0x38
-  by the day, in AW2's quote box `sub_08019818`, Dual Strike's CO SWAP
-  screen 100 frames, the swap, `MapMenu_End`); the computer's Change the
-  same (ROM `0x08781480`, started from the trap on `AiEndTurnStep`'s
+  (`sub_08039914`'s quote test, `0x0803991C`) for Dual Strike's length
+  (576 frames for a 110% pair, a frame more or less a point), then AW2's
+  Super Power screen; Change runs a script of its own (ROM `0x08781400`:
+  close the menu, the incoming CO's Dual Strike tag-in line, CO record +0x34
+  or +0x38 by the day, in AW2's quote box `sub_08019818`, Dual Strike's CO
+  SWAP screen, 191 frames, the swap, `MapMenu_End`); the computer's Change
+  the same (ROM `0x08781480`, started from the trap on `AiEndTurnStep`'s
   `EndCurrentArmyTurn` call `0x08061ACE`, which waits until the swap is
-  done). The screens are converted from the .nds at run time:
-  `ohashi/res_tagbreak` (the bokeh: LZ77 tiles at +0x380, map at +0x2628,
-  palette the last 32 bytes; its first block is the power meter's
-  sprites), `res_tagbreak_union` / `_black` / `_mix` (the emblem by the
-  pair's sides: tiles, a 32x64 map, two palettes; drawn faint),
-  `res_tagbreakfont` (the power's name: 32x32 glyphs, A..Z, a..z from 32),
-  `res_changefont` (16x32 glyphs, A..Z then the star), the COs' Dual Strike
-  body art facing each other (it looks left: the active CO, on the left as
-  in Dual Strike's, mirrored;
-  AW2's Sturm, whom Dual Strike lacks, his AW2 art; CO SWAP: the
-  incoming CO on Dual Strike's red, `CO★SWAP` across it), "POWER 1xx%" in
-  AW2's font on a white plate. Dual Strike spreads them over both 256x192
-  screens; on 240x160 the COs keep Dual Strike's scale from the head down.
-  The picture is fitted as the narration pictures (`ds_story_art::fit`:
-  4bpp tiles, nine palettes) and drawn on BG0 alone (BG0's character base
-  and map, BG palettes 6..14, faded in from white); what it covers is kept
-  at ROM `0x08790000..0x087987FF` and put back. A special pair's win puts
+  done). Both are animated as Dual Strike's, recorded frame by frame in
+  melonDS (`ds_script`: the display registers, OAM and palettes every
+  frame; Dual Strike's frames from the menu's choice):
+  - *Tag Power*: the map dims and three bolts strike (`SE_TAG_BREAK` 234 at
+    173, 209, 219; `BGM_TAG_BREAK_ALLY1` / `_ENEMY1`, 46 / 47, from 256),
+    the map whitens (257..288); the screen fades in from white (304..316)
+    on the army's emblem on white; the COs, head to foot (the body file,
+    128x192 and a 16x192 strip, over the legs file, 128x128 and a strip:
+    `ds_co_art::full_figure`), slide in vertically, the active CO down from
+    94 pixels above (left, mirrored), the partner up from 94 below
+    (304..418, eased); the POWER box rises (373..382,
+    `SE_TAGPT_COUNT01_INIT` 235), counts a percent a frame from 384
+    (`SE_TAGPT_COUNT01` 236 every second frame), its bar a pixel a percent
+    (130 pixels), the bar's fill cycling through a 16-colour gradient every
+    4 frames, the box orange from 98%; the bokeh blends in over the emblem
+    (431..456, `BLDALPHA` EVA 0 -> 14, EVB 16 -> 4); the digits pop (2x ->
+    1x over 8 frames, 495/498/502), the power's name pops a letter every 4
+    frames from 16 after the count (`SE_TAG_BREAK_TYPE2` 187 each); the
+    emblem goes (627, `SE_TAG_BREAK_EXPLOSE2` 189), a white burst blends in
+    additively over the COs (629..644), all fades to white (655..679) and
+    the map comes back from white (704..716). After the count the times
+    move with the compatibility.
+  - *CO SWAP*: the map fades to black (158..170), `SE_SYOGUN_CHANGE` 81
+    (176), the red fades in from black (177..201); the incoming CO (as
+    stored) comes in from the right and the outgoing CO (mirrored) from the
+    left, crossing to stop back to back (209..257); CO★SWAP opens a letter
+    every 4 frames from 208, each stretched from a line over 24 frames; the
+    COs slide out apart (271..294) under a burst blended in additively
+    (268..284), white (295..319), the map back from white (335..347).
+  - Neither is skippable in Dual Strike (A, B, START do nothing), nor here.
+
+  The pictures are converted from the .nds at run time:
+  `ohashi/res_tagbreak` (the POWER box's sprite cells, LZ77 at +0: bar
+  caps and middles filled 0..5 / 0..8 pixels at tiles 0..40, the digits
+  0..9 16x16 from tile 42, the box 32x32 at 82 and 16x32 at 98; then raw
+  its four palettes, white to orange, and the bar's gradient; then the
+  bokeh: LZ77 tiles at +0x380, map at +0x2628, palette the last 32 bytes),
+  `res_tagbreak_union` / `_black` / `_mix` (the emblem by the pair's
+  sides: tiles, a 32x64 map, two palettes), `res_tagchange` (the Tag
+  Power's burst: tiles, a map a screen, three palettes), `res_syogunchange`
+  (CO SWAP's burst, three palettes, then a block and a palette whose colour
+  1 is the red), `res_tagbreakfont` (the power's name: 32x32 glyphs, A..Z,
+  a..z from 32), `res_changefont` (16x32 glyphs, A..Z then the star), the
+  COs' full figures (AW2's Sturm, whom Dual Strike lacks: his AW2 body, its
+  last row carried on down). The sounds are Dual Strike's, converted with
+  the music (`ds_music::tag_se`; their ids read from its code, `mov r0,
+  #id` at `0x0205B368`, `0x02058134`, `0x02058098`, `0x02059B94`,
+  `0x020593E0`, `0x0205CCBC`), played through AW2's sound-effect call
+  `sub_0803B4DC` on the frames Dual Strike plays them (pack version 6; an
+  older saved pack has none and the screens play silent). The tag music
+  stays AW2's power music.
+
+  On the GBA the screen keeps Dual Strike's pixels, scale and timing, cut
+  to the window the COs' heads are in (Dual Strike's two screens' x 8..,
+  y 64..; CO SWAP's bottom screen's x 8.., y 8..), the name moved up across
+  the COs' chests and the POWER box to the bottom left. It takes the
+  display: all of BG VRAM (char block 0 the still layers' tiles, char
+  block 2 each frame's, screen blocks 28..31 the maps), BG palettes 6..14,
+  the backdrop; sprites and windows off. The Tag Power: BG0 the name and
+  the box, BG1 the COs, BG2 the bokeh, BG3 the emblem on white (then the
+  burst, raised over the COs); CO SWAP: BG0 the letters, BG1 the burst, BG2
+  the COs over the red backdrop. Dual Strike's blends are the GBA's
+  (`BLDCNT` / `BLDALPHA`, the same EVA/EVB); its master brightness is the
+  palettes moved toward white or black, and on the map AW2's own display
+  brightened or darkened (`BLDY`); the bolts are flashes of it (they are a
+  layer over Dual Strike's 3D map, not drawn). The scaled letters and
+  digits are drawn as Dual Strike's affine sprites scale them (nearest
+  pixel, the same steps). A tile both COs share takes a palette of both
+  COs' colours. Every frame is a function of the screen and its frame
+  count in RAM (`0x0203F302`), written during VBlank, so netplay, rollback
+  and replays draw the same, and the battle's random numbers are untouched
+  (the same luck and the same computer turn after the 150-frame still
+  screen of 0.5.1 and after the animation). What it covers (BG VRAM, the BG
+  palettes, the display shadows `sub_08012420` copies) is kept
+  at ROM `0x08790000..0x087A042F` and put back. A special pair's win puts
   the pair's exchange (one of its two by the day, the other if only that
   fits) in the results screen's quote box (`GetVictoryQuoteTextId`
   `0x0807A3AC`), the active CO's line alone when neither fits; the CO page
@@ -2352,8 +2413,9 @@ stay out.
   each line inside the results box's 104 pixels); his tag-in line one of
   AW2's own Sturm power quotes (his CO table row +0x20). His body art on
   the tag screens is AW2's.
-- **Left out**: the tag screens' animation (Dual Strike slides the COs in
-  and flashes the name; here a still picture faded in); tag skills. Market Crash and other meter
+- **Left out**: the tag screens' bolts over the map and their drifting
+  white specks (flashes of the map stand in for the bolts); the tag music
+  (AW2's power music plays); tag skills. Market Crash and other meter
   drains reach only the active CO. The pad bot (`aw2test/bot.py`) fires
   Tag Powers but no longer wins four missions where the computer fights as
   a pair (The Long March, Verdant Hills, Into the Woods, Pincer Strike):

@@ -155,9 +155,82 @@ pub fn co_art(ds_co: u8) -> Option<CoArt> {
     Some(art)
 }
 
+/// The full figure's size: the body file (128x192 in 64x64 blocks, then a
+/// 16x192 strip at its right as six 16x32 pieces) over the legs file
+/// (128x128 in blocks, then a 16x128 strip as four pieces), as Dual
+/// Strike's tag screens draw a CO head to foot.
+pub const FIGURE_W: usize = 144;
+pub const FIGURE_H: usize = 320;
+const LEGS: usize = 1;
+
+/// Dual Strike CO `ds_co`'s full figure, [`FIGURE_W`] x [`FIGURE_H`] colour
+/// indices (0 transparent, the head at the top, looking left as stored),
+/// and its colour scheme 0 (16 BGR555 colours).
+pub fn full_figure(ds_co: u8) -> Option<(Vec<u8>, [u16; 16])> {
+    if !(1..=27).contains(&ds_co) {
+        return None;
+    }
+    let pack = crate::ds_pack::pack()?;
+    let rec = pack.arm9_at(APPEARANCE + APPEARANCE_LEN * (ds_co as u32 - 1), APPEARANCE_LEN as usize)?;
+    let word = |i: usize| u32::from_le_bytes(rec[4 * i..4 * i + 4].try_into().unwrap());
+    let file = |i: usize, len: usize| -> Option<Vec<u8>> {
+        let name = pack.arm9_at(word(i), 4)?;
+        let name = std::str::from_utf8(&name[..3]).ok().filter(|_| name[3] == 0)?;
+        let d = lz10(pack.file(&format!("syogun/{name}"))?)?;
+        (d.len() >= len).then_some(d)
+    };
+    let body = file(BODY, 6 * BLOCK + 48 * TILE)?;
+    let legs = file(LEGS, 4 * BLOCK + 32 * TILE)?;
+    let pal_bytes = pack.arm9_at(word(PALETTE), 32)?;
+    let mut pal = [0u16; 16];
+    for (k, c) in pal.iter_mut().enumerate() {
+        *c = u16::from_le_bytes([pal_bytes[2 * k], pal_bytes[2 * k + 1]]);
+    }
+    let mut px = vec![0u8; FIGURE_W * FIGURE_H];
+    // A piece of `w` x `h` pixels whose tiles are in rows, at (x0, y0).
+    let mut put = |tiles: &[u8], w: usize, h: usize, x0: usize, y0: usize| {
+        let tw = w / 8;
+        for k in 0..tw * (h / 8) {
+            for y in 0..8 {
+                for x in 0..8 {
+                    let b = tiles[32 * k + 4 * y + x / 2];
+                    px[FIGURE_W * (y0 + 8 * (k / tw) + y) + x0 + 8 * (k % tw) + x] = (b >> (4 * (x & 1))) & 15;
+                }
+            }
+        }
+    };
+    for (data, rows, y0) in [(&body, 3, 0), (&legs, 2, 192)] {
+        for r in 0..rows {
+            for c in 0..2 {
+                let b = 2 * r + c;
+                put(&data[b * BLOCK..(b + 1) * BLOCK], 64, 64, 64 * c, y0 + 64 * r);
+            }
+        }
+        let strip = 2 * rows * BLOCK;
+        for s in 0..2 * rows {
+            put(&data[strip + 8 * TILE * s..strip + 8 * TILE * (s + 1)], 16, 32, 128, y0 + 32 * s);
+        }
+    }
+    Some((px, pal))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// With `TANGOAW2_DS_ROM`: every CO's full figure has its head near the
+    /// top and goes on into the legs file (Von Bolt, in his chair, ends
+    /// higher than the others).
+    #[test]
+    #[ignore]
+    fn full_figures() {
+        crate::ds_pack::pack().expect("TANGOAW2_DS_ROM");
+        for id in 1..=27u8 {
+            let (px, _) = full_figure(id).unwrap_or_else(|| panic!("CO {id}"));
+            let rows: Vec<usize> = (0..FIGURE_H).filter(|&y| px[FIGURE_W * y..FIGURE_W * (y + 1)].iter().any(|&v| v != 0)).collect();
+            assert!(rows[0] < 32 && *rows.last().unwrap() > 240, "CO {id}: rows {}..{}", rows[0], rows.last().unwrap());
+        }
+    }
 
     /// With `TANGOAW2_DS_ROM`: the nine COs and Dual Strike's Andy convert,
     /// at AW2's sizes. With `TANGOAW2_AW2_ROM` too: Andy's first colour

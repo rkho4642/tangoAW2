@@ -23,10 +23,10 @@ pub const CACHE_NAME: &str = "Dual Strike pack.tangoaw2";
 const MAGIC: &[u8; 8] = b"TAW2DSPK";
 /// Bumped when the pack's contents change; an older pack is rebuilt from
 /// the .nds on the next scan (3: the heal sounds; 4: the DS Campaign's
-/// songs; 5: the staff roll's stream). Without the .nds, a pack of version
-/// [`OLDEST`] or later is still used (what it lacks falls back to AW2's
-/// own).
-const VERSION: u32 = 5;
+/// songs; 5: the staff roll's stream; 6: the tag screens' sounds). Without
+/// the .nds, a pack of version [`OLDEST`] or later is still used (what it
+/// lacks falls back to AW2's own, or is silent).
+const VERSION: u32 = 6;
 const OLDEST: u32 = 3;
 /// The header CRC16 of Advance Wars: Dual Strike (USA).
 const HEADER_CRC: u16 = 0xB586;

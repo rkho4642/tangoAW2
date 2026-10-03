@@ -86,6 +86,27 @@ const GAIN: f64 = 1.1;
 /// sample, played to its end).
 const HEAL_SE_CALLS: [u32; 2] = [0x020D_85D8, 0x020D_86E0];
 const DS_PLAY_SE: u32 = 0x0200_B76C;
+/// Dual Strike's tag screens' sounds (crate::tag_screens): each is a
+/// `mov r0, #id` at these arm9 addresses, the id then played through
+/// [`DS_PLAY_SE`] (found with traps on it in melonDS), in [`TagSe`]'s order:
+/// `SE_TAG_BREAK` (234, the Tag Power's thunder), `SE_TAGPT_COUNT01_INIT`
+/// (235, the POWER meter comes up), `SE_TAGPT_COUNT01` (236, every second
+/// count), `SE_TAG_BREAK_TYPE2` (187, each letter of the power's name),
+/// `SE_TAG_BREAK_EXPLOSE2` (189, the closing burst), `SE_SYOGUN_CHANGE` (81,
+/// CO SWAP).
+const TAG_SE_CALLS: [u32; 6] = [0x0205_B368, 0x0205_8134, 0x0205_8098, 0x0205_9B94, 0x0205_93E0, 0x0205_CCBC];
+
+/// The tag screens' sounds, [`TAG_SE_CALLS`]' order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TagSe {
+    Thunder = 0,
+    MeterUp = 1,
+    Count = 2,
+    Letter = 3,
+    Burst = 4,
+    Swap = 5,
+}
+
 /// The player AW2's sound effects of the turn-start invention loop use (a
 /// cannon's shot, song 457: player 2, two tracks) and their priority.
 const SE_PLAYER: u16 = 2;
@@ -155,6 +176,20 @@ fn heal_se_ids(arm9: &[u8]) -> Option<[u16; 2]> {
     Some(ids)
 }
 
+/// The tag screens' sound ids, read from Dual Strike's code
+/// ([`TAG_SE_CALLS`]: each a `mov r0, #imm8`).
+fn tag_se_ids(arm9: &[u8]) -> Option<[u16; 6]> {
+    let mut ids = [0u16; 6];
+    for (id, &at) in ids.iter_mut().zip(TAG_SE_CALLS.iter()) {
+        let mov = u32_at(arm9, (at - 0x0200_0000) as usize)?;
+        if mov & 0xFFFF_FF00 != 0xE3A0_0000 {
+            return None;
+        }
+        *id = (mov & 0xFF) as u16;
+    }
+    Some(ids)
+}
+
 /// From the sound archive, the files the new COs' themes and the heal
 /// sounds need, as pack files: `sound/seq/<id>` (INFO record, 12 bytes,
 /// then the SSEQ), `sound/bank/<id>` (INFO record, then the SBNK),
@@ -180,7 +215,8 @@ pub fn keep(sdat: &[u8], arm9: &[u8]) -> Option<Vec<(String, Vec<u8>)>> {
     };
     let mut out: Vec<(String, Vec<u8>)> = Vec::new();
     let mut have = std::collections::HashSet::new();
-    for id in theme_ids(arm9)?.into_iter().chain(heal_se_ids(arm9)?).chain(STORY_SONGS.iter().map(|s| s.0)) {
+    let tag = tag_se_ids(arm9)?;
+    for id in theme_ids(arm9)?.into_iter().chain(heal_se_ids(arm9)?).chain(STORY_SONGS.iter().map(|s| s.0)).chain(tag) {
         let seq = record(0, id)?;
         let bank = u16_at(seq, 4)?;
         if have.insert(format!("s{id}")) {
@@ -1174,6 +1210,9 @@ pub struct Music {
     /// The staff roll's song (the stream as one held note), when the pack
     /// has the stream.
     pub staff_roll: Option<u16>,
+    /// The tag screens' sounds ([`TagSe`]'s order), when the pack has them
+    /// (a pack saved before 0.5.2 has none: the screens play silent).
+    pub tag_se: [Option<u16>; 6],
 }
 
 struct Blob {
@@ -1230,6 +1269,20 @@ fn build() -> Option<Music> {
             distinct.push(id);
         }
     }
+    // The tag screens' sounds the pack has, after them (in the story's ROM
+    // range); their song ids follow the staff roll's.
+    let story_end = distinct.len();
+    let tag_ids: Vec<u16> = tag_se_ids(&pack.arm9)
+        .map(|a| a.to_vec())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|&id| pack.file(&format!("sound/seq/{id}")).is_some())
+        .collect();
+    for &id in &tag_ids {
+        if !distinct[story_end..].contains(&id) {
+            distinct.push(id);
+        }
+    }
     let mut story_blob = Blob { bytes: Vec::new(), base: STORY_BASE };
     let table_at = TABLE;
     // The staff roll's stream, a song after the others.
@@ -1255,12 +1308,15 @@ fn build() -> Option<Music> {
         v[8..12].copy_from_slice(&[255, 0, 255, 0]);
         v
     };
+    // The table's index of `distinct[n]` (the tag sounds after the roll).
+    let roll_n = roll.is_some() as usize;
+    let table_index = |n: usize| if n >= story_end { n + roll_n } else { n };
     for (n, &sid) in distinct.iter().enumerate() {
         // A sound effect: AW2's sound-effect player and priority, no reverb,
         // Dual Strike's default tempo if it sets none, and a note without a
         // length (Dual Strike plays it until its sample ends) as long as its
         // sample.
-        let se = n >= themes && n < effects;
+        let se = (n >= themes && n < effects) || n >= story_end;
         let out: &mut Blob = if n >= effects { &mut story_blob } else { &mut blob };
         let mut seq = parse_seq(pack_file(&format!("sound/seq/{sid}"))?)?;
         if se && !seq.tracks.iter().flat_map(|t| t.evs.iter()).any(|e| matches!(e.1, Ev::Ctl(Ctl::Tempo(_)))) {
@@ -1406,7 +1462,7 @@ fn build() -> Option<Music> {
         if !se {
             headers.push(header_at);
         }
-        let e = (table_at - BASE) as usize + 8 * (AW2_SONGS as usize + n);
+        let e = (table_at - BASE) as usize + 8 * (AW2_SONGS as usize + table_index(n));
         blob.bytes[e..e + 4].copy_from_slice(&header_at.to_le_bytes());
         blob.bytes[e + 4..e + 6].copy_from_slice(&player.to_le_bytes());
         blob.bytes[e + 6..e + 8].copy_from_slice(&player.to_le_bytes());
@@ -1436,7 +1492,7 @@ fn build() -> Option<Music> {
         header.extend_from_slice(&group_at.to_le_bytes());
         header.extend_from_slice(&track_at.to_le_bytes());
         let header_at = story_blob.put(&header);
-        let n = distinct.len();
+        let n = story_end;
         let e = (table_at - BASE) as usize + 8 * (AW2_SONGS as usize + n);
         blob.bytes[e..e + 4].copy_from_slice(&header_at.to_le_bytes());
         blob.bytes[e + 4..e + 6].copy_from_slice(&PLAYER.to_le_bytes());
@@ -1448,7 +1504,13 @@ fn build() -> Option<Music> {
     let songs = ids.iter().map(|&id| song_of(id, 0)).collect();
     let heal_se = se_ids.map(|id| song_of(id, themes));
     let story = story_ids.iter().map(|&id| (id, song_of(id, effects))).collect();
-    Some(Music { blob: blob.bytes, story_blob: story_blob.bytes, songs, headers, heal_se, story, staff_roll })
+    let mut tag_se = [None; 6];
+    if let Some(all) = tag_se_ids(&pack.arm9) {
+        for (k, id) in all.iter().enumerate() {
+            tag_se[k] = distinct[story_end..].iter().position(|d| d == id).map(|p| FIRST_SONG + table_index(story_end + p) as u16);
+        }
+    }
+    Some(Music { blob: blob.bytes, story_blob: story_blob.bytes, songs, headers, heal_se, story, staff_roll, tag_se })
 }
 
 static BUILT: OnceLock<Option<Music>> = OnceLock::new();
@@ -1473,6 +1535,12 @@ pub fn staff_roll_song() -> Option<u16> {
 pub fn song(co: u8) -> Option<u16> {
     let i = crate::co_new::NEW.iter().position(|&(ds, _)| Some(ds) == crate::co_new::ds_id(co))?;
     music()?.songs.get(i).copied()
+}
+
+/// The song (a sound effect) of one of the tag screens' sounds, when the
+/// pack has it.
+pub fn tag_se(which: TagSe) -> Option<u16> {
+    music()?.tag_se[which as usize]
 }
 
 /// The song (a sound effect) Dual Strike plays with the Crystal's (`0`) or
@@ -1658,5 +1726,25 @@ mod pack_tests {
             assert!(bytes.contains(&TIE) && bytes.contains(&EOT) && bytes.contains(&FINE));
         }
     }
-}
 
+    /// The tag screens' six sounds: their ids read from Dual Strike's code
+    /// (as its symbols name them), each a sound effect on AW2's player 2,
+    /// after the staff roll, in the story's ROM range.
+    #[test]
+    #[ignore]
+    fn tag_sounds_convert() {
+        let pack = crate::ds_pack::pack().expect("TANGOAW2_DS_ROM");
+        assert_eq!(tag_se_ids(&pack.arm9), Some([234, 235, 236, 187, 189, 81]));
+        let m = music().expect("music");
+        let roll = m.staff_roll.expect("the staff roll");
+        let songs: Vec<u16> = m.tag_se.iter().map(|s| s.expect("a tag sound")).collect();
+        assert!(songs.iter().all(|&s| s > roll), "{songs:?} after {roll}");
+        for &song in &songs {
+            let e = (TABLE - BASE) as usize + 8 * song as usize;
+            assert_eq!(u16_at(&m.blob, e + 4), Some(SE_PLAYER));
+            let header = u32_at(&m.blob, e).unwrap();
+            assert!(header >= STORY_BASE, "{song}: header {header:#x}");
+        }
+        assert_eq!(tag_se(TagSe::Swap), Some(songs[5]));
+    }
+}
