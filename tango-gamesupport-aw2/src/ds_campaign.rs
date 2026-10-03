@@ -521,10 +521,9 @@ pub fn tick(core: &mut Core, ds: bool) {
             _ => {}
         }
         crate::ds_campaign_rules::mte_tick(core);
-        let n = core.raw_read_32(COUNTDOWN, -1);
-        if n > 1 && in_battle(core) {
-            core.raw_write_32(COUNTDOWN, -1, n - 1);
-        }
+        // The countdown of Dual Strike's op 0x5A and Crystal Calamity's
+        // Black Onyx (crate::onyx).
+        crate::onyx::tick(core);
         if !in_battle(core) {
             sync_mission(core);
         }
@@ -988,6 +987,7 @@ pub fn map_start(core: &mut Core) {
     // Dual Strike's Setup phase before day 1 (crate::setup_phase).
     crate::setup_phase::map_start(core, player_picks(main));
     crate::two_front::map_start(core);
+    crate::onyx::map_start(core);
 }
 
 /// The map's look (crate::wasteland): the mission's, or a second front's
@@ -1165,6 +1165,10 @@ fn landing(core: &mut Core) {
     // The Setup phase's (crate::setup_phase).
     if id & 0xFF00_0000 == crate::setup_phase::MAGIC {
         return crate::setup_phase::magic(core, id);
+    }
+    // Crystal Calamity's Black Onyx (crate::onyx).
+    if id & 0xFF00_0000 == crate::onyx::MAGIC {
+        return crate::onyx::magic(core, id);
     }
     let r = match campaign(core).and_then(|c| c.model.built.magic.get(id as usize)).cloned() {
         Some(data::Magic::Flow(FLOW_CO_SETUP)) => co_setup(core),

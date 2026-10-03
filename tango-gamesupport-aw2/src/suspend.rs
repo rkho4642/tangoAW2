@@ -150,10 +150,12 @@ pub const DS_SLOT: u8 = 14;
 const CAMPAIGN_SLOT: u32 = 2;
 /// The session's state in the block's tail, after the "TAW2" part: +0
 /// [`DS_MARK`], +2 the mission, +3 version, +4 the countdown (u32), +8 the
-/// flags (16 bytes), +24 the mission's state (Means to an End's, Ring of Fire's: `MTE_LEN` bytes).
+/// flags (16 bytes), +24 the mission's state (Means to an End's, Ring of Fire's: `MTE_LEN` bytes),
+/// then Crystal Calamity's Black Onyx (crate::onyx, `SAVED_LEN` bytes).
 const DS_AT: u32 = TAIL + TAIL_LEN;
 const DS_MARK: u16 = 0x5344; // "DS"
-const DS_LEN: u32 = 8 + 16 + crate::ds_campaign_rules::MTE_LEN;
+const DS_MTE_LEN: u32 = crate::ds_campaign_rules::MTE_LEN;
+const DS_LEN: u32 = 8 + 16 + DS_MTE_LEN + crate::onyx::SAVED_LEN as u32;
 /// AW2's campaign-suspend mark in the profile (`sub_08016C9C(2)`).
 const CAMPAIGN_MARK: u32 = 0x0200_C429;
 /// `sub_08016D30(slot, ..)` past its prologue (`cmp r4, #0`: r4 the slot), and its `bl sub_0801A7D8`
@@ -194,7 +196,8 @@ fn save_write(core: &mut Core) {
     b[3] = VERSION;
     b[4..8].copy_from_slice(&core.raw_read_32(crate::ds_campaign::COUNTDOWN, -1).to_le_bytes());
     core.raw_read_range(crate::ds_campaign::FLAGS, -1, &mut b[8..24]);
-    core.raw_read_range(crate::ds_campaign_rules::MTE_TOLD, -1, &mut b[24..]);
+    core.raw_read_range(crate::ds_campaign_rules::MTE_TOLD, -1, &mut b[24..24 + DS_MTE_LEN as usize]);
+    b[24 + DS_MTE_LEN as usize..].copy_from_slice(&crate::onyx::saved(core));
     core.raw_write_range(DS_AT, -1, &b);
     core.gba_mut().cpu_mut().set_gpr(0, DS_SLOT as i32);
     // A battle on two fronts (crate::two_front): the front not on the
@@ -223,7 +226,8 @@ fn applied_ds(core: &mut Core) {
     core.raw_read_range(DS_AT, -1, &mut b);
     core.raw_write_32(crate::ds_campaign::COUNTDOWN, -1, u32::from_le_bytes(b[4..8].try_into().unwrap()));
     core.raw_write_range(crate::ds_campaign::FLAGS, -1, &b[8..24]);
-    core.raw_write_range(crate::ds_campaign_rules::MTE_TOLD, -1, &b[24..]);
+    core.raw_write_range(crate::ds_campaign_rules::MTE_TOLD, -1, &b[24..24 + DS_MTE_LEN as usize]);
+    crate::onyx::restore(core, &b[24 + DS_MTE_LEN as usize..]);
     // A two-front battle's other front and state (saved after the block).
     if core.raw_read_32(BLOCK + BLOCK_SIZE, -1) == FRONTS_MARK {
         let mut f = vec![0u8; crate::two_front::SAVED_LEN as usize];

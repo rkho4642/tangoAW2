@@ -277,6 +277,7 @@ pub fn flush(core: &mut Core) {
     at = crate::campaign_menu::flush(core, start, at, end);
     at = crate::ds_worldmap::flush_sprites(core, at, end);
     at = crate::two_front::flush_sprites(core, at, end);
+    at = crate::onyx::flush_sprites(core, start, at, end);
     if let Some(l) = active(core) {
         for s in 0..l.sprites {
             if at + 8 > end {

@@ -240,6 +240,10 @@ pub struct MissionInfo {
     /// Dual Strike's research labs on the map (its Lab tiles, 0x1D9..0x1DD;
     /// its Com Towers 0x1B9..0x1BD become the same AW2 tiles).
     pub labs: Vec<(u8, u8)>,
+    /// A trigger list the mission's rules run every frame the battle's
+    /// clock runs (AW2's format, its address; 0: none): Dual Strike's
+    /// real-time list, Crystal Calamity's Black Onyx (crate::onyx).
+    pub realtime: u32,
 }
 
 /// The landing every magic stub jumps to: dead code in `sub_0803CC3C`

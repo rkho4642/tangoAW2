@@ -178,6 +178,9 @@ fn launch_hide(core: &mut Core) {
 fn launch_selected(core: &mut Core) {
     if is_on(core) && selected_type(core) == Some(crate::roster::BLACK_BOMB) {
         explode_selected(core);
+    } else if is_on(core) {
+        // Crystal Calamity: a silo fires at the Black Onyx (crate::onyx).
+        crate::onyx::launch(core);
     }
 }
 

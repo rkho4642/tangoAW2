@@ -652,7 +652,9 @@ const INTERLUDE_TEXTS: [u32; 1] = [0x2100_0003];
 /// Missions those come after (indexes: Victory or Death!, Crystal
 /// Calamity, Means to an End).
 const AFTER_VICTORY_OR_DEATH: usize = 8;
-const AFTER_CRYSTAL_CALAMITY: usize = 18;
+const AFTER_CRYSTAL_CALAMITY: usize = CRYSTAL_CALAMITY;
+/// Crystal Calamity (record index): the Black Onyx (crate::onyx).
+pub const CRYSTAL_CALAMITY: usize = 18;
 const AFTER_MEANS_TO_AN_END: usize = 24;
 
 /// Narration: each text over its picture (crate::ds_story_art, a magic
@@ -1010,8 +1012,10 @@ fn convert_command(cx: &mut Ctx, at: u32, c: &[u8]) -> ([u8; 16], Option<(usize,
             };
             cmd(0x40, 0, winner as u16, 0, 0)
         }
-        // A campaign flag set (the endings and unlocks, 0x63..0x65).
+        // A campaign flag set (the endings and unlocks, 0x63..0x65), and
+        // a flag cleared (AW2's op 0x45: `sub_0803CBA0(flag, 0)`).
         0x4F => cmd(0x44, 0, ds_flag(h(8)), 0, 0),
+        0x50 => cmd(0x45, 0, ds_flag(h(8)), 0, 0),
         _ => {
             *cx.unhandled.entry(op as u8).or_default() += 1;
             nop
@@ -1330,6 +1334,13 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
         if rec.objective != 0 {
             entries.push(rec.objective);
         }
+        // Crystal Calamity's header has a seventh list (+0x18), which Dual
+        // Strike tests every frame: the Black Onyx's warning, its laser,
+        // the 50 minutes running out (crate::onyx).
+        let realtime_list = if rec.index == CRYSTAL_CALAMITY { ds.u32(rec.header + 0x18).filter(|&l| l != 0) } else { None };
+        if let Some(l) = realtime_list {
+            entries.extend(trigger_scripts(ds, l));
+        }
         convert_scripts(&mut cx, &entries);
         let mut table = [0u32; 6];
         // A second front's record names its main mission's event header:
@@ -1348,6 +1359,13 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
                 table[k] = cx.blob.push(&t);
             }
         }
+        let realtime = match realtime_list {
+            Some(l) => {
+                let t = convert_triggers(&mut cx, l, front);
+                cx.blob.push(&t)
+            }
+            None => 0,
+        };
         let mut hdr6 = Vec::new();
         for t in table {
             hdr6.extend_from_slice(&t.to_le_bytes());
@@ -1448,6 +1466,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
             weather: if front == 1 && in_the_sky(ds, rec) { 0 } else { rec.weather },
             fog: rec.fog,
             labs: lab_cells(ds, rec.maps.0),
+            realtime,
         });
     }
     let story = convert_story_scenes(&mut cx, ds);

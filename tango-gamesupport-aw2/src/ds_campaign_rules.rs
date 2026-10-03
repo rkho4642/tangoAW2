@@ -172,7 +172,13 @@ pub fn run(core: &mut Core, m: &Magic) -> u32 {
             }
             0
         }
-        Magic::Countdown(_) | Magic::ArmyFlag { .. } | Magic::Unhandled(_) | Magic::Flow(_) => 0,
+        // Dual Strike's op 0x5A (a real-time countdown, frames) / 0x5B (0:
+        // stopped): crate::onyx runs it.
+        Magic::Countdown(n) => {
+            crate::onyx::set_countdown(core, n);
+            0
+        }
+        Magic::ArmyFlag { .. } | Magic::Unhandled(_) | Magic::Flow(_) => 0,
     }
 }
 
@@ -241,7 +247,15 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
             }
         }
         0x0235_1C58 => alive_inventions(core, 9) != 3,
-        0x0235_05C0 | 0x0235_1708 => alive_inventions(core, 0xA) == 0,
+        0x0235_05C0 => alive_inventions(core, 0xA) == 0,
+        // Crystal Calamity: the Black Onyx destroyed (its hits all landed),
+        // its charge at 90% or more / full, the 50 minutes run out (Dual
+        // Strike's 0x020F21FC() == 0, 0x020F22C8, 0x020F2308, 0x020240FC's
+        // count at 0; crate::onyx).
+        0x0235_1708 => crate::onyx::destroyed(core),
+        0x0235_172C => crate::onyx::charge_percent(core) >= 90,
+        0x0235_1738 => crate::onyx::charged(core),
+        0x0235_16C8 => crate::onyx::countdown_expired(core),
         0x0235_05E8 => alive_inventions(core, 9) == 0,
         0x0235_0610 => alive_inventions(core, 4) == 0,
         // A stealth of the army moving now (or the one acting) on half its
@@ -286,10 +300,6 @@ pub fn predicate(core: &mut Core, f: u32) -> bool {
             let d = core.raw_read_16(DAY, -1);
             d != 0 && d % 6 == 0
         }
-        // Crystal Calamity: the Black Onyx's laser charged to 90% or more,
-        // a real-time charge on Dual Strike's top screen (its 50 minutes,
-        // op 0x5A, are left out): never (docs/AW2.md).
-        0x0235_172C => false,
         _ => false,
     }
 }
@@ -313,7 +323,7 @@ fn properties_owned(core: &Core, a: u32) -> u32 {
 /// The predicates and calls [`predicate`] and [`call`] know (the rest are
 /// false / do nothing); a test lists the campaign's others.
 #[cfg(test)]
-pub const KNOWN: &[u32] = &[crate::ds_campaign_data::HARD_CAMPAIGN, 0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_07A8, 0x0201_99A4, 0x0235_0560, 0x0235_21A4, 0x0235_20F8, 0x0235_204C, 0x0235_1F34, 0x0235_1EB8, 0x0235_1E3C, 0x0235_2018, 0x0235_1FE4, 0x0235_1FB0, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4, 0x0235_172C, 0x0235_0D44, 0x0235_1988, 0x0235_18CC, 0x0235_1D28, 0x0235_1D3C, 0x0235_16A4, 0x0235_1334, 0x0235_1538, 0x0235_17D4, 0x0235_17E4, 0x0235_1A4C, 0x0235_1AF0, 0x0235_1D50, 0x0235_1D74, 0x0235_1D9C, 0x0235_1DC8, 0x0235_1DD8, 0x0235_1DE8, 0x0235_1E04, 0x0235_1E20, 0x0200_3F8C, 0x0201_993C, 0x0201_9950];
+pub const KNOWN: &[u32] = &[crate::ds_campaign_data::HARD_CAMPAIGN, 0x0200_0000, 0x0204_0000, 0x020D_5D2C, 0x0235_05C0, 0x0235_05E8, 0x0235_0610, 0x0235_0638, 0x0235_066C, 0x0235_0708, 0x0235_0824, 0x0235_0940, 0x0235_0A1C, 0x0235_0B28, 0x0235_0BE4, 0x0235_0C60, 0x0235_0CD4, 0x0235_0D60, 0x0235_0DDC, 0x0235_0E6C, 0x0235_0EC4, 0x0235_0F28, 0x0235_0FF0, 0x0235_106C, 0x0235_10FC, 0x0235_1174, 0x0235_1268, 0x0235_12EC, 0x0235_1444, 0x0235_1640, 0x0235_1708, 0x0235_1744, 0x0235_1804, 0x0235_1B88, 0x0235_1C58, 0x0235_1CC8, 0x0235_07A8, 0x0201_99A4, 0x0235_0560, 0x0235_21A4, 0x0235_20F8, 0x0235_204C, 0x0235_1F34, 0x0235_1EB8, 0x0235_1E3C, 0x0235_2018, 0x0235_1FE4, 0x0235_1FB0, 0x0235_0E34, 0x0235_0FA8, 0x0235_0FB8, 0x0235_10C4, 0x0235_16B8, 0x0235_17C4, 0x0235_17F4, 0x0235_172C, 0x0235_1738, 0x0235_16C8, 0x020F_216C, 0x020F_2134, 0x0235_0D44, 0x0235_1988, 0x0235_18CC, 0x0235_1D28, 0x0235_1D3C, 0x0235_16A4, 0x0235_1334, 0x0235_1538, 0x0235_17D4, 0x0235_17E4, 0x0235_1A4C, 0x0235_1AF0, 0x0235_1D50, 0x0235_1D74, 0x0235_1D9C, 0x0235_1DC8, 0x0235_1DD8, 0x0235_1DE8, 0x0235_1E04, 0x0235_1E20, 0x0200_3F8C, 0x0201_993C, 0x0201_9950];
 
 /// Weak point `k` of the Grand Bolt still stands (crate::grand_bolt).
 fn weak_point_alive(core: &Core, k: usize) -> bool {
@@ -624,6 +634,11 @@ fn call(core: &mut Core, f: u32, arg: u32) -> bool {
         // campaign flag 0x3C cleared or set.
         0x0235_1D28 => crate::ds_campaign::clear_campaign_flag(core, 0x3C),
         0x0235_1D3C => crate::ds_campaign::set_campaign_flag(core, 0x3C),
+        // Crystal Calamity: the Black Onyx's warning (Dual Strike's state 2:
+        // its laser charging) and its laser (state 3, the charge emptied: an
+        // 8 HP strike, crate::onyx).
+        0x020F_216C => crate::onyx::warn(core),
+        0x020F_2134 => return crate::onyx::fire(core),
         // Presentation only (camera pans, sounds, flashes, fades, the
         // eruption's opening scene, the skip handler): nothing on the
         // map's state. Muck Amok!'s rout of army 3 on its HQ's capture
