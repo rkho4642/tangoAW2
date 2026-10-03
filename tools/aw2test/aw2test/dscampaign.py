@@ -42,7 +42,8 @@ CONDITIONS = {
     0x02351744: "the cities at (8, 2) and (8, 15) taken", 0x02351804: "the four Com Towers taken",
     0x02351B88: "no missile silo base left to Black Hole",
     0x02350CD4: "a minicannon destroyed", 0x023510FC: "a minicannon damaged", 0x02351C58: "a Black Crystal destroyed",
-    0x023505C0: "the Black Obelisk destroyed", 0x02351708: "the Black Obelisk destroyed", 0x023505E8: "every Black Crystal destroyed",
+    0x023505C0: "the Black Obelisk destroyed", 0x02351708: "the Black Onyx destroyed",
+    0x023516C8: "the 50 minutes run out", 0x023505E8: "every Black Crystal destroyed",
     0x02350610: "every minicannon destroyed", 0x02350560: "the Grand Bolt's three weak points destroyed",
     0x02351CC8: "the Grand Bolt's charge (every sixth day)",
 }

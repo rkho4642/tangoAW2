@@ -654,7 +654,8 @@ table with room for 0x100 ids, its maps, strings, the Select Mode wheel's data),
 0x08F00000..0x08FFFFFF (the DS Campaign, about 360 KB used),
 0x08E80000..0x08EFFFFF (Dual Strike's looks: 0x20000 each for Wasteland, Desert, Snow and Means to an End's),
 0x08E70000..0x08E73FFF (two fronts: stubs, swap scripts, the menus' copies, labels; text ids 0x7FFD, 0x7FFE),
-0x08E74000..0x08E743FF (the DS Campaign's Setup phase: stubs, script, menu, label; text id 0x7FFC).
+0x08E74000..0x08E743FF (the DS Campaign's Setup phase: stubs, script, menu, label; text id 0x7FFC),
+0x08E75000..0x08E753FF (Crystal Calamity's Black Onyx: `onyx.rs`; its RAM 0x0203FFC8..0x0203FFE3).
 Free RAM used: 0x0203E400..0x0203F3FF (two fronts: their state, the front off the screen), 0x0203FA00..0x0203FD0F (Survival), 0x0203FD10..0x0203FD5F (DS Campaign), 0x0203F600..0x0203F6FF (the DS
 Campaign's records; 0x0203E000..0x0203F73F was found unwritten at the title, Select Mode, in AW2 and DS battles), 0x0203F740..0x0203F79F
 (map animations), 0x0203F7A0..0x0203F7DF (power animations), 0x0203F800..0x0203F9FF (battle
@@ -1105,7 +1106,7 @@ overlay 1, the campaign's code, at `0x02350560`).
   entry `0901db0463010132`, byte for byte AW2's), AW2's own Black Cannon
   here; the centre holds the mission's one Black Obelisk. (The Black Onyx
   of its dialogue is a satellite on Dual Strike's top screen, not on the
-  map; see "Crystal Calamity" below.) Surrounded!'s four 4x4 pictures are
+  map; see "Crystal Calamity: the Black Onyx" below.) Surrounded!'s four 4x4 pictures are
   two missile pads and two fortresses: AW2 loads only the header's picture
   (`LoadInventionGraphics`, `0x0803FD80`, OBJ tiles 0x130..), so on a map
   whose inventions are all 4x4 pictures the other one goes into the
@@ -1408,17 +1409,101 @@ overlay 1, the campaign's code, at `0x02350560`).
     `0x022F45B8`) and `0x020CEDF4` returns the first player 1..4 with that
     many or more, whose team then wins (`0x02019A6C`): the computer's
     armies too.
-  - Crystal Calamity's `0x0235172C` is the Black Onyx's real-time laser
-    charge (90% or more on Dual Strike's top screen); with the 50-minute
-    count left out it never holds. The Black Onyx is a satellite on the
-    top screen ("more than 22,000 miles above us"), its state at
-    `[0x021694C0]`: +0x14 the hits still needed (9, `0x020F3604(9,
-    0x8CA0)`), +0x38 the charge's full mark (36000 frames), +0x3C the
-    charge, ticked each frame by `0x020F232C`; full (`0x02351738`) it
-    fires. Its hits come from the map's nine missile silos (0x180, "the
-    ASDS": "If we can hit Black Onyx with all nine in under fifty
-    minutes"). Nothing of it is on the map; here the silos are AW2's own
-    and the satellite is left out with the real-time count.
+  - Crystal Calamity's Black Onyx: "Crystal Calamity: the Black Onyx"
+    below (`0x0235172C`, `0x02351738`, `0x02351708`, `0x023516C8`,
+    `0x020F216C`, `0x020F2134`; ops 0x5A / 0x5B).
+
+**Crystal Calamity: the Black Onyx** (`onyx.rs`, with the pack).
+
+*Dual Strike* (its code, checked in melonDS: frames in the scratchpad's
+`onyxtimer/ds_evidence`). The Black Onyx is a satellite on the top screen
+("more than 22,000 miles above us"), never on the map. Its state is a
+block at `[0x021694C0]` (`0x020F3604(9, 36000)` at the battle's setup):
++0x14 the hits it still takes (9), +0x1C its state (1 charging, 2 the
+warning, 3 firing, 4 hit, 5 destroyed; `0x020F21A0`), +0x38 the full
+charge (36000), +0x3C the charge.
+- The mission's day-1 script ends with op 0x5A, 180000 frames: a
+  countdown, drawn on the top screen as MM:SS (frames / 60: 49:59 at
+  179940). The objective says it: "Shatter the black obelisk to win. The
+  satellite will fire in 50 minutes, so you should take it out first."
+  (Kindle: "In a mere...fifty minutes from now, its barrier field will be
+  operational.")
+- The charge rises by one a frame (`0x020F232C`, from the battle's frame
+  `0x020C05D8`, with the countdown's own count) while the countdown runs,
+  the satellite has hits left and the map runs its frame: on every army's
+  turn and with a menu open; not while a script runs (dialogue), on the CO
+  screen or the mini map (measured: 600 frames idle add 600; a menu open
+  310 in 310; START's mini map 1 in 310; the dialogue 0). 36000 frames
+  are ten minutes: the laser fires every ten minutes, five times in the 50.
+- The header's seventh list (+0x18), tested every frame: at 90%
+  (`0x0235172C`, `0x020F22C8`) the warning (`0x020F216C`: state 2, pink
+  sparks under it; the first time "Yo! Check out Black Onyx!"); full
+  (`0x02351738`) the laser (`0x020F2134`: state 3, the charge emptied; its
+  task draws the beam on the top screen (`0x020F2014`), then on the map at
+  the spot `0x020985D0(4, 0, 2)` scores best for Black Hole (army 4) a
+  beam (`bmap/089`..`08d`) and 8 HP off every unit within 2 squares, never
+  below 1, not Oozium (`0x020C6AE0(x, y, 80, 2)`: Sturm's meteor numbers),
+  then 300 frames' wait; the first time on Normal "What happened?!",
+  "It requires roughly ten minutes to power up, zero in on our position,
+  and fire."); the countdown at 0 (`0x023516C8`) Black Hole wins: the
+  mission is lost.
+- A missile silo's Launch on map 0xF2 (`0x020BD358`) goes to the
+  satellite instead of the map (`0x020DDA8C`, task `0x021693BC`): the
+  camera to the silo, the missile rises on the top screen (state 4, the
+  charge emptied), 80 frames later the hit lands (`0x020F20EC`: one hit
+  less), the silo is spent. At 0 hits (state 5) it breaks apart and falls;
+  the after-action list's `0x02351708` then plays "It can't be. I would
+  never have believed Black Onyx could be destroyed." and op 0x5B stops
+  the countdown. That does not win: the Black Obelisk does
+  (`0x023505C0`).
+- The top screen shows the satellite over the Earth, the time left, the
+  warning's sparks, the beam, the missile and its explosion; no hit count.
+
+*Here.* State in RAM `0x0203FFC8..0x0203FFE3` (`onyx::STATE`: on, hits,
+phase, its frames, the charge, the countdown's state, Black Hole's army,
+the launch's wait, the list's return address, the silo, the beam), set up
+at Crystal Calamity's map start; the countdown is `ds_campaign::COUNTDOWN`
+(op 0x5A / 0x5B set it, `onyx::set_countdown`). Both count a frame while
+the battle map runs its own frame (main callback `0x08022049`), no event
+script runs and the Setup phase is over: the CO screen and dialogues stop
+them, a menu does not. The seventh list is converted with the others
+(`MissionInfo::realtime`; Dual Strike's op 0x50, a flag cleared, is AW2's
+op 0x45) and run by AW2's list runner (`sub_08074484`) from the battle's
+frame (`0x08022048`, trapped; back through a stub to the callback) while
+the map waits for orders (map state 0xD the player's cursor, 0xE the
+computer between units, nothing busy): its scripts start as AW2 events,
+its flags are AW2's local flags. The laser (`0x020F2134`, a magic call) is
+AW2's meteor strike (`0x084A0858`, 8 HP, radius 2) started from the event,
+its target the computer's for Black Hole (`sub_0805C290(army, 1)`), the
+meteor's drawing and wait replaced by Dual Strike's beam (white core,
+pink, a dark edge; a glow where it lands) in sprites, in the meteor's
+tiles `0x1CA..` while it plays. A silo's Launch here
+(`unit_actions::launch_selected` → `onyx::launch`) starts our proc
+instead of the targeting: the map busy, the camera to the silo, AW2's
+launch there (`sub_08040380`: the silo spent, tile 0x1A0), the missile's
+hit on the satellite (80 frames, then one hit less; at 0 the destruction),
+then the unit's action ends as at a silo's target (`sub_0804096C`: its
+Wait and the after-action list, where the destruction's dialogue comes
+from). The top screen is a panel under AW2's CO window, on its side (the
+other side while the cursor is under it): Dual Strike's satellite
+(`bmap/085`, its colours `bmap/086`, laid out by frame 0 of the animation
+at ARM9 `0x0213B8AC`: four 64x64 pieces) made 32x32 at run time, the time
+left (MM:SS, AW2's font), a diamond per hit still needed and the charge's
+bar (pink and blinking from 90%), and the warning's sparks, the beam, the
+missile and its explosion, the break-up drawn on the satellite. OBJ tiles
+`0x1F9..0x208` and five columns of four from `0x2D2` (heal_effect's and the
+two fronts', neither in use there while it shows; the panel steps aside
+while a heal plays), OBJ palette 15's entries 5..15 (1..4 left as they
+are). ROM `0x08E75000..0x08E753FF` (the launch and laser functions and
+procs, the target function, two magic stubs, ids `0x2D000001`/`0x2D000002`
+through the campaign's landing). A mission saved halfway keeps the
+satellite (`onyx::saved`, 6 bytes after Means to an End's in the DS block:
+hits, phase, countdown state, charge). Without the pack nothing of it
+runs. Tests: `tests/test_ds_onyx.py` (the clock and the panel, the warning
+and the laser with its damage and dialogues, a silo's hit, the
+destruction, the time running out, saved halfway, the objective).
+Reclaim the Skies has a seventh list too (a 30-minute countdown, op 0x5A
+108000, its loss `0x02350900`): not converted yet.
 
 Tests: `tools/aw2test/tests/test_ds_campaign.py` (the sub-menu with and
 without the pack, AW2's campaign unchanged to its first mission card,

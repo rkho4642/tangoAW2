@@ -280,6 +280,7 @@ pub fn flush(core: &mut Core) {
     if !crate::panel_sprites::tiles_taken(core, start, at) {
         at = crate::two_front::flush_sprites(core, at, end);
     }
+    at = crate::onyx::flush_sprites(core, start, at, end);
     if let Some(l) = active(core) {
         for s in 0..l.sprites {
             if at + 8 > end {
