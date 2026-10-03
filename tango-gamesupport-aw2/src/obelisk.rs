@@ -46,6 +46,9 @@ const OBELISK_DEF: u32 = DATA;
 const CRYSTAL_DEF: u32 = DATA + 0x20;
 /// A sprite definition with no sprites (see [`sprite`]).
 const EMPTY_DEF: u32 = DATA + 0x40;
+/// A 4x4 structure's sprite (AW2's own, `0x0849FA56`: one 64x64 sprite)
+/// drawn from [`SECOND_PICTURE_TILE`] (see [`second_picture`]).
+const SECOND_DEF: u32 = DATA + 0x60;
 pub const CRYSTAL_NAME_AT: u32 = DATA + 0x100;
 const PART_NAME_AT: u32 = DATA + 0x500;
 /// The weak point's terrain-panel picture: none (the panel shows the name).
@@ -56,12 +59,16 @@ pub const OBELISK_NAME_AT: u32 = DATA + 0x200;
 const CRYSTAL_PICTURE_AT: u32 = DATA + 0x300;
 const OBELISK_PICTURE_AT: u32 = DATA + 0x400;
 const DATA_SENTINEL: u32 = DATA + 0xFFC;
-const DATA_MAGIC: u32 = 0x374B_4C42; // "BLK7" (bump when the data changes)
+const DATA_MAGIC: u32 = 0x384B_4C42; // "BLK8" (bump when the data changes)
 
 /// OBJ tiles for the sprites in battle (no screen of the battle map writes
 /// 0x176..0x1A5): the Obelisk's 36 tiles, then the Crystal's 8.
 pub const OBELISK_OBJ_TILE: u32 = 0x176;
 pub const CRYSTAL_OBJ_TILE: u32 = 0x19A;
+/// A map's second 4x4 structure picture (64 tiles from 0xC4: the start of
+/// the invention sheet `LoadInventionGraphics` puts at 0xC4..0x12F, whose
+/// sprites a map with only 4x4 pictures never draws).
+const SECOND_PICTURE_TILE: u32 = 0xC4;
 /// Which structure's name the terrain panel is showing (1 Crystal, 2 Obelisk).
 const PANEL: u32 = 0x0203_0207;
 
@@ -109,10 +116,12 @@ pub fn install(core: &mut Core) {
     ];
     let crystal_def: &[u16] = &[0x0001, 0x80F0, 0x8000, tile(CRYSTAL_OBJ_TILE)];
     let empty_def: &[u16] = &[0x0000];
+    let second_def: &[u16] = &[0x0001, 0x0000, 0xC000, tile(SECOND_PICTURE_TILE)];
     for (at, def) in [
         (OBELISK_DEF, obelisk_def),
         (CRYSTAL_DEF, crystal_def),
         (EMPTY_DEF, empty_def),
+        (SECOND_DEF, second_def),
     ] {
         for (i, h) in def.iter().enumerate() {
             core.raw_write_16(at + 2 * i as u32, -1, *h);
@@ -252,6 +261,12 @@ fn sprite(core: &mut Core) {
         cpu.gpr(2) as u32,
         cpu.gpr(14) as u32,
     );
+    if lr == 0x0803_FD27 && def == 0x0849_FA56 {
+        if let Some(d) = second_picture(core, x, y) {
+            core.gba_mut().cpu_mut().set_gpr(2, d as i32);
+        }
+        return;
+    }
     let new = match lr {
         0x0803_FB93 if tile_at(core, x, y) == CRYSTAL_TILE => CRYSTAL_DEF,
         0x0803_FB93 if tile_at(core, x, y) == crate::grand_bolt::PART_TILE => EMPTY_DEF,
@@ -271,6 +286,55 @@ fn sprite(core: &mut Core) {
         new
     };
     core.gba_mut().cpu_mut().set_gpr(2, new as i32);
+}
+
+/// A 4x4 structure (kind 8) whose picture is not the one the map header
+/// names (`LoadInventionGraphics`, `0x0803FD80`, loads that one alone):
+/// Dual Strike's Surrounded! stands two missile pads and two fortresses
+/// (tiles 0x1AA..0x1AD and 0x1AE..0x1B1 on the structure's third row),
+/// each drawn with its own picture. On a map whose inventions are all 4x4
+/// pictures the other picture is put in [`SECOND_PICTURE_TILE`] and drawn
+/// with [`SECOND_DEF`]. None: the header's picture is the right one.
+fn second_picture(core: &mut Core, x: u32, y: u32) -> Option<u32> {
+    use crate::survival_maps::Structure as Picture;
+    if crate::design::in_map_editor(core) {
+        return None;
+    }
+    let mine = match tile_at(core, x, y + 2) {
+        0x1AA..=0x1AD => Picture::MissilePad,
+        0x1AE..=0x1B1 => Picture::Fortress,
+        _ => return None,
+    };
+    // The header the game read (its table: LoadInventionGraphics' literal).
+    let table = core.raw_read_32(0x0803_FDCC, -1);
+    let map_id = core.raw_read_8(0x0300_3FC2, -1) as u32;
+    let named = core.raw_read_32(table + 0x5C * map_id + 0x10, -1);
+    if named == 0 || named == mine.aw2_picture() {
+        return None;
+    }
+    for i in 0..INVENTION_COUNT {
+        let e = INVENTIONS + 8 * i;
+        if (core.raw_read_16(e + 2, -1) >> 6) & 0xF == 0 {
+            break;
+        }
+        if (core.raw_read_16(e + 2, -1) >> 6) & 0xF != 8 {
+            return None;
+        }
+    }
+    let mut head = [0u8; 4];
+    core.raw_read_range(mine.aw2_picture(), -1, &mut head);
+    let size = (u32::from_le_bytes(head) >> 8) as usize;
+    let mut comp = vec![0u8; 4 + size * 2];
+    core.raw_read_range(mine.aw2_picture(), -1, &mut comp);
+    let pic = crate::ds_art::lz10(&comp)?;
+    let n = pic.len().min(64 * 32);
+    let at = 0x0601_0000 + SECOND_PICTURE_TILE * 32;
+    let mut now = vec![0u8; n];
+    core.raw_read_range(at, -1, &mut now);
+    if now[..] != pic[..n] {
+        core.raw_write_range(at, -1, &pic[..n]);
+    }
+    Some(SECOND_DEF)
 }
 
 /// The turn-start firing loop (`sub_0803ED60`, the proc in r5), per
