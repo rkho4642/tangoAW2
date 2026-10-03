@@ -43,6 +43,8 @@
 //! | Covering Fire | `bmap/065` (LZ10, 245 OBJ tiles) | `bmap/066` | arm9 `0x0213DD38` sequences 2 (fall), 3 (impact) |
 //! | Urban Blight | `syogun/1f1` (LZ10, 104 BG tiles) + `syogun/1f2` (32x32 map) | `syogun/1f8` | code |
 //! | screen shake | - | - | arm9 `0x021574C0` (s16 x,y pairs, `0x7FFF` ends) |
+//! | Black Onyx beam | `bmap/089` (LZ10, 64 BG tiles) + `bmap/08a` (32x32 map) | `bmap/08b` | code (`0x02169088`) |
+//! | Black Onyx rings | `bmap/08c` (LZ10, a linear 4bpp texture) | `bmap/08d` | arm9 `0x0213BDA0` sequence 0 |
 //!
 //! (`syogun/1fa` is the sparks again as a linear texture for the 3D
 //! engine, which Dual Strike uses when the map is on the 3D screen; `1fb`
@@ -95,6 +97,10 @@ pub enum PowerEffect {
     CoveringFire,
     /// Kindle's COP.
     UrbanBlight,
+    /// Not a power: Crystal Calamity's Black Onyx laser on the map
+    /// (crate::onyx), played through the same machinery. Not in
+    /// [`PowerEffect::ALL`].
+    BlackOnyx,
 }
 
 impl PowerEffect {
@@ -109,6 +115,7 @@ impl PowerEffect {
             PowerEffect::ExMachina => "Ex Machina",
             PowerEffect::CoveringFire => "Covering Fire",
             PowerEffect::UrbanBlight => "Urban Blight",
+            PowerEffect::BlackOnyx => "Black Onyx",
         }
     }
 }
@@ -190,6 +197,10 @@ pub enum Start {
     /// This many frames after clip `.0` ends (a clip with motion ends when
     /// the motion does; a clip without, after its last frame's duration).
     After(usize, u16),
+    /// This many frames after a falling BG layer
+    /// ([`BgPlacement::FallingOnTarget`]) reached its place on the target
+    /// (the first frame it is down; [`Effect::landing`]).
+    Landed(u16),
 }
 
 /// Where a clip's anchor is, from the target square `(x, y)`.
@@ -274,6 +285,12 @@ pub enum BgPlacement {
     /// Tiled over the whole screen, the scroll registers moving by
     /// `(dx, dy)` every frame (the picture moves by minus that).
     Scrolling { dx: i8, dy: i8 },
+    /// As [`BgPlacement::OnTarget`], but coming down from above: `k` frames
+    /// after the layer starts it is still `max(0, 16ty + 16 - speed (k +
+    /// 1))` pixels short of its place (added to the vertical scroll). Dual
+    /// Strike's Black Onyx laser (`0x020EB6B0`: 16 a frame from the target's
+    /// map row, the camera aside).
+    FallingOnTarget { x: i16, y: i16, speed: u8 },
 }
 
 /// A full-screen BG layer (text mode, 4bpp, 32x32 map).
@@ -471,6 +488,25 @@ impl Effect {
         (tiles, pieces)
     }
 
+    /// Every frame made to need at most `max` OBJ tiles: while one needs
+    /// more, its last-listed piece (the bottom one) that shares no tiles with
+    /// the others is left out. How many pieces went.
+    pub fn fit_frames(&mut self, max: usize) -> usize {
+        let mut dropped = 0;
+        for c in 0..self.clips.len() {
+            for f in 0..self.clips[c].frames.len() {
+                while self.frame_tiles(c, f).0.len() / 32 > max {
+                    let pieces = &self.clips[c].frames[f].pieces;
+                    let alone = (0..pieces.len()).rev().find(|&i| pieces.iter().enumerate().all(|(j, q)| j == i || q.tile != pieces[i].tile));
+                    let Some(i) = alone else { break };
+                    self.clips[c].frames[f].pieces.remove(i);
+                    dropped += 1;
+                }
+            }
+        }
+        dropped
+    }
+
     /// The most OBJ tiles any single frame needs.
     pub fn max_frame_tiles(&self) -> usize {
         (0..self.clips.len())
@@ -486,7 +522,7 @@ impl Effect {
     pub fn clip_times(&self, target: (u8, u8), camera_y: i32) -> Vec<(u32, u32)> {
         let mut times: Vec<(u32, u32)> = Vec::new();
         for c in &self.clips {
-            let start = resolve(c.start, &times);
+            let start = resolve(c.start, &times, self.landing(target));
             let length = match c.motion {
                 Motion::Still => c.length(),
                 Motion::FallFromScreenTop { speed } => {
@@ -501,7 +537,7 @@ impl Effect {
 
     /// When one target's effect ends.
     pub fn length(&self, target: (u8, u8), camera_y: i32) -> u32 {
-        resolve(self.end, &self.clip_times(target, camera_y))
+        resolve(self.end, &self.clip_times(target, camera_y), self.landing(target))
     }
 
     /// What to draw `t` frames into one target's effect: every clip frame
@@ -530,7 +566,7 @@ impl Effect {
         let times = self.clip_times(target, camera_y);
         self.flashes
             .iter()
-            .filter_map(|f| at(&f.levels, t, resolve(f.start, &times)).copied())
+            .filter_map(|f| at(&f.levels, t, resolve(f.start, &times, self.landing(target))).copied())
             .max()
             .unwrap_or(0)
     }
@@ -540,28 +576,57 @@ impl Effect {
         let times = self.clip_times(target, camera_y);
         self.shakes
             .iter()
-            .find_map(|s| at(&s.offsets, t, resolve(s.start, &times)).copied())
+            .find_map(|s| at(&s.offsets, t, resolve(s.start, &times, self.landing(target))).copied())
             .unwrap_or((0, 0))
     }
 
-    /// The BG layer's blend weights at `t`, or `None` while it is off.
+    /// The BG layer's blend weights at `t`, or `None` while it is off. A
+    /// falling layer's ([`BgPlacement::FallingOnTarget`]) weights count from
+    /// its landing, the first entry's before.
     pub fn blend_at(&self, t: u32, target: (u8, u8), camera_y: i32) -> Option<(u8, u8)> {
         let bg = self.bg.as_ref()?;
-        at(&bg.blend, t, resolve(bg.start, &self.clip_times(target, camera_y))).copied()
+        if let BgPlacement::FallingOnTarget { .. } = bg.placement {
+            t.checked_sub(resolve(bg.start, &[], 0))?;
+            return bg.blend.get(t.saturating_sub(self.landing(target)) as usize).copied();
+        }
+        at(&bg.blend, t, resolve(bg.start, &self.clip_times(target, camera_y), self.landing(target))).copied()
     }
 
     /// The BG layer's scroll registers at `t`, the camera's top-left at map
     /// pixel `camera` (shake not added).
     pub fn scroll_at(&self, t: u32, target: (u8, u8), camera: (i32, i32)) -> Option<(i32, i32)> {
         let bg = self.bg.as_ref()?;
-        let k = t.checked_sub(resolve(bg.start, &self.clip_times(target, camera.1)))? as i32;
+        let k = t.checked_sub(resolve(bg.start, &self.clip_times(target, camera.1), self.landing(target)))? as i32;
         Some(match bg.placement {
             BgPlacement::OnTarget { x, y } => (
                 x as i32 - (16 * target.0 as i32 - camera.0),
                 y as i32 - (16 * target.1 as i32 - camera.1),
             ),
             BgPlacement::Scrolling { dx, dy } => (dx as i32 * k, dy as i32 * k),
+            BgPlacement::FallingOnTarget { x, y, speed } => {
+                let short = (16 * target.1 as i32 + 16 - speed as i32 * (k + 1)).max(0);
+                (
+                    x as i32 - (16 * target.0 as i32 - camera.0),
+                    y as i32 - (16 * target.1 as i32 - camera.1) + short,
+                )
+            }
         })
+    }
+
+    /// For a falling BG layer, the first frame (from the effect's start) it
+    /// is down on the target ([`Start::Landed`]); 0 without one.
+    pub fn landing(&self, target: (u8, u8)) -> u32 {
+        match &self.bg {
+            Some(BgLayer {
+                start: Start::At(s),
+                placement: BgPlacement::FallingOnTarget { speed, .. },
+                ..
+            }) => {
+                let fall = 16 * target.1 as u32 + 16;
+                *s as u32 + fall.div_ceil((*speed).max(1) as u32) - 1
+            }
+            _ => 0,
+        }
     }
 }
 
@@ -574,10 +639,11 @@ pub struct Placed {
     pub y: i32,
 }
 
-fn resolve(s: Start, times: &[(u32, u32)]) -> u32 {
+fn resolve(s: Start, times: &[(u32, u32)], landed: u32) -> u32 {
     match s {
         Start::At(t) => t as u32,
         Start::After(c, plus) => times.get(c).map_or(0, |&(_, end)| end) + plus as u32,
+        Start::Landed(plus) => landed + plus as u32,
     }
 }
 
@@ -707,8 +773,56 @@ pub fn effect(which: PowerEffect) -> Option<Effect> {
                 end: Start::At(length),
             })
         }
+        PowerEffect::BlackOnyx => {
+            // Dual Strike's procedure (`0x02169088`, started by the laser's
+            // `0x020EB9DC(x, y, 2, 80)`): the camera to the target; the beam
+            // (BG, `bmap/089` tiles, `08a` map, `08b` palette; additive)
+            // comes down 16 pixels a frame (`0x020EB738`, `0x020EB6B0`);
+            // two frames after it is down the damage, a white flash
+            // (`0x020041E4(4, 0, 20)`), the shake (`0x02003FA0(2, 90)`), the
+            // rings (`0x020EB5DC`: anim `0x0213BDA0` sequence 0, its
+            // texture `bmap/08c`, palette `08d`) and the beam's fade (EVA
+            // 16 to 0 over 80 frames, `0x020EB434`).
+            let anim = Anim::parse(arm9(LASER_RINGS_ANIM, 0x400)?)?;
+            let rings = anim.clip("rings", 0, Start::Landed(LASER_HIT), Anchor::Bottom, Motion::Still, false)?;
+            let (tiles, clips) = linear_texture(&lz("bmap/08c")?, vec![rings])?;
+            let beam = bg_layer(&lz("bmap/089")?, &lz("bmap/08a")?, palette("bmap/08b")?, true)?;
+            // (a falling layer's blend starts where it is down: additive
+            // until the hit, then the fade)
+            let mut blend = vec![(16u8, 16u8); LASER_HIT as usize];
+            blend.extend((0..=LASER_FADE).map(|j| ((16 - 16 * j / LASER_FADE) as u8, 16)));
+            Some(Effect {
+                which,
+                tiles,
+                palettes: vec![palette("bmap/08d")?],
+                clips,
+                bg: Some(BgLayer {
+                    start: Start::At(0),
+                    placement: BgPlacement::FallingOnTarget { x: 0x20, y: 0xB0, speed: 16 },
+                    blend,
+                    ..beam
+                }),
+                flashes: vec![Flash {
+                    start: Start::Landed(LASER_HIT),
+                    levels: BOLT_FLASH.to_vec(),
+                }],
+                shakes: vec![Shake {
+                    start: Start::Landed(LASER_HIT),
+                    offsets: shake(pack, 90)?,
+                }],
+                targets: 1,
+                end: Start::Landed(LASER_HIT + LASER_FADE as u16 + 1),
+            })
+        }
     }
 }
+
+/// The Black Onyx laser's rings, and its timing: the hit (damage, flash,
+/// shake, rings, the fade's start) two frames after the beam is down, the
+/// fade 80 frames.
+const LASER_RINGS_ANIM: u32 = 0x0213_BDA0;
+const LASER_HIT: u16 = 2;
+const LASER_FADE: u32 = 80;
 
 /// Ex Machina's spark animation and Covering Fire's missile animation.
 const SPARKS_ANIM: u32 = 0x0213_4D68;
@@ -780,6 +894,44 @@ fn bg_layer(tiles: &[u8], map: &[u8], palette: [u16; 16], blank: bool) -> Option
     })
 }
 
+/// Clips drawn from a linear texture (Dual Strike's 3D path: a piece's
+/// picture is `width x height` 4bpp pixels in rows from byte `32 * tile`)
+/// made OBJ tiles: each distinct picture its own tiles (1D order), the
+/// pieces renumbered.
+fn linear_texture(tex: &[u8], mut clips: Vec<Clip>) -> Option<(Vec<u8>, Vec<Clip>)> {
+    let mut tiles: Vec<u8> = Vec::new();
+    let mut made: Vec<((u16, u32, u32), u16)> = Vec::new();
+    for p in clips.iter_mut().flat_map(|c| &mut c.frames).flat_map(|f| &mut f.pieces) {
+        let (w, h) = p.dims();
+        let key = (p.tile, w, h);
+        let new = match made.iter().find(|(k, _)| *k == key) {
+            Some(&(_, n)) => n,
+            None => {
+                let n = (tiles.len() / 32) as u16;
+                let base = 32 * p.tile as usize;
+                for ty in 0..h / 8 {
+                    for tx in 0..w / 8 {
+                        let mut t = [0u8; 32];
+                        for r in 0..8 {
+                            for c in 0..8 {
+                                let (x, y) = (8 * tx + c, 8 * ty + r);
+                                let i = (y * w + x) as usize;
+                                let v = (*tex.get(base + i / 2)? >> (4 * (i & 1))) & 15;
+                                t[(4 * r + c / 2) as usize] |= v << (4 * (c & 1));
+                            }
+                        }
+                        tiles.extend_from_slice(&t);
+                    }
+                }
+                made.push((key, n));
+                n
+            }
+        };
+        p.tile = new;
+    }
+    Some((tiles, clips))
+}
+
 /// Keep only the tiles the clips use, in their order (a sprite's tiles
 /// stay consecutive), and renumber the pieces.
 fn compact(all: &[u8], mut clips: Vec<Clip>) -> Option<(Vec<u8>, Vec<Clip>)> {
@@ -839,7 +991,12 @@ impl Anim {
                     break;
                 }
                 if f >= frames.len() || seq.len() > 64 {
-                    return None;
+                    // (past the real sequences the table runs into other
+                    // data: the sequences before it stay)
+                    if i == 0 {
+                        return None;
+                    }
+                    return Some(Anim { frames, sequences });
                 }
                 seq.push((d as u8, f as u16));
             }
@@ -959,5 +1116,48 @@ mod tests {
         let ub = effect(PowerEffect::UrbanBlight).unwrap();
         assert_eq!(ub.bg.as_ref().unwrap().tiles.len() / 32, 12);
         assert_eq!(ub.bg.as_ref().unwrap().blend.len(), 80);
+    }
+
+    /// With `TANGOAW2_DS_ROM`: the Black Onyx laser converts (crate::onyx,
+    /// crate::power_anim): the beam's layer, the rings' ten frames from
+    /// their linear texture, and its timeline for a target on row 3 (as
+    /// captured in melonDS: the beam set up at 0 is down at 3, the hit at
+    /// 5, the fade's 80 frames after).
+    #[test]
+    #[ignore]
+    fn the_black_onyx_laser_converts() {
+        crate::ds_pack::pack().expect("TANGOAW2_DS_ROM");
+        let e = effect(PowerEffect::BlackOnyx).expect("the laser");
+        let bg = e.bg.as_ref().unwrap();
+        eprintln!(
+            "laser: {} OBJ tiles, at most {} a frame, rings {} frames ({} long), beam {} BG tiles",
+            e.tile_count(),
+            e.max_frame_tiles(),
+            e.clips[0].frames.len(),
+            e.clips[0].length(),
+            bg.tiles.len() / 32
+        );
+        assert_eq!(e.clips[0].frames.len(), 10);
+        assert_eq!(e.clips[0].length(), 29);
+        let mut fitted = e.clone();
+        let dropped = fitted.fit_frames(0x1F9 - 0x1CA);
+        eprintln!("fitted to 47 tiles a frame: {dropped} pieces left out");
+        assert!(fitted.max_frame_tiles() <= 0x1F9 - 0x1CA && dropped <= 2);
+        assert!(bg.map.iter().all(|&m| ((m & 0x3FF) as usize) < bg.tiles.len() / 32));
+        let target = (13, 3);
+        assert_eq!(e.landing(target), 3);
+        assert_eq!(e.clip_times(target, 0), vec![(5, 34)]);
+        assert_eq!((e.flash_at(4, target, 0), e.flash_at(5, target, 0), e.flash_at(8, target, 0)), (0, 4, 16));
+        assert_eq!(e.blend_at(0, target, 0), Some((16, 16)));
+        assert_eq!(e.blend_at(5, target, 0), Some((16, 16)));
+        assert_eq!(e.blend_at(45, target, 0), Some((8, 16)));
+        assert_eq!(e.blend_at(85, target, 0), Some((0, 16)));
+        assert_eq!(e.length(target, 0), 86);
+        // (the beam: 48 short at 0, down from 3)
+        let (cam_x, cam_y) = (100, 20);
+        let (h, v0) = e.scroll_at(0, target, (cam_x, cam_y)).unwrap();
+        let (_, v3) = e.scroll_at(3, target, (cam_x, cam_y)).unwrap();
+        assert_eq!((h, v0 - v3), (0x20 - (16 * 13 - cam_x), 48));
+        assert_eq!(v3, 0xB0 - (16 * 3 - cam_y));
     }
 }

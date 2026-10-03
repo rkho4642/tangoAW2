@@ -1508,6 +1508,7 @@ pub fn build(ds: &Ds, base: u32, widths: &[u8]) -> Option<Built> {
             fog: rec.fog,
             labs: lab_cells(ds, rec.maps.0),
             realtime,
+            unit_event_list: table[4],
         });
     }
     let story = convert_story_scenes(&mut cx, ds);

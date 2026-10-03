@@ -210,6 +210,23 @@ fn main() {
                 }
                 solo.side().console().set_traps(traps);
             }
+            "trappoke" => {
+                // `trappoke ADDR WHERE VAL8 [N]`: the first N times (1) the
+                // ARM9 reaches ADDR, write the byte VAL8 at WHERE (a decision forced).
+                let (at, wh, v) = (hex(p[1]), hex(p[2]), hex(p[3]));
+                let left = std::cell::Cell::new(p.get(4).and_then(|n| n.parse::<u32>().ok()).unwrap_or(1));
+                solo.side().console().set_traps(vec![(
+                    at,
+                    Box::new(move |nds: &mut melonds::Nds| {
+                        if left.get() > 0 {
+                            left.set(left.get() - 1);
+                            let old = nds.read8(wh) as u32 | (nds.read8(wh + 1) as u32) << 8;
+                            nds.write8(wh, v as u8);
+                            eprintln!("trappoke {at:08x}: [{wh:08x}] {old:04x} -> {v:04x} lr {:08x}", nds.reg(14));
+                        }
+                    }),
+                )]);
+            }
             "readwatch" => {
                 // Print the PC and LR of the first N reads of ADDR (`readwatch
                 // off` removes the watch).

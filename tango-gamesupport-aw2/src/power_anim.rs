@@ -49,6 +49,14 @@
 //! unit sprites (as AW2's own meteor shake). Sounds are AW2's (the
 //! meteor's, `0xC5`, at each strike).
 //!
+//! **Crystal Calamity's Black Onyx laser** (kind 3, crate::onyx runs the
+//! meteor script for it and marks the strike, [`crate::onyx::take_strike`]):
+//! Dual Strike's beam on BG0 coming down to the target, additive, then the
+//! flash (the beam hidden while it is near white), the shake, the rings
+//! (sprites, at most 47 tiles a frame: the satellite panel's are next) and
+//! the beam's fade; the map's window 0 off meanwhile (it keeps colour
+//! effects to the terrain box).
+//!
 //! RAM: [`STATE`] (0x40 bytes, EWRAM `0x0203F7A0..0x0203F7DF`), zero when
 //! no strike plays. ROM: `0x087C0000..0x087C0FFF` ([`ROM`]).
 
@@ -136,6 +144,33 @@ fn art() -> Option<&'static Art> {
     .as_ref()
 }
 
+/// Crystal Calamity's Black Onyx laser (kind [`ONYX`]): Dual Strike's
+/// effect, and its beam in the 128 tiles of the wave's space.
+struct OnyxArt {
+    laser: Effect,
+    beam: BgLayer,
+}
+
+static ONYX_ART: OnceLock<Option<OnyxArt>> = OnceLock::new();
+
+fn onyx_art() -> Option<&'static OnyxArt> {
+    ONYX_ART
+        .get_or_init(|| {
+            let mut laser = effect(PowerEffect::BlackOnyx)?;
+            // (two of the rings' frames need 50 and 51 tiles: a sparkle
+            // each left out)
+            laser.fit_frames(ONYX_OBJ_TILES);
+            let beam = laser.bg.as_ref()?.reduced(BG_TILES);
+            (laser.max_frame_tiles() <= ONYX_OBJ_TILES).then_some(OnyxArt { laser, beam })
+        })
+        .as_ref()
+}
+
+/// The kind of the Black Onyx's laser; its sprites stop short of the
+/// satellite panel's tiles (crate::onyx, OBJ `0x1F9..`).
+const ONYX: u8 = 3;
+const ONYX_OBJ_TILES: usize = 0x1F9 - OBJ_TILE as usize;
+
 /// Whether the animations are there (the pack and its pictures).
 pub fn available() -> bool {
     art().is_some()
@@ -161,7 +196,8 @@ pub fn install(core: &mut Core) -> bool {
 
 // --- RAM and the display -------------------------------------------------------------
 
-/// What plays: +0 kind (0 none, 1 Ex Machina, 2 Covering Fire), +1/+2 the
+/// What plays: +0 kind (0 none, 1 Ex Machina, 2 Covering Fire, 3 the Black
+/// Onyx laser), +1/+2 the
 /// target square, +3 the sprite frame loaded (1 + clip * 32 + frame),
 /// +4 u16 frames played, +6/+8 s16 the camera at the start, +0x0A the
 /// saved shadows ([`SHADOWS`], u16 each), +0x20 BG palette 8 saved,
@@ -202,6 +238,7 @@ const OBJ_TILES: usize = 64;
 const BG_TILE_OFFSET: u32 = 0x5600;
 const BG_TILES: usize = 128;
 const BG0_ON: u16 = 0x0100;
+const WIN0_ON: u16 = 0x2000;
 /// Brighten everything; BG0 blended over everything else.
 const BLEND_BRIGHTEN: u16 = 0x00BF;
 const BLEND_BOLT: u16 = 0x3E41;
@@ -263,12 +300,20 @@ const DRAW_METEOR_END: u32 = 0x0804_498D;
 const PLAY_SOUND: u32 = 0x0803_B4DC;
 const METEOR_SOUND: i32 = 0xC5;
 fn draw_meteor(core: &mut Core) {
-    if art().is_none() || !crate::ds_weather::is_on(core) {
+    // Crystal Calamity's Black Onyx laser (crate::onyx runs AW2's meteor
+    // script for it): Dual Strike's beam.
+    let onyx = crate::onyx::take_strike(core);
+    if onyx {
+        if art().is_none() || onyx_art().is_none() {
+            return;
+        }
+    } else if art().is_none() || !crate::ds_weather::is_on(core) {
         return;
     }
     use crate::co_powers::{activating, RACHEL, SCOP, VON_BOLT};
     let army = core.raw_read_16(CURRENT_ARMY, -1) as u32;
     let kind = match activating(core, army) {
+        _ if onyx => ONYX,
         (VON_BOLT, SCOP) => 1,
         (RACHEL, SCOP) => 2,
         _ => return,
@@ -319,9 +364,11 @@ fn meteor_falling(core: &mut Core) {
 
 fn frame(core: &mut Core, art: &Art) -> bool {
     let kind = core.raw_read_8(KIND, -1);
-    let e = match kind {
-        1 => &art.exm,
-        2 => &art.cf,
+    let onyx = onyx_art();
+    let e = match (kind, onyx) {
+        (1, _) => &art.exm,
+        (2, _) => &art.cf,
+        (ONYX, Some(o)) => &o.laser,
         _ => return false,
     };
     let target = (core.raw_read_8(TARGET, -1), core.raw_read_8(TARGET + 1, -1));
@@ -345,14 +392,26 @@ fn frame(core: &mut Core, art: &Art) -> bool {
 
     // The bolt on BG0.
     let blend = e.blend_at(t, target, start_cam_y);
-    if let (Some(_), Some((h, v)), 1) = (blend, e.scroll_at(t, target, cam), kind) {
-        if core.raw_read_8(BOLT_SHOWN, -1) == 0 {
-            show_bolt(core, &art.bolt, h, v);
+    let layer = match (kind, onyx) {
+        (1, _) => Some(&art.bolt),
+        (ONYX, Some(o)) => Some(&o.beam),
+        _ => None,
+    };
+    if let (Some(_), Some((h, v)), Some(layer)) = (blend, e.scroll_at(t, target, cam), layer) {
+        // (the laser's beam comes down: its cells on the screen change)
+        if core.raw_read_8(BOLT_SHOWN, -1) == 0 || kind == ONYX {
+            show_bolt(core, layer, h, v);
             core.raw_write_8(BOLT_SHOWN, -1, 1);
         }
         set16(core, BG0HOFS, h as u16);
         set16(core, BG0VOFS, v as u16);
-        let d = saved(core, DISPCNT) | BG0_ON;
+        let mut d = saved(core, DISPCNT) | BG0_ON;
+        if kind == ONYX {
+            // (the map's window 0, the terrain box's, keeps colour effects
+            // to itself: off while the laser's blend and flash show, as
+            // on Dual Strike's screen; put back with the shadows)
+            d &= !WIN0_ON;
+        }
         set16(core, DISPCNT, d);
     } else if core.raw_read_8(BOLT_SHOWN, -1) == 1 {
         hide_bolt(core);
@@ -367,6 +426,12 @@ fn frame(core: &mut Core, art: &Art) -> bool {
     if flash >= if bolt_up { FLASH_OVER_BOLT } else { 1 } {
         set16(core, BLDCNT, BLEND_BRIGHTEN);
         set16(core, BLDY, flash as u16);
+        if kind == ONYX && bolt_up {
+            // (the laser's beam, additive, is white under the flash; drawn
+            // plainly it would show its dark edge: hidden while it lasts)
+            let d = core.raw_read_16(DISPCNT, -1) & !BG0_ON;
+            set16(core, DISPCNT, d);
+        }
     } else if let (Some((a, b)), 1) = (blend, core.raw_read_8(BOLT_SHOWN, -1)) {
         set16(core, BLDCNT, BLEND_BOLT);
         set16(core, EVA, a as u16);
@@ -393,7 +458,8 @@ fn frame(core: &mut Core, art: &Art) -> bool {
     for p in e.sprites_at(t, target, start_cam_y) {
         let key = 1 + (p.clip * 32 + p.frame) as u8;
         let (tiles, pieces) = e.frame_tiles(p.clip, p.frame);
-        if core.raw_read_8(LOADED, -1) != key && tiles.len() <= 32 * OBJ_TILES {
+        let room = if kind == ONYX { ONYX_OBJ_TILES } else { OBJ_TILES };
+        if core.raw_read_8(LOADED, -1) != key && tiles.len() <= 32 * room {
             write_if_changed(core, OBJ_VRAM + 32 * OBJ_TILE as u32, &tiles);
             core.raw_write_8(LOADED, -1, key);
         }
@@ -467,7 +533,7 @@ fn finish(core: &mut Core) {
     }
     let mut pal = [0u8; 32];
     core.raw_read_range(SAVED_PALETTE, -1, &mut pal);
-    if core.raw_read_8(KIND, -1) == 1 {
+    if matches!(core.raw_read_8(KIND, -1), 1 | ONYX) {
         for base in [PAL_BUFFER, PAL_RAM] {
             write_if_changed(core, base + 32 * BG_PALETTE, &pal);
         }
