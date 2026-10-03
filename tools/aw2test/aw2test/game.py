@@ -129,12 +129,26 @@ class Game:
         count = rec[ram.T_CO_COUNT]
         lst = struct.unpack_from("<I", rec, ram.T_CO_LIST)[0]
         co_list = list(e.read(lst, count))
+        if self.five():
+            # The five-army record (crate::five) keeps its per-army arrays
+            # at +0x90.. with room for five.
+            rec = e.read(self.teams_addr(), 0xC0)
+            return {
+                "armies": rec[ram.T_ARMY_COUNT],
+                "controllers": list(rec[ram.T5_CONTROLLERS:ram.T5_CONTROLLERS + 5]),
+                "co_index": list(rec[ram.T5_CO_INDEX:ram.T5_CO_INDEX + 5]),
+                "co_ids": list(rec[ram.T5_CO_ID:ram.T5_CO_ID + 5]),
+                "co_list": co_list,
+            }
         return {
             "armies": rec[ram.T_ARMY_COUNT],
             "controllers": list(rec[ram.T_CONTROLLERS:ram.T_CONTROLLERS + 4]),
             "co_index": list(rec[ram.T_CO_INDEX:ram.T_CO_INDEX + 4]),
             "co_list": co_list,
         }
+
+    def five(self):
+        return self.e.u8(ram.FIVE_ON) == 1
 
     def set_teams(self, cos, humans):
         """cos: CO id (or name) per army in order; humans: set of 1-based armies played by 1P.
@@ -163,10 +177,12 @@ class Game:
             return
         if len(cos) != n:
             raise NavError(f"map has {n} armies, {len(cos)} COs given")
+        five = self.five()
+        index_at = ram.T5_CO_INDEX if five else ram.T_CO_INDEX
         for army, co in enumerate(cos):
             co = romlib.co_id(co)
             want = t["co_list"].index(co)
-            addr = base + ram.T_CO_INDEX + army
+            addr = base + index_at + army
             for _ in range(len(t["co_list"]) + 2):
                 cur = e.u8(addr)
                 if cur == want:
@@ -181,10 +197,11 @@ class Game:
                 e.wait(14)
                 e.press("RIGHT", 6)
                 e.wait(14)
+        controllers_at = ram.T5_CONTROLLERS if five else ram.T_CONTROLLERS
         for army in range(n):
             want = 1 if (army + 1) in humans else 2
-            if e.u8(base + ram.T_CONTROLLERS + army) != want:
-                e.w8(base + ram.T_CONTROLLERS + army, want)
+            if e.u8(base + controllers_at + army) != want:
+                e.w8(base + controllers_at + army, want)
         e.wait(4)
 
     # -- Rules screen ---------------------------------------------------------------

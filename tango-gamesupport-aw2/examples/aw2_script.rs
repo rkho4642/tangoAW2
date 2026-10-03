@@ -176,8 +176,8 @@ impl Aw2Link {
         self.0.core_mut()
     }
     fn frame(&mut self) -> Vec<u8> {
-        use tango_match::Link;
-        self.0.side(0).frame().expect("frame")
+        // As Play offline shows it (solo: never concealed).
+        self.0.solo_side().frame().expect("frame")
     }
     fn export_save(&mut self, _: usize) -> Option<Vec<u8>> {
         use tango_match::Link;

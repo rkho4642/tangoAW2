@@ -133,6 +133,18 @@ impl SharedLink {
         })
     }
 
+    /// The picture as solo play shows it: one screen for whoever moves
+    /// (every human army, and the computer's turns through the game's own
+    /// fog), so nothing is concealed. Tools that stand in for Play offline
+    /// read this rather than a seat's side.
+    pub fn solo_side(&mut self) -> Box<dyn Side + '_> {
+        Box::new(SharedSide {
+            link: self,
+            player: 0,
+            conceal: false,
+        })
+    }
+
     /// The console, for tests and tools that read its memory.
     pub fn core(&self) -> &mgba::core::Core {
         self.inner.core(0)
@@ -179,7 +191,11 @@ impl tango_match::Link for SharedLink {
     }
 
     fn side(&mut self, player: usize) -> Box<dyn Side + '_> {
-        Box::new(SharedSide { link: self, player })
+        Box::new(SharedSide {
+            link: self,
+            player,
+            conceal: true,
+        })
     }
 
     fn peek(&mut self, addr: u32, buf: &mut [u8]) -> bool {
@@ -196,13 +212,17 @@ impl tango_match::Link for SharedLink {
 struct SharedSide<'a> {
     link: &'a mut SharedLink,
     player: usize,
+    /// [`SharedGame::conceal`] applies: a seat of the two-seat link. Solo
+    /// play is never concealed (it was: with fog on, every turn of armies
+    /// 2 and 4, the computer's included, showed the concealed picture).
+    conceal: bool,
 }
 
 impl Side for SharedSide<'_> {
     fn frame(&mut self) -> Option<Vec<u8>> {
         let mut frame = self.link.inner.video_buffer(0).map(to_rgba)?;
         let core = self.link.inner.core(0);
-        if self.link.game.conceal(core, self.player) {
+        if self.conceal && self.link.game.conceal(core, self.player) {
             return Some(concealed(&frame));
         }
         self.link.game.overlay(core, self.link.mode, self.player, &mut frame);
@@ -353,9 +373,6 @@ impl tango_match::Console for SharedSolo {
     }
 
     fn side(&mut self) -> Box<dyn Side + '_> {
-        Box::new(SharedSide {
-            link: &mut self.0,
-            player: 0,
-        })
+        self.0.solo_side()
     }
 }

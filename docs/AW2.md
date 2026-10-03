@@ -63,7 +63,11 @@ into the tiles of a standard emblem no army uses, and all standard
 emblems are restored from ROM every frame.
 
 Concealment: with fog on, during a battle, the seat that does not own the
-current army sees a dark screen, except on the hand-off screen.
+current army sees a dark screen, except on the hand-off screen. Netplay
+only: solo play (`SharedLink::solo_side`, what Play offline and
+`aw2_script` show) has one screen for whoever moves and is never
+concealed. Until the five-army fog check it was, by seat: every turn of
+armies 2 and 4, the computer's too, came up as the dark picture.
 
 Sources: Xenesis' RAM notes and hacking threads on Wars World News, the
 libretro CodeBreaker list, the aw2bhr decompilation, and probing with
@@ -291,6 +295,19 @@ original instruction against the ROM and writes `src/five_patches.rs`.
   `sub_0803BCD0`) decides; each frame the ROM is switched to match, so
   rollback (which restores RAM, not ROM) stays deterministic. Resuming a
   suspended game switches the patches off first.
+- **Fog** (checked 0.4.x, `tests/test_five_fog.py`): Black Monolith, Black
+  Wastes and Coral Crown in fog, Sonja as Yellow Comet and Von Bolt as
+  Black Hole, three days with their powers fired: on every sample the
+  terrain follows the drawn vision plane (gMap +0x234A; AW2's fog colours,
+  Dual Strike's on Wasteland), no other army's unit is drawn in fog, a
+  fogged property is drawn in the neutral palette and a seen one in its
+  owner's (Black Hole 13), Sonja's units hide their HP from Orange Star.
+  AW2's own: the full vision refresh marks every invention's footprint
+  seen and the computer's refresh does not, so a row the camera scrolls
+  in during a computer's turn draws a cannon's or Crystal's cells in
+  either state (two-army AW2 without the pack does it too). During a
+  computer's turn start the current army (`0x030033EC`) runs through the
+  armies, and between two computers' turns it reads 1 for some frames.
 
 ## The Dual Strike maps (`five/design_ds_maps.py`)
 
@@ -1081,6 +1098,14 @@ overlay 1, the campaign's code, at `0x02350560`).
   the weather as fixed weather (sandstorm as tangoAW2's) and the look are set
   (Snow, Desert and Wasteland drawn with Dual Strike's own terrain,
   `wasteland::set_ds_look`).
+- **Fog** is the record's +0x1C: Dual Strike's battle setup (ARM9
+  `0x020D3BC0`, `0x020E9374`) reads `0x022DBD44 + 0xA0 * map id` and sets
+  its battle's fog when it is nonzero (melonDS: Jake's Trial with the byte
+  poked to 1 starts in fog). One byte for Normal and Hard; each second
+  front has its own record. Fog Rolls In, Verdant Hills, Into the Woods
+  and The Long March have it; no second front does. `tests/test_ds_campaign_fog.py`
+  plays a round of every mission, Normal and Hard (second fronts
+  included), and checks the fog against the .nds's byte all through.
 - **Means to an End: the Grand Bolt** (`grand_bolt.rs`). Dual Strike draws
   its battle map in 3D, a 16x16 texture per cell; its map stores the Grand
   Bolt as a picture (cell (x, y) holds `8 + 0x20 * y + x`), which only Means

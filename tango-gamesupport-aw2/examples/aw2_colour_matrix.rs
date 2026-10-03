@@ -162,7 +162,7 @@ impl Rig {
         match self {
             Rig::Offline(link, recent) => {
                 link.tick([HostInput::keys(keys[0] | keys[1]), HostInput::keys(0)]);
-                recent.push_back(link.side(0).frame().unwrap());
+                recent.push_back(link.solo_side().frame().unwrap());
                 if recent.len() > 8 {
                     recent.pop_front();
                 }
@@ -197,7 +197,7 @@ impl Rig {
     }
     fn frame(&mut self, seat: usize) -> Vec<u8> {
         match self {
-            Rig::Offline(link, _) => link.side(0).frame().unwrap(),
+            Rig::Offline(link, _) => link.solo_side().frame().unwrap(),
             Rig::Netplay { peers, .. } => peers[seat].frame().unwrap(),
         }
     }

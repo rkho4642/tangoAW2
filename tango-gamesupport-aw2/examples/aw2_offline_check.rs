@@ -61,7 +61,7 @@ impl Run {
         self.wait(6);
     }
     fn shot(&mut self, path: std::path::PathBuf) {
-        write_bmp(&path, &self.link.side(0).frame().unwrap());
+        write_bmp(&path, &self.link.solo_side().frame().unwrap());
     }
 }
 
