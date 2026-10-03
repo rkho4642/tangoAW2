@@ -158,7 +158,11 @@ def view_all(ctx, g, prefix=""):
     g.open_map_menu()
     g.choose("CO", g.MAP_MENU)
     g.e.wait(90)
-    for _ in range(4):
+    # DOWN to the grid page (with the Dual Strike pack the TAG page,
+    # crate::tag_extras, comes before it).
+    for _ in range(6):
+        if g.e.u32(PAGE) == 4:
+            break
         g.e.press("DOWN", 6)
         g.e.wait(45)
     seen = []
