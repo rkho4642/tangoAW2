@@ -1555,9 +1555,9 @@ impl Panel {
     fn rect(self) -> (u32, u32, u32, u32) {
         match self {
             Panel::Help | Panel::SetupHelp => (0, 16, 30, 4),
-            // (at the top: the CO panel is not drawn while the other front
-            // is looked at, [`co_panel`]; the terrain and unit panels take
-            // the bottom corners)
+            // (at the top: neither the CO panel nor the terrain and unit
+            // panels are drawn while the other front is looked at,
+            // [`co_panel`], [`info_panels`])
             Panel::View => (8, 0, 14, 6),
             Panel::Result => (5, 8, 20, 4),
         }
@@ -1722,6 +1722,19 @@ pub fn panels_outside(core: &mut Core) {
 pub fn co_panel(core: &mut Core) {
     if core.raw_read_8(VIEW, -1) == 1 && on(core).is_some() {
         core.gba_mut().cpu_mut().set_gpr(1, 200);
+    }
+}
+
+/// The terrain and unit panels' frame function (`0x0802AA78`, the proc
+/// `0x0802A7C4` starts), where both panels' height on the screen is settled
+/// (`[sp + 0x10]`, after its slide): while the other front is looked at it
+/// is below the screen, so neither is seen (the view's cursor is not the
+/// turn's, and the panels would sit on the front's units at its edge).
+const INFO_PANELS_Y: u32 = 0x0802_AB34;
+fn info_panels(core: &mut Core) {
+    if core.raw_read_8(VIEW, -1) == 1 && on(core).is_some() {
+        let sp = core.gba().cpu().gpr(13) as u32;
+        core.raw_write_32(sp + 0x10, -1, 200);
     }
 }
 
@@ -1922,6 +1935,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (SET_PICKS, Box::new(set_picks)),
         (AFTER_ACTION, Box::new(after_action)),
         (AFTER_BACK, Box::new(after_back)),
+        (INFO_PANELS_Y, Box::new(info_panels)),
     ]
 }
 

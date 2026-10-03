@@ -1596,7 +1596,10 @@ Room, Survival, the Design Room, netplay and the pack off are untouched
   B button ("Second front", "Back", top centre: while the other front is
   looked at its army's CO panel is not drawn, `co_panel` through
   `tag`'s `DrawArmyCoPanel` trap, its face's tiles being the turn's army's;
-  the terrain and unit panels take the bottom corners) and the second
+  nor the terrain and unit panels, put below the screen in their frame
+  function, `0x0802AB34`, since they would sit on the front's units at its
+  edge) and
+  the second
   front's result ("Second front won!",
   "Second front lost.", on the player's turn): a window of AW2's own (its
   map menu's window cells on BG2, palette 8; the cells under it kept and
@@ -1670,7 +1673,8 @@ the incoming front's tangoAW2 state). ROM `0x08E70000..0x08E73FFF`
 borrowed OBJ palette. Traps: `0x08034AF8`, `0x08034EF0`,
 `0x0803BD14`, `0x0803BCDC`, `0x080743E8`, `0x080743AA` (the unit layers'
 rebuild after a Send returns there: alignment padding in
-`UnitSelectedEvent_Init`, never run). Hooks in other modules:
+`UnitSelectedEvent_Init`, never run), `0x0802AB34` (the info panels,
+below the screen in the view). Hooks in other modules:
 `ds_campaign`'s landing (the stubs), `map_start` (the live front's rules,
 its controllers), `script_end_match` (the main front's), `co_setup` (a
 second-front pick opens the CO screen); `ds_campaign_rules` (crystals,
