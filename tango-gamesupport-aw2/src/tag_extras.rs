@@ -60,7 +60,7 @@ const SAVED_OBJ: u32 = STATE + 0x0E;
 const SAVED_PALETTES: u32 = STATE + 0x10; // 3 x 32
 const SAVED_STARS: u32 = STATE + 0x70; // 2 x 32
 #[cfg(test)]
-const STATE_END: u32 = STATE + 0xB0;
+const STATE_END: u32 = STATE + 0xD0;
 
 pub const INTRO_FRAMES: u16 = 150;
 pub const SWAP_FRAMES: u16 = 100;
@@ -75,6 +75,10 @@ const STRINGS: u32 = tag::ROM + 0x1000;
 const TAGIN_AT: u32 = STRINGS;
 const VICTORY_AT: u32 = STRINGS + 0x100;
 const TAGBOX_AT: u32 = STRINGS + 0x300;
+/// The TAG page's header, "TAG", in place of the Super Power's name (the
+/// header keeps its Super Power icon).
+const TAGHEAD_AT: u32 = STRINGS + 0x3F0;
+const TAG_HEADER: &[u8] = b"TAG\0\0\0";
 const STRING_MAX: usize = 0xF8;
 /// Change's script (AW2's proc commands, 8 bytes each).
 pub const SCRIPT_CHANGE: u32 = tag::ROM + 0x1400;
@@ -120,6 +124,11 @@ pub fn install(core: &mut Core) {
     core.raw_read_range(SCRIPT_CHANGE, -1, &mut now);
     if now != bytes {
         core.raw_write_range(SCRIPT_CHANGE, -1, &bytes);
+    }
+    let mut head = [0u8; 6];
+    core.raw_read_range(TAGHEAD_AT, -1, &mut head);
+    if head[..] != TAG_HEADER[..] {
+        core.raw_write_range(TAGHEAD_AT, -1, TAG_HEADER);
     }
     for (id, at) in [(TEXT_TAGIN, TAGIN_AT), (TEXT_VICTORY, VICTORY_AT), (TEXT_TAGBOX, TAGBOX_AT)] {
         let entry = TEXT_TABLE + 4 * id as u32;
@@ -709,18 +718,29 @@ pub fn partners_of(core: &Core, co: u8) -> Vec<(u8, u8)> {
     out
 }
 
+/// The page's header (page 3's: the Super Power's name, `0x080149C0` with
+/// the text in r3): "TAG" on the TAG page.
+const PAGE_HEADER: u32 = 0x0808_5378;
+fn page_header(core: &mut Core) {
+    if crate::ds_weather::is_on(core) && core.raw_read_8(TAG_PAGE, -1) == 1 {
+        core.gba_mut().cpu_mut().set_gpr(3, TAGHEAD_AT as i32);
+    }
+}
+
 fn page_text(core: &mut Core) {
     if !crate::ds_weather::is_on(core) || core.raw_read_8(TAG_PAGE, -1) != 1 {
         return;
     }
     let Some(co) = page_co(core) else { return };
-    let mut t = b"TAG".to_vec();
     let partners = partners_of(core, co);
+    let mut t = Vec::new();
     if partners.is_empty() {
-        t.extend_from_slice(b"\rNo special partners.");
+        t.extend_from_slice(b"No special partners.");
     }
-    for (b, _) in &partners {
-        t.push(b'\r');
+    for (k, (b, _)) in partners.iter().enumerate() {
+        if k > 0 {
+            t.push(b'\r');
+        }
         t.extend_from_slice(&co_name(core, *b));
     }
     set_string(core, TAGBOX_AT, &t);
@@ -735,10 +755,15 @@ const STAR_SOURCES: [u32; 2] = [0x0810_2C24, 0x0810_2C64];
 const OBJ_VRAM: u32 = 0x0601_0000;
 /// Where the page's lines are (its text box at tile (1, 7)): the first
 /// line's top and the spacing, and the stars' x.
-pub const LINE_Y: i32 = 72;
+pub const LINE_Y: i32 = 61;
 pub const LINE_STEP: i32 = 16;
 pub const STARS_X: i32 = 64;
-const STAR_PALETTE: u16 = 7;
+/// The stars' OBJ palette (unused on the CO page; saved and put back):
+/// AW2's panel star colours at their tiles' indices 9..15.
+const STAR_PALETTE: u16 = 12;
+const STAR_COLOURS: [(usize, u16); 7] = [(9, 0x0000), (10, 0x5FFF), (11, 0x027F), (12, 0x77DC), (13, 0x6B39), (14, 0x35F1), (15, 0x0000)];
+const SAVED_STAR_PALETTE: u32 = STATE + 0xB0;
+const OBJ_PALETTES: u32 = 0x200;
 
 pub fn flush(core: &mut Core, at: u32, end: u32) -> u32 {
     if !crate::ds_weather::is_on(core) {
@@ -751,6 +776,9 @@ pub fn flush(core: &mut Core, at: u32, end: u32) -> u32 {
             let mut t = [0u8; 64];
             core.raw_read_range(SAVED_STARS, -1, &mut t);
             core.raw_write_range(OBJ_VRAM + 32 * STAR_TILE, -1, &t);
+            let mut p = [0u8; 32];
+            core.raw_read_range(SAVED_STAR_PALETTE, -1, &mut p);
+            write_palette(core, OBJ_PALETTES / 32 + STAR_PALETTE as u32, &p);
             core.raw_write_8(STARS_BORROWED, -1, 0);
         }
         return at;
@@ -759,8 +787,16 @@ pub fn flush(core: &mut Core, at: u32, end: u32) -> u32 {
         let mut t = [0u8; 64];
         core.raw_read_range(OBJ_VRAM + 32 * STAR_TILE, -1, &mut t);
         core.raw_write_range(SAVED_STARS, -1, &t);
+        let mut p = [0u8; 32];
+        core.raw_read_range(PAL_BUFFER + OBJ_PALETTES + 32 * STAR_PALETTE as u32, -1, &mut p);
+        core.raw_write_range(SAVED_STAR_PALETTE, -1, &p);
         core.raw_write_8(STARS_BORROWED, -1, 1);
     }
+    let mut p = [0u8; 32];
+    for (i, c) in STAR_COLOURS {
+        p[2 * i..2 * i + 2].copy_from_slice(&c.to_le_bytes());
+    }
+    write_palette(core, OBJ_PALETTES / 32 + STAR_PALETTE as u32, &p);
     for (k, src) in STAR_SOURCES.iter().enumerate() {
         let mut t = [0u8; 32];
         core.raw_read_range(*src, -1, &mut t);
@@ -794,6 +830,7 @@ pub fn traps() -> Vec<(u32, Box<dyn Fn(&mut Core)>)> {
         (PAGE_DOWN, Box::new(page_down)),
         (PAGE_UP, Box::new(page_up)),
         (PAGE_TEXT, Box::new(page_text)),
+        (PAGE_HEADER, Box::new(page_header)),
     ]
 }
 

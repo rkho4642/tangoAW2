@@ -563,6 +563,10 @@ fn panel_flush(core: &mut Core, start: u32, at: u32, end: u32) -> u32 {
     let Some(b) = tag::partner(core, army) else { return at };
     let x = core.raw_read_16(tag::PANEL, -1) as i32;
     let y = core.raw_read_16(tag::PANEL + 2, -1) as i32;
+    // The map's panel only (the CO page draws one at its foot: no room).
+    if y >= 64 {
+        return at;
+    }
     // The header must be in this frame's list (the panel drawn).
     let Some((header, _, _)) = find(core, start, at, HEADER_TILE, true) else { return at };
     let header_a2 = core.raw_read_16(header + 4, -1);
