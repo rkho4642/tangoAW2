@@ -82,3 +82,72 @@ def two_front_view_panel(ctx):
         behind = [s for s in sp if s["prio"] > bg2 and any(meets(s, l) for l in lines)]
         ctx.check(not behind, f"({cx},{cy}): no sprite behind the window under its lines "
                               f"({[(s['i'], s['x'], s['y'], hex(s['tile'])) for s in behind]})")
+
+
+@test(modes=("ds",))
+def two_front_help_panel(ctx):
+    """The map menu's Front help line ("View the other front.", a window at
+    the bottom): no sprite behind it shows through its lines (0.5.0: a
+    building's top in Means to an End, a unit in Victory or Death!)."""
+    for mission in (8, 24):
+        e = Emu(save=paths.base_save(), ds=ctx.ds)
+        g = Game(e, ctx.image)
+        ctx.games.append(g)
+        d = dc.DsCampaign(g)
+        d.start(step=dc.ORDER.index(mission))
+        d.wait_map()
+        e.wait(30)
+        g.open_map_menu()
+        for _ in range(3):
+            e.press("DOWN", 4)
+            e.wait(6)
+        e.wait(60)
+        e.shot(os.path.join(ctx.out, f"help_{mission}"))
+        ctx.eq(e.u8(PANEL), 1, f"mission {mission}: the help line is up")
+        bg2 = e.u16(0x0400000C) & 3
+        sp = sprites(e)
+        lines = [s for s in sp if s["prio"] == 0 and s["tile"] in LINE_TILES and s["w"] == 8 and s["h"] == 16]
+        ctx.check(len(lines) >= 5, f"mission {mission}: the help line's sprites ({len(lines)})")
+        behind = [s for s in sp if s["prio"] > bg2 and any(meets(s, l) for l in lines)]
+        ctx.check(not behind, f"mission {mission}: no sprite behind the window under its lines "
+                              f"({[(s['i'], s['x'], s['y'], hex(s['tile'])) for s in behind]})")
+        e.close()
+
+
+@test(modes=("ds",))
+def two_front_title_spares_game_tiles(ctx):
+    """The second front's "Second front" title (OBJ tiles 0x1F9.., also drawn
+    from by a capture's 64x64 picture at 0x1CA) is left out while a picture
+    of the game's uses those tiles: 0.5.0 wrote it over the capture's "20"
+    row. Means to an End's second front, its CPU round with a capture."""
+    e = Emu(save=paths.base_save(), ds=ctx.ds)
+    g = Game(e, ctx.image)
+    ctx.games.append(g)
+    d = dc.DsCampaign(g)
+    d.start(step=dc.ORDER.index(24))
+    d.wait_map()
+    e.wait(30)
+    d.end_turn()
+    shared = titled = 0
+    for i in range(1500):
+        live = e.u8(tf.LIVE)
+        if live == 1:
+            sp = sprites(e)
+            title = [s for s in sp if s["y"] == 1 and s["w"] == 8 and s["h"] == 16 and s["tile"] in LINE_TILES]
+            titled += bool(title)
+            game = [s for s in sp if s not in title and s["y"] < 160 and s["y"] + s["h"] > 0 and
+                    any(s["tile"] <= t < s["tile"] + (s["w"] // 8) * (s["h"] // 8) for t in LINE_TILES)]
+            if game:
+                shared += 1
+                if title:
+                    ctx.check(False, f"step {i}: the title drawn while the game's sprites use its tiles "
+                                     f"({[(s['x'], s['y'], s['w'], s['h'], hex(s['tile'])) for s in game]})")
+                    e.shot(os.path.join(ctx.out, f"shared_{i}"))
+        if tf.player_turn(e) and live == 0 and i > 30:
+            break
+        if d.scripts_running():
+            e.press("A", 4)
+        e.wait(12)
+    ctx.log(f"{titled} steps with the title, {shared} with the game's sprites on its tiles")
+    ctx.check(titled > 10, "the title shown on the second front")
+    ctx.check(shared > 0, "a capture (or another picture on those tiles) seen")

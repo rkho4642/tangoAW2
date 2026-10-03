@@ -2008,6 +2008,37 @@ pub fn under_panel(core: &mut Core, start: u32, mut at: u32, end: u32) -> u32 {
     at
 }
 
+/// At the sprite flush (`start..at` the game's sprites): whether the game
+/// draws from the OBJ tiles [`flush_sprites`] writes its lines into
+/// ([`free_tile_pairs`]) this frame. They are free on the battle map but for
+/// a few pictures: a capture's (its 64x64 at tile 0x1CA reaches 0x209) and a
+/// Black Crystal's heal (crate::heal_effect's, in the same tiles). While one is up the lines are left out, so the
+/// picture's tiles are not written over (the capture's "20" row showed
+/// pieces of "Second front").
+pub fn line_tiles_taken(core: &Core, start: u32, at: u32) -> bool {
+    // (a Crystal's or Obelisk's heal, crate::heal_effect, draws after this)
+    if crate::heal_effect::playing(core) {
+        return true;
+    }
+    let ours: Vec<(u16, u16)> = free_tile_pairs().into_iter().map(|t| (t, t + 2)).collect();
+    let mut s = start;
+    while s + 8 <= at {
+        let (a0, a1, a2) = (core.raw_read_16(s, -1), core.raw_read_16(s + 2, -1), core.raw_read_16(s + 4, -1));
+        s += 8;
+        if a0 & 0x300 == 0x200 || (a0 & 0xFF) >= 160 && (a0 & 0xFF) < 192 {
+            continue;
+        }
+        let (w, h) = OBJ_SIZES[((a0 >> 14) & 3) as usize][((a1 >> 14) & 3) as usize];
+        let colour8 = a0 & (1 << 13) != 0;
+        let first = a2 & 0x3FF;
+        let n = ((w / 8) * (h / 8)) as u16 * if colour8 { 2 } else { 1 };
+        if ours.iter().any(|&(a, b)| first < b && a < first + n) {
+            return true;
+        }
+    }
+    false
+}
+
 /// OBJ sizes (width, height) by shape (square, wide, tall) and size.
 const OBJ_SIZES: [[(i32, i32); 4]; 4] = [
     [(8, 8), (16, 16), (32, 32), (64, 64)],
