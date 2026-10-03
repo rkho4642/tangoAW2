@@ -683,9 +683,15 @@ Strike theme, converted at run time for AW2's sound engine (MP2K, "Sappy").
   (`STORY_SONGS`), the staff roll's stream (`sound/strm/0`) and the tag
   screens' six sounds (`TAG_SE_CALLS`, after the roll in the story's range).
   The pack's version is 6 (3: the heal sounds, 4: the story songs, 5: the
-  stream, 6: the tag sounds): a saved pack older than 3 is rebuilt from the .nds on the
-  next scan (or ignored without it); a version 3 pack still loads, its
-  story songs stood in for by AW2's like ones, so both netplay peers with the pack have the same sounds. Power music stays AW2's
+  stream, 6: the tag sounds). A saved pack of an older version is rebuilt
+  from the .nds by the scan when the .nds is in the ROMs folder (every
+  start's first scan reads it, so a player updating needs to do nothing:
+  `tango-library/tests/ds_pack_update.rs`, 0.5.0's version 5 pack to 6, the
+  tag sounds there). Without the .nds a pack older than 3 is ignored; one
+  of 3 or later still loads (what it lacks stood in for by AW2's like
+  sounds, or silent: the tag screens), and the Play tab says it is out of
+  date and to put the .nds back (`ds_pack::outdated`,
+  `tests/ds_pack_update_no_nds.rs`). Power music stays AW2's
   (Dual Strike's is shared too).
 - **Sequence.** Each SSEQ track is walked (calls inlined, loops and jumps
   followed; the jump back is the loop) into timed notes and controls, and

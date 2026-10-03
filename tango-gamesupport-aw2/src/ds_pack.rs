@@ -83,6 +83,14 @@ pub fn pack() -> Option<&'static Pack> {
     PACK.get().or_else(|| OLDER.get())
 }
 
+/// Whether the pack in use is a saved one of an older version: the .nds it
+/// was made from was not in the ROMs folder (the scan rebuilds the pack
+/// from the .nds whenever it finds one, an older saved pack or not), so
+/// what the newer versions added is left out until it is put back.
+pub fn outdated() -> bool {
+    PACK.get().is_none() && OLDER.get().is_some()
+}
+
 /// Whether the Dual Strike features are on: for a netplay match or its
 /// replay, as the match says ([`crate::ds_art::SHARED_ART`]), so both peers
 /// and every replay agree; played alone, when this player has the pack.

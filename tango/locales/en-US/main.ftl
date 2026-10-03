@@ -56,6 +56,8 @@ empty-no-roms-title = No game ROMs found
 empty-no-roms-body = Put your Advance Wars 2: Black Hole Rising (USA) .gba file into:
 empty-no-saves-title = No save files for this game
 empty-no-saves-body = Drop a .sav for this game into:
+# tangoAW2: a Dual Strike pack saved by an older version, its .nds gone.
+ds-pack-outdated = Your Dual Strike pack was made by an older tangoAW2 and lacks this version's new sounds. To update it, put your Dual Strike .nds in the ROMs folder again.
 
 # Play bottom strip
 play-link-code = Link code (leave empty for a random one)

@@ -101,5 +101,11 @@ pub fn scan_roms(storage: &dyn Storage, listing: &Listing) -> std::collections::
         log::info!("rom scan: {}: {:?}", entry.path.display(), game.family_and_variant());
         roms.insert(game, buf);
     }
+    // tangoAW2: a saved pack of an older version is rebuilt above from the
+    // .nds when it is in the folder too; without it the old pack is used.
+    #[cfg(feature = "gamesupport-aw2")]
+    if tango_gamesupport_aw2::ds_pack::outdated() {
+        log::warn!("rom scan: the Dual Strike pack is an older version's and no Dual Strike ROM is here to rebuild it");
+    }
     roms
 }

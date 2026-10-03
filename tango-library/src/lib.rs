@@ -45,6 +45,16 @@ pub fn shared_content_flag() -> u8 {
     }
     0
 }
+/// tangoAW2: the Dual Strike pack in use is a saved one from an older
+/// version and the .nds was not in the ROMs folder to rebuild it (the
+/// play tab says so).
+pub fn ds_pack_outdated() -> bool {
+    #[cfg(feature = "gamesupport-aw2")]
+    if tango_gamesupport_aw2::ds_pack::outdated() {
+        return true;
+    }
+    false
+}
 pub use storage::Storage;
 
 #[cfg(test)]

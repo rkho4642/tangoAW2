@@ -464,6 +464,25 @@ impl State {
 
         let mut col = column![].width(Fill).height(Fill);
         col = col.push(inner);
+        // tangoAW2: the Dual Strike pack is an older version's and the
+        // scan found no .nds to rebuild it from (it rebuilds on its own
+        // when there is one): the old pack plays, short of what is new.
+        if !scanning && tango_library::ds_pack_outdated() {
+            col = col.push(
+                container(
+                    row![
+                        Icon::Info.widget().size(14.0),
+                        text(t!(lang, "ds-pack-outdated"))
+                            .size(TEXT_CAPTION)
+                            .style(widgets::muted_text_style),
+                    ]
+                    .spacing(8)
+                    .align_y(Alignment::Center),
+                )
+                .width(Fill)
+                .padding([6, 16]),
+            );
+        }
         // While a netplay attempt is in flight (Connecting /
         // Negotiating / Lobby, sticky Failed, handoff) the lobby IS
         // the bottom band — it carries the versus cards, match
